@@ -48,14 +48,14 @@ coverage:
 	6cov -g $(shell pwd) $O.out | grep -v '_test\.go:'
 
 CLEANFILES+=*.cgo1.go *.cgo2.c _cgo_defun.c _cgo_gotypes.go _cgo_export.*
-CLEANFILES+=_cgo_.c _cgo_import.c _cgo_main.c _cgo_flags _cgo_run
+CLEANFILES+=_cgo_.c _cgo_import.c _cgo_main.c _cgo_flags _cgo_run _gcc_main.c
 CLEANFILES+=*.so _obj _test _testmain.go *.exe
 
 test:
 	gotest
 
 bench:
-	gotest -benchmarks=. -match="Do not run tests"
+	gotest -test.bench=. -test.run="Do not run tests"
 
 nuke: clean
 	rm -f $(pkgdir)/$(TARG).a

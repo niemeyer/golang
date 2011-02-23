@@ -21,8 +21,10 @@ DIRS=\
 	bufio\
 	bytes\
 	cmath\
+	compress/bzip2\
 	compress/flate\
 	compress/gzip\
+	compress/lzw \
 	compress/zlib\
 	container/heap\
 	container/list\
