@@ -1136,6 +1136,8 @@ def clpatch(ui, repo, clname, **opts):
 		return missing_codereview
 
 	cl, patch, err = DownloadCL(ui, repo, clname)
+	if err != "":
+		return err
 	if patch == emptydiff:
 		if not opts["mine"]:
 			return "codereview issue %s has no diff" % clname
@@ -1143,8 +1145,6 @@ def clpatch(ui, repo, clname, **opts):
 		argv = ["hgpatch"]
 		if opts["no_incoming"]:
 			argv += ["--checksync=false"]
-		if err != "":
-			return err
 		try:
 			cmd = subprocess.Popen(argv, shell=False, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=None, close_fds=sys.platform != "win32")
 		except:
