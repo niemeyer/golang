@@ -1,0 +1,67 @@
+// Copyright 2009 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package syscall
+#include "runtime.h"
+#include "os.h"
+
+func loadlibraryex(filename uintptr) (handle uintptr) {
+	uintptr args[3] = { filename };
+	handle = runtime·syscall(runtime·LoadLibraryEx, 3, args, nil);
+}
+
+func getprocaddress(handle uintptr, procname uintptr) (proc uintptr) {
+	USED(procname);
+	proc = runtime·syscall(runtime·GetProcAddress, 2, &handle, nil);
+}
+
+func NewCallback(fn Eface) (code uintptr) {
+	code = (uintptr)runtime·compilecallback(fn, true);
+}
+
+func Syscall(fn uintptr, nargs uintptr, a1 uintptr, a2 uintptr, a3 uintptr) (r1 uintptr, r2 uintptr, err uintptr) {
+	USED(a2);
+	USED(a3);
+	r1 = runtime·syscall((void*)fn, nargs, &a1, &err);
+	r2 = 0;
+}
+
+func Syscall6(fn uintptr, nargs uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr) (r1 uintptr, r2 uintptr, err uintptr) {
+	USED(a2);
+	USED(a3);
+	USED(a4);
+	USED(a5);
+	USED(a6);
+	r1 = runtime·syscall((void*)fn, nargs, &a1, &err);
+	r2 = 0;
+}
+
+func Syscall9(fn uintptr, nargs uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr, a7 uintptr, a8 uintptr, a9 uintptr) (r1 uintptr, r2 uintptr, err uintptr) {
+	USED(a2);
+	USED(a3);
+	USED(a4);
+	USED(a5);
+	USED(a6);
+	USED(a7);
+	USED(a8);
+	USED(a9);
+	r1 = runtime·syscall((void*)fn, nargs, &a1, &err);
+	r2 = 0;
+}
+
+func Syscall12(fn uintptr, nargs uintptr, a1 uintptr, a2 uintptr, a3 uintptr, a4 uintptr, a5 uintptr, a6 uintptr, a7 uintptr, a8 uintptr, a9 uintptr, a10 uintptr, a11 uintptr, a12 uintptr) (r1 uintptr, r2 uintptr, err uintptr) {
+	USED(a2);
+	USED(a3);
+	USED(a4);
+	USED(a5);
+	USED(a6);
+	USED(a7);
+	USED(a8);
+	USED(a9);
+	USED(a10);
+	USED(a11);
+	USED(a12);
+	r1 = runtime·syscall((void*)fn, nargs, &a1, &err);
+	r2 = 0;
+}

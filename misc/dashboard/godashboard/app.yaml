@@ -1,0 +1,17 @@
+application: godashboard
+version: 5
+runtime: python
+api_version: 1
+
+handlers:
+- url: /static
+  static_dir: static
+
+- url: /package.*
+  script: package.py
+
+- url: /project.*
+  script: package.py
+
+- url: /.*
+  script: gobuild.py

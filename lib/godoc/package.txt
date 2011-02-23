@@ -1,0 +1,95 @@
+{.section PAst}
+{@ FSet}
+{.end}
+{.section PDoc}
+{.section IsPkg}
+PACKAGE
+
+package {PackageName}
+import "{ImportPath}"
+{.or}
+COMMAND DOCUMENTATION
+{.end}
+{.section Doc}
+
+{@ FSet}
+{.end}
+{.section Consts}
+
+CONSTANTS
+
+{.repeated section @}
+{Decl FSet}
+{Doc}
+{.end}
+{.end}
+{.section Vars}
+
+VARIABLES
+
+{.repeated section @}
+{Decl FSet}
+{Doc}
+{.end}
+{.end}
+{.section Funcs}
+
+FUNCTIONS
+
+{.repeated section @}
+{Decl FSet}
+{Doc}
+{.end}
+{.end}
+{.section Types}
+
+TYPES
+
+{.repeated section @}
+{Decl FSet}
+{Doc}
+{.repeated section Consts}
+{Decl FSet}
+{Doc}
+{.end}
+{.repeated section Vars}
+{Decl FSet}
+{Doc}
+{.end}
+{.repeated section Factories}
+{Decl FSet}
+{Doc}
+{.end}
+{.repeated section Methods}
+{Decl FSet}
+{Doc}
+{.end}
+{.end}
+{.end}
+{.section Bugs}
+
+BUGS
+
+{.repeated section @}
+{@}
+{.end}
+{.end}
+{.end}
+{.section PList}
+
+OTHER PACKAGES
+
+{.repeated section @}
+{@}
+{.end}
+{.end}
+{.section Dirs}
+{.section Dirs}
+
+SUBDIRECTORIES
+
+{.repeated section List}
+	{Name}
+{.end}
+{.end}
+{.end}

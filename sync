@@ -1,0 +1,269 @@
+#!/bin/sh
+
+USAGE="
+Usage: sync [options]
+
+sync will synchronize the master branch with 'hg sync' and commit the
+changes.  If the current branch is not the master, it will also merge
+the changes made to master into the current branch.
+
+Options:
+
+  --cl #[-info]   Sync the provided CL to a local branch with the
+                  provided name, creating it if necessary.
+"
+
+set -e
+cd `dirname $0` 
+
+# current_branch [<branch name>]
+#
+# If a branch name is provided, tests whether this is the current branch
+# or not.  Otherwise, outputs the current git branch name.
+current_branch() {
+	CURRENT_BRANCH=`git branch | grep '^\*' | cut -d' ' -f2`
+	if [ $# -eq 1 ]; then
+		if [ "$1" = "$CURRENT_BRANCH" ]; then
+			return 0
+		fi
+		return 1
+	fi
+	echo $CURRENT_BRANCH
+}
+
+# current_status [<path>]
+#
+# Outputs git status for the provided path, or for the whole branch
+# if a path is not provided.
+current_status() {
+	git status --porcelain $1
+}
+
+INITIAL_BRANCH=`current_branch`
+
+# fatal <error message>
+#
+# Show the provided error message, and exists with 1.
+fatal() {
+	echo "error: $1"
+	EXIT_BRANCH=`current_branch`
+	if [ "$INITIAL_BRANCH" != "$EXIT_BRANCH" ]; then
+		echo "Now in branch '$EXIT_BRANCH'."
+	fi
+	exit 1
+}
+
+# branch_exists <branch name>
+#
+# Returns 0 if the git branch exists, 1 otherwise.
+branch_exists() {
+	if git branch | grep "^\*\?\s*$1$" > /dev/null; then
+		return 0
+	fi
+	return 1
+}
+
+# checkout [-b] <branch name>
+#
+# Checks out the given git branch, in case it's not the current one.
+# With -b, will attempt to create the branch, and fail if it exists.
+# Outputs messages showing what happened.
+checkout() {
+	CREATE=0
+	if [ "$1" = "-b" ]; then
+		CREATE=1
+		shift
+	fi
+	if current_branch "$1"; then
+		return 0
+	fi
+	if branch_exists "$1"; then
+		echo "Checking out branch '$1'..."
+		git checkout $1 $2 > /dev/null
+		return
+	fi
+	if [ "$CREATE" = 0 ]; then
+		fatal "branch '$1' does not exist"
+	fi
+	echo "Creating branch '$1'..."
+	git checkout -b $1 $2 > /dev/null
+}
+
+# add_all
+#
+# Adds all changes to the current git branch.
+add_all() {
+	git add -A $1 > /dev/null 2> /dev/null || true
+}
+
+CL_NUMBER=
+CL_CREATE=0
+PUSH=0
+while [ $# -gt 0 ]; do
+	OPTION=$1
+	shift
+	case "$OPTION" in
+	--push)
+		PUSH=1
+		if [ -n "$1" ]; then
+			fatal "$OPTION takes no arguments"
+		fi
+		;;
+	--new-cl)
+		CL_CREATE=1
+		if [ -z "$1" ]; then
+			CL_BRANCH_SUFFIX=
+		else
+			CL_BRANCH_SUFFIX="-$1"
+		fi
+		shift
+		;;
+	--cl)
+		if [ "$1" = "" ]; then
+			fatal "$OPTION needs a # or #-info argument"
+		fi
+		CL_BRANCH=$1
+		CL_NUMBER=`echo $CL_BRANCH | cut -d- -f1`
+		shift
+		;;
+	*)
+		echo "$USAGE"
+		exit 1
+		;;
+	esac
+done
+
+if [ "$PUSH" = 1 ]; then
+	echo "Listing remote branches..."
+	REMOTE_BRANCHES=`git ls-remote -h -t origin | cut -d/ -f3`
+	LOCAL_BRANCHES=`git branch | sed 's/^\*\?\s*//'`
+	REMOVE_BRANCHES=
+	for REMOTE_BRANCH in $REMOTE_BRANCHES; do
+		FOUND=0
+		for LOCAL_BRANCH in $LOCAL_BRANCHES; do
+			if [ $REMOTE_BRANCH = $LOCAL_BRANCH ]; then
+				FOUND=1
+				break
+			fi
+		done
+		if [ $FOUND = 0 ]; then
+			REMOVE_BRANCHES="$REMOTE_BRANCH $REMOVE_BRANCHES"
+		fi
+	done
+	if [ "$REMOVE_BRANCHES" != "" ]; then
+		echo "Deleting remote branches: $REMOVE_BRANCHES"
+		git push --delete origin $REMOVE_BRANCHES
+	else
+		echo "No remote branches to delete."
+	fi
+	echo "Pushing all local branches..."
+	git push --all
+	exit $?
+fi
+
+STATUS=`current_status`
+if [ "$STATUS" != "" ]; then
+	fatal "git status is not clean:\n$STATUS"
+fi
+
+checkout master
+
+echo "Running 'hg sync' to synchronize with tip..."
+
+# Enable synchronization.
+sed -i 's/^\(pre.*enable-.*=\).*$/\1 true/' .hg/hgrc
+
+OLD_ID=`hg id -i -n`
+HG_FAILED=0
+if ! hg sync; then
+	HG_FAILED=1
+fi
+NEW_ID=`hg id -i -n`
+
+# Disable synchronization again.
+sed -i 's/^\(pre.*enable-.*=\).*$/\1 false/' .hg/hgrc
+
+if [ "$HG_FAILED" = 1 ]; then
+	fatal "'hg sync' failed"
+fi
+
+REVIEW_STATUS=`current_status .hg/codereview | sed 's/.hg\/codereview//'`
+
+if [ "$NEW_ID" = "$OLD_ID" ]; then
+	echo "hg is already up-to-date."
+else
+	echo "Old version: $OLD_ID"
+	echo "New version: $NEW_ID"
+	add_all
+	#git update-index --no-assume-unchanged .hg/dirstate
+	STATUS=`current_status`
+	COMMIT_FAILED=0
+	if [ "$STATUS" != "" ]; then
+		echo "Committing changes to 'master' branch..."
+		if ! git commit -m "Updated to hg $NEW_ID" > /dev/null; then
+			COMMIT_FAILED=1
+		fi
+	fi
+	#git update-index --assume-unchanged .hg/dirstate
+	if [ $COMMIT_FAILED = 1 ]; then
+		fatal "git commit failed"
+	fi
+fi
+
+if [ "$REVIEW_STATUS" != "" ]; then
+	echo "Code reviews changed:\n$REVIEW_STATUS"
+	if [ "$NEW_ID" = "$OLD_ID" ]; then
+		add_all .hg/codereview
+		echo "Committing code review changes to 'master' branch..."
+		echo "Code reviews changed:\n$REVIEW_STATUS" | git commit -F - > /dev/null
+	fi
+fi
+
+if [ "$CL_NUMBER" != "" -o "$CL_CREATE" = 1 ]; then
+	if [ "$CL_CREATE" = 1 ]; then
+		hg change
+		if [ $? != 0 ]; then
+			fatal "'hg change' failed"
+		fi
+		CL_NUMBER=`current_status .hg/codereview/ | sed -n 's/^.*\/cl\.\([0-9]\+\)$/\1/p'`
+		if ! echo "$CL_NUMBER" | grep '^[0-9]\+$' > /dev/null; then
+			fatal "failed to extract CL number"
+		fi
+		CL_BRANCH=$CL_NUMBER$CL_BRANCH_SUFFIX
+
+		MESSAGE="Created CL $CL_NUMBER"
+		checkout -b $CL_BRANCH
+	elif git checkout -b $CL_BRANCH > /dev/null 2> /dev/null; then
+		MESSAGE="Imported CL $CL_NUMBER"
+		echo "Created branch '$CL_BRANCH'."
+	else
+		MESSAGE="Updated from CL $CL_NUMBER"
+		checkout $CL_BRANCH
+		echo "Merging branch 'master' in branch '$CL_BRANCH'..."
+		git merge master
+		echo "Reverting previous changes from CL $CL_NUMBER..."
+		hg revert @$CL_NUMBER > /dev/null 2> /dev/null || true
+	fi
+
+	if [ "$CL_CREATE" = 0 ]; then
+		echo "Fetching CL $CL_NUMBER and applying in branch '$CL_BRANCH'..."
+		hg clpatch $CL_NUMBER
+	fi
+
+	add_all
+	STATUS=`current_status`
+	if [ "`current_status`" != "" ]; then
+		echo "Committing changes to branch '$CL_BRANCH'..."
+		git commit -m "$MESSAGE" > /dev/null
+	else
+		echo "CL has no changes."
+	fi
+
+else
+	checkout $INITIAL_BRANCH
+
+	if [ "$INITIAL_BRANCH" != master -a "$NEW_ID" != "$OLD_ID" ]; then
+		echo "Merging branch 'master' in branch '$INITIAL_BRANCH'..."
+		git merge master
+	fi
+fi

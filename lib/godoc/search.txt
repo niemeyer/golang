@@ -1,0 +1,61 @@
+QUERY
+	{Query}
+
+{.section Alert}
+{@}
+
+{.end}
+{.section Alt}
+DID YOU MEAN
+{.repeated section Alts}
+	{@}
+{.end}
+
+{.end}
+{.section Hit}
+{.section Decls}
+PACKAGE-LEVEL DECLARATIONS
+
+{.repeated section @}
+package {Pak.Name}
+{.repeated section Files}
+{.repeated section Groups}
+{.repeated section Infos}
+	{File.Path|url-src}:{@|infoLine}
+{.end}
+{.end}
+{.end}
+
+{.end}
+{.end}
+{.section Others}
+LOCAL DECLARATIONS AND USES
+
+{.repeated section @}
+package {Pak.Name}
+{.repeated section Files}
+{.repeated section Groups}
+{.repeated section Infos}
+	{File.Path|url-src}:{@|infoLine}
+{.end}
+{.end}
+{.end}
+
+{.end}
+{.end}
+{.end}
+{.section Textual}
+{.section Complete}
+{Found} TEXTUAL OCCURENCES
+{.or}
+MORE THAN {Found} TEXTUAL OCCURENCES
+{.end}
+
+{.repeated section @}
+{Lines|numlines}	{Filename|url-src}
+{.end}
+{.section Complete}
+{.or}
+...	...
+{.end}
+{.end}

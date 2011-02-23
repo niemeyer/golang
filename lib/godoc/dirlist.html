@@ -1,0 +1,29 @@
+<!--
+	Copyright 2009 The Go Authors. All rights reserved.
+	Use of this source code is governed by a BSD-style
+	license that can be found in the LICENSE file.
+-->
+
+<p>
+<table class="layout">
+<tr>
+	<th align="left">File</th>
+	<td width="25">&nbsp;</td>
+	<th align="right">Bytes</th>
+	<td width="25">&nbsp;</td>
+	<th align="left">Modified</th>
+</tr>
+<tr>
+	<td><a href="..">..</a></td>
+</tr>
+{.repeated section @}
+<tr>
+	<td align="left"><a href="{Name|html-esc}{@|dir/}">{Name|html-esc}{@|dir/}</a></td>
+	<td></td>
+	<td align="right">{Size|html-esc}</td>
+	<td></td>
+	<td align="left">{Mtime_ns|time}</td>
+</tr>
+{.end}
+</table>
+</p>

@@ -1,0 +1,13 @@
+[paths]
+default = https://go.googlecode.com/hg/
+
+[extensions]
+codereview = /home/niemeyer/src/go/lib/codereview/codereview.py
+
+[ui]
+username = Gustavo Niemeyer <gustavo@niemeyer.net>
+
+[hooks]
+prechangegroup.enable-pull = false
+preoutgoing.enable-push = false
+preupdate.enable-update = false

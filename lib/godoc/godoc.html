@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+{.section Title}
+  <title>{@|html-esc} - The Go Programming Language</title>
+{.or}
+  <title>The Go Programming Language</title>
+{.end}
+<link rel="stylesheet" href="/doc/all.css" type="text/css" media="all" charset="utf-8">
+<!--[if lt IE 8]>
+<link rel="stylesheet" href="/doc/ie.css" type="text/css">
+<![endif]-->
+<script type="text/javascript" src="/doc/godocs.js"></script>
+</head>
+<body>
+<div id="container">
+  <div id="topnav">
+    <h1 id="title">The Go Programming Language</h1>
+    <div id="nav-main">
+      <ul>
+      <li><a href="/">Home</a></li><li><a href="/doc/install.html">Getting Started</a></li><li><a href="/doc/docs.html">Documentation</a></li><li><a href="/doc/contrib.html">Contributing</a></li><li><a href="/doc/community.html">Community</a></li>
+      </ul>
+      <div class="quickref">
+        <form method="GET" action="/search">
+        {.section PkgRoots}
+        {.repeated section PkgRoots}
+        <a href="/pkg/{@|html-esc}">{@|html-esc}</a> <span class="sep">|</span>
+        {.end}
+        {.or}
+        References:
+        {.end}
+        <a href="/pkg/">Packages</a> <span class="sep">|</span>
+        <a href="/cmd/">Commands</a> <span class="sep">|</span>
+        <a href="/doc/go_spec.html">Specification</a>
+        <input id="search" type="text" name="q" value="{.section Query}{Query|html-esc}{.or}code search{.end}" class="{.section Query}{.or}inactive{.end}" />
+        </form>
+      </div>
+    </div>
+    <a id="logo-box" href="/"></a>
+  </div>
+  <div id="content">
+  <!-- Menu is HTML-escaped elsewhere -->
+  {.section Menu}
+    <div id="menu">
+      {@}
+    </div>
+  {.end}
+
+  {.section Title}
+    <h1 id="generatedHeader">{@|html-esc}</h1>
+  {.end}
+  {.section Subtitle}
+    <span class="subtitle">{@|html-esc}</span>
+  {.end}
+
+  <p>
+  <!-- The Table of Contents is automatically inserted in this <div>.
+       Do not delete this <div>. -->
+  <div id="nav"></div>
+  </p>
+
+  <!-- Content is HTML-escaped elsewhere -->
+  {Content}
+  </div>
+  <div id="site-info">
+    <p>Build version {Version|html-esc}. Except as noted, this content is licensed under a <a rel="license" href="http://creativecommons.org/licenses/by/3.0/">Creative Commons Attribution 3.0 License</a>.</p>
+  </div>
+</div>
+</body>
+</html>

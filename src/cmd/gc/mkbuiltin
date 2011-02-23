@@ -1,0 +1,31 @@
+#!/bin/sh
+# Copyright 2009 The Go Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style
+# license that can be found in the LICENSE file.
+
+# Generate builtin.c and builtin.c.boot from $* (runtime.go and unsafe.go).
+# Run this after changing runtime.go and unsafe.go
+# or after changing the export metadata format in the compiler.
+# Either way, you need to have a working compiler binary first.
+
+set -e
+
+eval $(gomake --no-print-directory -f ../../Make.inc go-env)
+if [ -z "$GC" ]; then
+	echo 'missing $GC - gomake failed?' 1>&2
+	exit 1
+fi
+
+gcc -o mkbuiltin1 mkbuiltin1.c
+rm -f _builtin.c
+for i in runtime unsafe
+do
+	$GC -A $i.go
+	O=$O ./mkbuiltin1 $i >>_builtin.c
+done
+
+# If _builtin.c has changed vs builtin.c.boot,
+# check in the new change.
+cmp -s _builtin.c builtin.c.boot || cp _builtin.c builtin.c.boot
+
+mv _builtin.c builtin.c
