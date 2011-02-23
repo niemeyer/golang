@@ -1,13 +1,14 @@
-Author: n13m3y3r@gmail.com
-
 Mailed: False
 Description:
-	codereview: fix clpatch with empty diffs
+	codereview: new clpatch --mine flag
 	
-	Avoid passing the placeholder diff to hgpatch, so that
-	clpatch-ing an empty diff grabs the metadata and warns
-	about it being empty, rather than failing with a
-	hard-to-debug problem ("mkdir: no such file or dir",
-	no metadata, etc).
+	The new --mine flag will handle the downloaded patch
+	and metadata as being authored by the user running the
+	command, so that further actions like change -d work
+	correctly.
+	
+	This change also prevents passing the placeholder diff
+	to hgpatch, so that clpatch-ing an empty diff works
+	correctly.
 Files:
 	lib/codereview/codereview.py
