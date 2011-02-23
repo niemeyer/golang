@@ -72,7 +72,7 @@ ok:
 	RET
 
 TEXT runtime·mainstart(SB),7,$0
-	CALL	main·Init·(SB)
+	CALL	main·init(SB)
 	CALL	runtime·initdone(SB)
 	CALL	main·main(SB)
 	PUSHQ	$0
