@@ -1139,22 +1139,20 @@ def clpatch(ui, repo, clname, **opts):
 	if err != "":
 		return err
 	if patch == emptydiff:
-		if not opts["mine"]:
-			return "codereview issue %s has no diff" % clname
-	else:
-		argv = ["hgpatch"]
-		if opts["no_incoming"]:
-			argv += ["--checksync=false"]
-		try:
-			cmd = subprocess.Popen(argv, shell=False, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=None, close_fds=sys.platform != "win32")
-		except:
-			return "hgpatch: " + ExceptionDetail()
+		return "codereview issue %s has no diff" % clname
 
-		out, err = cmd.communicate(patch)
-		if cmd.returncode != 0 and not opts["ignore_hgpatch_failure"]:
-			return "hgpatch failed"
-		cl.files = out.strip().split()
+	argv = ["hgpatch"]
+	if opts["no_incoming"]:
+		argv += ["--checksync=false"]
+	try:
+		cmd = subprocess.Popen(argv, shell=False, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=None, close_fds=sys.platform != "win32")
+	except:
+		return "hgpatch: " + ExceptionDetail()
 
+	out, err = cmd.communicate(patch)
+	if cmd.returncode != 0 and not opts["ignore_hgpatch_failure"]:
+		return "hgpatch failed"
+	cl.files = out.strip().split()
 	if not cl.files:
 		ui.warn("warning: no files in change list\n")
 	else:
@@ -1162,9 +1160,6 @@ def clpatch(ui, repo, clname, **opts):
 		extra = Sub(cl.files, files)
 		if extra:
 			ui.warn("warning: these files were listed in the patch but not changed:\n\t" + "\n\t".join(extra) + "\n")
-
-	if opts["mine"]:
-		cl.copied_from = None
 
 	cl.local = True
 	cl.Flush(ui, repo)
@@ -1611,7 +1606,6 @@ cmdtable = {
 		[
 			('', 'ignore_hgpatch_failure', None, 'create CL metadata even if hgpatch fails'),
 			('', 'no_incoming', None, 'disable check for incoming changes'),
-			('', 'mine', None, 'handle the CL as being authored by the local user'),
 		],
 		"change#"
 	),
