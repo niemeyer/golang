@@ -1136,25 +1136,31 @@ def clpatch(ui, repo, clname, **opts):
 		return missing_codereview
 
 	cl, patch, err = DownloadCL(ui, repo, clname)
-	argv = ["hgpatch"]
-	if opts["no_incoming"]:
-		argv += ["--checksync=false"]
-	if err != "":
-		return err
-	try:
-		cmd = subprocess.Popen(argv, shell=False, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=None, close_fds=sys.platform != "win32")
-	except:
-		return "hgpatch: " + ExceptionDetail()
+	if patch != emptydiff:
+		argv = ["hgpatch"]
+		if opts["no_incoming"]:
+			argv += ["--checksync=false"]
+		if err != "":
+			return err
+		try:
+			cmd = subprocess.Popen(argv, shell=False, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=None, close_fds=sys.platform != "win32")
+		except:
+			return "hgpatch: " + ExceptionDetail()
 
-	out, err = cmd.communicate(patch)
-	if cmd.returncode != 0 and not opts["ignore_hgpatch_failure"]:
-		return "hgpatch failed"
+		out, err = cmd.communicate(patch)
+		if cmd.returncode != 0 and not opts["ignore_hgpatch_failure"]:
+			return "hgpatch failed"
+		cl.files = out.strip().split()
+
+	if not cl.files:
+		ui.warn("warning: no files in change list\n")
+	else:
+		files = ChangedFiles(ui, repo, [], opts)
+		extra = Sub(cl.files, files)
+		if extra:
+			ui.warn("warning: these files were listed in the patch but not changed:\n\t" + "\n\t".join(extra) + "\n")
+
 	cl.local = True
-	cl.files = out.strip().split()
-	files = ChangedFiles(ui, repo, [], opts)
-	extra = Sub(cl.files, files)
-	if extra:
-		ui.warn("warning: these files were listed in the patch but not changed:\n\t" + "\n\t".join(extra) + "\n")
 	cl.Flush(ui, repo)
 	ui.write(cl.PendingText() + "\n")
 

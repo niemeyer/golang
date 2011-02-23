@@ -1,0 +1,13 @@
+Author: n13m3y3r@gmail.com
+
+Mailed: False
+Description:
+	codereview: fix clpatch with empty diffs
+	
+	Avoid passing the placeholder diff to hgpatch, so that
+	clpatch-ing an empty diff grabs the metadata and warns
+	about it being empty, rather than failing with a
+	hard-to-debug problem ("mkdir: no such file or dir",
+	no metadata, etc).
+Files:
+	lib/codereview/codereview.py
