@@ -54,5 +54,5 @@ TEXT main(SB),7,$0
 TEXT main·main(SB),7,$0
 	RET
 
-TEXT main·init(SB),7,$0
+TEXT main·Init·(SB),7,$0
 	RET

@@ -426,14 +426,19 @@ lookup(void)
 		symb[1] = '"';
 	}
 
-	// turn · into .
+	// turn first · into .
 	for(r=w=symb; *r; r++) {
 		if((uchar)*r == 0xc2 && (uchar)*(r+1) == 0xb7) {
 			*w++ = '.';
-			r++;
+			r += 2;
+			break;
 		}else
 			*w++ = *r;
 	}
+
+	// copy the rest
+	while(*r)
+		*w++ = *r++;
 	*w++ = '\0';
 
 	h = 0;

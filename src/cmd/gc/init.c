@@ -30,19 +30,19 @@ renameinit(Node *n)
 
 /*
  * hand-craft the following initialization code
- *	var initdone·<file> uint8 			(1)
- *	func	Init·<file>()				(2)
- *		if initdone·<file> != 0 {		(3)
- *			if initdone·<file> == 2		(4)
+ *	var initdone· uint8 				(1)
+ *	func Init·()					(2)
+ *		if initdone· != 0 {			(3)
+ *			if initdone· == 2		(4)
  *				return
  *			throw();			(5)
  *		}
- *		initdone.<file> = 1;			(6)
+ *		initdone· = 1;				(6)
  *		// over all matching imported symbols
- *			<pkg>.init·<file>()		(7)
+ *			<pkg>.Init·()			(7)
  *		{ <init stmts> }			(8)
- *		init·<file>()	// if any		(9)
- *		initdone.<file> = 2;			(10)
+ *		init·<n>() // if any			(9)
+ *		initdone· = 2;				(10)
  *		return					(11)
  *	}
  */
@@ -119,11 +119,6 @@ fninit(NodeList *n)
 	// (2)
 	maxarg = 0;
 	snprint(namebuf, sizeof(namebuf), "Init·");
-
-	// this is a botch since we need a known name to
-	// call the top level init function out of rt0
-	if(strcmp(localpkg->name, "main") == 0)
-		snprint(namebuf, sizeof(namebuf), "init");
 
 	fn = nod(ODCLFUNC, N, N);
 	initsym = lookup(namebuf);
