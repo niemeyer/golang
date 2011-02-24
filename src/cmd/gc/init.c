@@ -31,7 +31,7 @@ renameinit(Node *n)
 /*
  * hand-craft the following initialization code
  *	var initdone· uint8 				(1)
- *	func Init·()					(2)
+ *	func init()					(2)
  *		if initdone· != 0 {			(3)
  *			if initdone· == 2		(4)
  *				return
@@ -39,7 +39,7 @@ renameinit(Node *n)
  *		}
  *		initdone· = 1;				(6)
  *		// over all matching imported symbols
- *			<pkg>.Init·()			(7)
+ *			<pkg>.init()			(7)
  *		{ <init stmts> }			(8)
  *		init·<n>() // if any			(9)
  *		initdone· = 2;				(10)
@@ -79,7 +79,7 @@ anyinit(NodeList *n)
 	// are there any imported init functions
 	for(h=0; h<NHASH; h++)
 	for(s = hash[h]; s != S; s = s->link) {
-		if(s->name[0] != 'I' || strncmp(s->name, "Init·", 6) != 0)
+		if(s->name[0] != 'i' || strcmp(s->name, "init") != 0)
 			continue;
 		if(s->def == N)
 			continue;
@@ -118,7 +118,7 @@ fninit(NodeList *n)
 
 	// (2)
 	maxarg = 0;
-	snprint(namebuf, sizeof(namebuf), "Init·");
+	snprint(namebuf, sizeof(namebuf), "init");
 
 	fn = nod(ODCLFUNC, N, N);
 	initsym = lookup(namebuf);
@@ -149,7 +149,7 @@ fninit(NodeList *n)
 	// (7)
 	for(h=0; h<NHASH; h++)
 	for(s = hash[h]; s != S; s = s->link) {
-		if(s->name[0] != 'I' || strncmp(s->name, "Init·", 6) != 0)
+		if(s->name[0] != 'i' || strcmp(s->name, "init") != 0)
 			continue;
 		if(s->def == N)
 			continue;
