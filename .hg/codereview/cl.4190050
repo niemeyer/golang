@@ -1,0 +1,26 @@
+Author: n13m3y3r@gmail.com
+
+Mailed: False
+Description:
+	gc: fix init of packages named main
+	
+	This change removes the special case which existed
+	for handling the initalization of the main package,
+	so that other modules named 'main' get properly
+	initialized when imported.
+	
+	For doing so, cc (6c/6a/etc) has been changed so that
+	only the first center dot is converted to a dot.
+	Without this it's impossible to address an internal
+	exported function from c or asm.
+	
+	Note that gotest of main packages will break in most
+	cases without this.
+Files:
+	src/cmd/cc/lex.c
+	src/cmd/cc/lexbody
+	src/cmd/gc/init.c
+	src/pkg/debug/gosym/pclinetest.s
+	src/pkg/runtime/386/asm.s
+	src/pkg/runtime/amd64/asm.s
+	src/pkg/runtime/arm/asm.s
