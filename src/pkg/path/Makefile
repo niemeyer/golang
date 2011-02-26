@@ -9,18 +9,6 @@ GOFILES=\
 	match.go\
 	path.go\
 
-GOFILES_freebsd=\
-	path_unix.go
-
-GOFILES_darwin=\
-	path_unix.go
-
-GOFILES_linux=\
-	path_unix.go
-
-GOFILES_windows=\
-	path_windows.go
-
 GOFILES+=$(GOFILES_$(GOOS))
 
 include ../../Make.pkg
