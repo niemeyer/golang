@@ -15,8 +15,8 @@ var ErrBadPattern = os.NewError("syntax error in pattern")
 //	pattern:
 //		{ term }
 //	term:
-//		'*'         matches any sequence of non-/ characters
-//		'?'         matches any single non-/ character
+//		'*'         matches any sequence of non-Separator characters
+//		'?'         matches any single non-Separator character
 //		'[' [ '^' ] { character-range } ']'
 //		            character class (must be non-empty)
 //		c           matches character c (c != '*', '?', '\\', '[')
@@ -207,7 +207,7 @@ func getEsc(chunk string) (r int, nchunk string, err os.Error) {
 // Glob returns the names of all files matching pattern or nil
 // if there is no matching file. The syntax of patterns is the same
 // as in Match. The pattern may describe hierarchical names such as
-// /usr/*/bin/ed.
+// /usr/*/bin/ed, assuming Separator is "/".
 //
 func Glob(pattern string) (matches []string) {
 	if !hasMeta(pattern) {
