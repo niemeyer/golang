@@ -42,6 +42,11 @@ DIRS=\
 	crypto/md4\
 	crypto/md5\
 	crypto/ocsp\
+	crypto/openpgp\
+	crypto/openpgp/armor\
+	crypto/openpgp/error\
+	crypto/openpgp/packet\
+	crypto/openpgp/s2k\
 	crypto/rand\
 	crypto/rc4\
 	crypto/ripemd160\
@@ -126,6 +131,7 @@ DIRS=\
 	strconv\
 	strings\
 	sync\
+	sync/atomic\
 	syscall\
 	syslog\
 	tabwriter\
@@ -158,6 +164,7 @@ endif
 
 NOTEST=\
 	crypto\
+	crypto/openpgp/error\
 	debug/proc\
 	exp/draw/x11\
 	go/ast\

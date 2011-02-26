@@ -57,6 +57,7 @@ Header headers[] = {
    "nacl", Hnacl,
    "freebsd", Hfreebsd,
    "windows", Hwindows,
+   "windowsgui", Hwindows,
    "tiny", Htiny,
    0, 0
 };
@@ -315,6 +316,7 @@ main(int argc, char *argv[])
 	symtab();
 	dodata();
 	address();
+	doweak();
 	reloc();
 	asmb();
 	undef();

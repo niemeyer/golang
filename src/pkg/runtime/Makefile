@@ -40,11 +40,8 @@ OFILES_386=\
 	vlop.$O\
 	vlrt.$O\
 
-GOARM?=6
-
 # arm-specific object files
 OFILES_arm=\
-	cas$(GOARM).$O\
 	memset.$O\
 	softfloat.$O\
 	vlop.$O\
@@ -94,6 +91,7 @@ HFILES=\
 	runtime.h\
 	hashmap.h\
 	malloc.h\
+	stack.h\
 	$(GOARCH)/asm.h\
 	$(GOOS)/os.h\
 	$(GOOS)/signals.h\
@@ -141,13 +139,13 @@ version_$(GOOS).go:
 	./goc2c "`pwd`/$<" > $@.tmp
 	mv -f $@.tmp $@
 
-%.$O:	$(GOARCH)/%.c
+%.$O:	$(GOARCH)/%.c $(HFILES)
 	$(CC) $(CFLAGS) $<
 
-%.$O:	$(GOOS)/%.c
+%.$O:	$(GOOS)/%.c $(HFILES)
 	$(CC) $(CFLAGS) $<
 
-%.$O:	$(GOOS)/$(GOARCH)/%.c
+%.$O:	$(GOOS)/$(GOARCH)/%.c $(HFILES)
 	$(CC) $(CFLAGS) $<
 
 %.$O:	$(GOARCH)/%.s $(GOARCH)/asm.h

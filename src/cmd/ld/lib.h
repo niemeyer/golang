@@ -167,6 +167,8 @@ int	archreloc(Reloc*, Sym*, vlong*);
 void	adddynsym(Sym*);
 void	addexport(void);
 void	dostkcheck(void);
+void	undef(void);
+void	doweak(void);
 
 int	pathchar(void);
 void*	mal(uint32);
@@ -211,31 +213,33 @@ enum {
 
 /* executable header types */
 enum {
-   Hgarbunix = 0,	// garbage unix
-   Hnoheader,		// no header
-   Hunixcoff,		// unix coff
-   Hrisc,		// aif for risc os
-   Hplan9x32,		// plan 9 32-bit format
-   Hplan9x64,		// plan 9 64-bit format
-   Hmsdoscom,		// MS-DOS .COM
-   Hnetbsd,		// NetBSD
-   Hmsdosexe,		// fake MS-DOS .EXE
-   Hixp1200,		// IXP1200 (raw)
-   Helf,		// ELF32
-   Hipaq,		// ipaq
-   Hdarwin,		// Apple Mach-O
-   Hlinux,		// Linux ELF
-   Hnacl,		// Google Native Client
-   Hfreebsd,		// FreeBSD ELF
-   Hwindows,		// MS Windows PE
-   Htiny		// tiny (os image)
+	Hgarbunix = 0,	// garbage unix
+	Hnoheader,	// no header
+	Hunixcoff,	// unix coff
+	Hrisc,		// aif for risc os
+	Hplan9x32,	// plan 9 32-bit format
+	Hplan9x64,	// plan 9 64-bit format
+	Hmsdoscom,	// MS-DOS .COM
+	Hnetbsd,	// NetBSD
+	Hmsdosexe,	// fake MS-DOS .EXE
+	Hixp1200,	// IXP1200 (raw)
+	Helf,		// ELF32
+	Hipaq,		// ipaq
+	Hdarwin,	// Apple Mach-O
+	Hlinux,		// Linux ELF
+	Hnacl,		// Google Native Client
+	Hfreebsd,	// FreeBSD ELF
+	Hwindows,	// MS Windows PE
+	Htiny		// tiny (os image)
 };
 
 typedef struct Header Header;
 struct Header {
-   char *name;
-   int val;
+	char *name;
+	int val;
 };
 
-extern Header headers[];
-int headtype(char*);
+EXTERN	char*	headstring;
+extern	Header	headers[];
+
+int	headtype(char*);

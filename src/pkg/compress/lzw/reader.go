@@ -14,8 +14,6 @@ package lzw
 // TODO(nigeltao): check that TIFF and PDF use LZW in the same way as GIF,
 // modulo LSB/MSB packing order.
 
-// TODO(nigeltao): write an encoder.
-
 import (
 	"bufio"
 	"fmt"
@@ -46,11 +44,11 @@ type decoder struct {
 // readLSB returns the next code for "Least Significant Bits first" data.
 func (d *decoder) readLSB() (uint16, os.Error) {
 	for d.nBits < d.width {
-		c, err := d.r.ReadByte()
+		x, err := d.r.ReadByte()
 		if err != nil {
 			return 0, err
 		}
-		d.bits |= uint32(c) << d.nBits
+		d.bits |= uint32(x) << d.nBits
 		d.nBits += 8
 	}
 	code := uint16(d.bits & (1<<d.width - 1))
@@ -62,11 +60,11 @@ func (d *decoder) readLSB() (uint16, os.Error) {
 // readMSB returns the next code for "Most Significant Bits first" data.
 func (d *decoder) readMSB() (uint16, os.Error) {
 	for d.nBits < d.width {
-		c, err := d.r.ReadByte()
+		x, err := d.r.ReadByte()
 		if err != nil {
 			return 0, err
 		}
-		d.bits |= uint32(c) << (24 - d.nBits)
+		d.bits |= uint32(x) << (24 - d.nBits)
 		d.nBits += 8
 	}
 	code := uint16(d.bits >> (32 - d.width))
@@ -78,7 +76,15 @@ func (d *decoder) readMSB() (uint16, os.Error) {
 // decode decompresses bytes from r and writes them to pw.
 // read specifies how to decode bytes into codes.
 // litWidth is the width in bits of literal codes.
-func decode(pw *io.PipeWriter, r io.ByteReader, read func(*decoder) (uint16, os.Error), litWidth uint) os.Error {
+func decode(r io.Reader, read func(*decoder) (uint16, os.Error), litWidth int, pw *io.PipeWriter) {
+	br, ok := r.(io.ByteReader)
+	if !ok {
+		br = bufio.NewReader(r)
+	}
+	pw.CloseWithError(decode1(pw, br, read, uint(litWidth)))
+}
+
+func decode1(pw *io.PipeWriter, r io.ByteReader, read func(*decoder) (uint16, os.Error), litWidth uint) os.Error {
 	const (
 		maxWidth    = 12
 		invalidCode = 0xffff
@@ -101,6 +107,9 @@ func decode(pw *io.PipeWriter, r io.ByteReader, read func(*decoder) (uint16, os.
 		// The c == hi case is a special case.
 		suffix [1 << maxWidth]uint8
 		prefix [1 << maxWidth]uint16
+		// buf is a scratch buffer for reconstituting the bytes that a code expands to.
+		// Code suffixes are written right-to-left from the end of the buffer.
+		buf [1 << maxWidth]byte
 	)
 
 	// Loop over the code stream, converting codes into decompressed bytes.
@@ -133,9 +142,6 @@ func decode(pw *io.PipeWriter, r io.ByteReader, read func(*decoder) (uint16, os.
 		case code == eof:
 			return w.Flush()
 		case code <= hi:
-			// buf is a scratch buffer for reconstituting the bytes that a code expands to.
-			// Code suffixes are written right-to-left from the end of the buffer.
-			var buf [1 << maxWidth]byte
 			c, i := code, len(buf)-1
 			if code == hi {
 				// code == hi is a special case which expands to the last expansion
@@ -177,13 +183,12 @@ func decode(pw *io.PipeWriter, r io.ByteReader, read func(*decoder) (uint16, os.
 	panic("unreachable")
 }
 
-// NewReader returns a new ReadCloser that can be used to read the uncompressed
-// version of r. It is the caller's responsibility to call Close on the
-// ReadCloser when finished reading.
-// order is either LSB or MSB for Least or Most Significant Bits first packing
-// order. GIF uses LSB. TIFF and PDF use MSB.
-// litWidth is the width in bits for literal codes. Valid values range from
-// 2 to 8 inclusive.
+// NewReader creates a new io.ReadCloser that satisfies reads by decompressing
+// the data read from r.
+// It is the caller's responsibility to call Close on the ReadCloser when
+// finished reading.
+// The number of bits to use for literal codes, litWidth, must be in the
+// range [2,8] and is typically 8.
 func NewReader(r io.Reader, order Order, litWidth int) io.ReadCloser {
 	pr, pw := io.Pipe()
 	var read func(*decoder) (uint16, os.Error)
@@ -200,12 +205,6 @@ func NewReader(r io.Reader, order Order, litWidth int) io.ReadCloser {
 		pw.CloseWithError(fmt.Errorf("lzw: litWidth %d out of range", litWidth))
 		return pr
 	}
-	go func() {
-		br, ok := r.(io.ByteReader)
-		if !ok {
-			br = bufio.NewReader(r)
-		}
-		pw.CloseWithError(decode(pw, br, read, uint(litWidth)))
-	}()
+	go decode(r, read, litWidth, pw)
 	return pr
 }

@@ -1271,9 +1271,23 @@ headtype(char *name)
 	int i;
 
 	for(i=0; headers[i].name; i++)
-		if(strcmp(name, headers[i].name) == 0)
+		if(strcmp(name, headers[i].name) == 0) {
+			headstring = headers[i].name;
 			return headers[i].val;
+		}
 	fprint(2, "unknown header type -H %s\n", name);
 	errorexit();
 	return -1;  // not reached
+}
+
+void
+undef(void)
+{
+	int i;
+	Sym *s;
+
+	for(i=0; i<NHASH; i++)
+	for(s = hash[i]; s != S; s = s->hash)
+		if(s->type == SXREF)
+			diag("%s(%d): not defined", s->name, s->version);
 }
