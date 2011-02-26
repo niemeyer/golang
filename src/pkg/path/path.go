@@ -7,8 +7,6 @@
 package path
 
 import (
-	"io/ioutil"
-	"os"
 	"strings"
 )
 
@@ -133,54 +131,6 @@ func Ext(path string) string {
 		}
 	}
 	return ""
-}
-
-// Visitor methods are invoked for corresponding file tree entries
-// visited by Walk. The parameter path is the full path of f relative
-// to root.
-type Visitor interface {
-	VisitDir(path string, f *os.FileInfo) bool
-	VisitFile(path string, f *os.FileInfo)
-}
-
-func walk(path string, f *os.FileInfo, v Visitor, errors chan<- os.Error) {
-	if !f.IsDirectory() {
-		v.VisitFile(path, f)
-		return
-	}
-
-	if !v.VisitDir(path, f) {
-		return // skip directory entries
-	}
-
-	list, err := ioutil.ReadDir(path)
-	if err != nil {
-		if errors != nil {
-			errors <- err
-		}
-	}
-
-	for _, e := range list {
-		walk(Join(path, e.Name), e, v, errors)
-	}
-}
-
-// Walk walks the file tree rooted at root, calling v.VisitDir or
-// v.VisitFile for each directory or file in the tree, including root.
-// If v.VisitDir returns false, Walk skips the directory's entries;
-// otherwise it invokes itself for each directory entry in sorted order.
-// An error reading a directory does not abort the Walk.
-// If errors != nil, Walk sends each directory read error
-// to the channel.  Otherwise Walk discards the error.
-func Walk(root string, v Visitor, errors chan<- os.Error) {
-	f, err := os.Lstat(root)
-	if err != nil {
-		if errors != nil {
-			errors <- err
-		}
-		return // can't progress
-	}
-	walk(root, f, v, errors)
 }
 
 // Base returns the last path element of the slash-separated name.
