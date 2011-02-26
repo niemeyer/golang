@@ -29,6 +29,9 @@ nuke: clean
 	rm -f $(QUOTED_GOBIN)/$(TARG)
 
 # for gotest
+test:
+	gotest
+
 testpackage: _test/main.a
 
 testpackage-clean:

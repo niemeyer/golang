@@ -42,6 +42,10 @@ fi
 gomake test
 ) || exit $?
 
+(xcd cmd/goinstall
+gomake test
+) || exit $?
+
 (xcd pkg/sync;
 if $rebuild; then
 	gomake clean;

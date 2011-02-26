@@ -29,14 +29,10 @@ ifeq ($(GOOS),)
 GOOS:=$(GOHOSTOS)
 endif
 
-ifeq ($(GOOS),darwin)
-else ifeq ($(GOOS),freebsd)
-else ifeq ($(GOOS),linux)
-else ifeq ($(GOOS),tiny)
-else ifeq ($(GOOS),plan9)
-else ifeq ($(GOOS),windows)
-else
-$(error Invalid $$GOOS '$(GOOS)'; must be darwin, freebsd, linux, plan9, tiny, or windows)
+GOOS_LIST:=darwin freebsd linux tiny plan9 windows
+
+ifeq ($(filter $(GOOS),$(GOOS_LIST)),)
+$(error Invalid $$GOOS '$(GOOS)'; must be one of: $(GOOS_LIST))
 endif
 
 ifeq ($(GOHOSTARCH),)
@@ -59,24 +55,27 @@ ifeq ($(GOOS),darwin)
 GOHOSTARCH:=$(GOARCH)
 endif
 
+GOARCH_LIST:=386 amd64 arm
+
+ifeq ($(filter $(GOARCH),$(GOARCH_LIST)),)
+$(error Invalid $$GOARCH '$(GOARCH)'; must be one of: $(GOARCH_LIST))
+endif
+
 ifeq ($(GOARCH),386)
 O:=8
 else ifeq ($(GOARCH),amd64)
 O:=6
 else ifeq ($(GOARCH),arm)
-
 O:=5
-ifeq ($(GOOS),linux)
-else
+ifneq ($(GOOS),linux)
 $(error Invalid $$GOOS '$(GOOS)' for GOARCH=arm; must be linux)
 endif
-
 else
-$(error Invalid $$GOARCH '$(GOARCH)'; must be 386, amd64, or arm)
+$(error Internal error: missing $$O for '$(GOARCH)')
 endif
 
 # Save for recursive make to avoid recomputing.
-export GOARCH GOOS GOHOSTARCH GOHOSTOS
+export GOARCH GOOS GOHOSTARCH GOHOSTOS GOARCH_LIST GOOS_LIST
 
 # ugly hack to deal with whitespaces in $GOROOT
 nullstring :=
