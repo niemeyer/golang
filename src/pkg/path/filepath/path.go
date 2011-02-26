@@ -4,7 +4,7 @@
 
 // The path package implements utility routines for manipulating
 // slash-separated filename paths.
-package path
+package filepath
 
 import (
 	"io/ioutil"
