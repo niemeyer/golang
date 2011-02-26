@@ -76,7 +76,7 @@ type SplitTest struct {
 	path, dir, file string
 }
 
-var splittests = []SplitTest{
+var unixsplittests = []SplitTest{
 	{"a/b", "a/", "b"},
 	{"a/b/", "a/b/", ""},
 	{"a/", "a/", ""},
@@ -93,8 +93,11 @@ var winsplittests = []SplitTest{
 }
 
 func TestSplit(t *testing.T) {
+	var splittests []SplitTest
 	if runtime.GOOS == "windows" {
-		splittests = append(splittests, winsplittests...)
+		splittests = winsplittests
+	} else {
+		splittests = unixsplittests
 	}
 	for _, test := range splittests {
 		if d, f := Split(test.path); d != test.dir || f != test.file {
