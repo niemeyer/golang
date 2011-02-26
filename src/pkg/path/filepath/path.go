@@ -102,12 +102,14 @@ func Clean(path string) string {
 	return string(buf[0:w])
 }
 
+const pathSeps = Separator + VolumeSeparator
+
 // Split splits path immediately following the final path separator,
 // separating it into a directory and file name component.
 // If there is no separator in path, Split returns an empty dir and
 // file set to path.
 func Split(path string) (dir, file string) {
-	i := strings.LastIndexAny(path, PathSeps)
+	i := strings.LastIndexAny(path, pathSeps)
 	return path[:i+1], path[i+1:]
 }
 

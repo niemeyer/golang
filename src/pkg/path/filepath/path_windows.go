@@ -5,7 +5,6 @@
 package filepath
 
 const (
-	DirSeps    = `\/`                 // directory separators
-	VolumeSeps = `:`                  // volume separators
-	PathSeps   = DirSeps + VolumeSeps // all path separators
+	Separator       = `\`
+	VolumeSeparator = `:`
 )
