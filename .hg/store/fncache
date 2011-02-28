@@ -4148,3 +4148,5 @@ data/src/pkg/crypto/openpgp/keys.go.i
 data/test/bugs/bug324.dir/main.go.i
 data/src/pkg/compress/lzw/writer_test.go.i
 data/src/pkg/sync/atomic/doc.go.i
+data/src/cmd/Makefile.i
+data/test/fixedbugs/bug325.go.i
