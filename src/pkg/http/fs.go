@@ -11,7 +11,7 @@ import (
 	"io"
 	"mime"
 	"os"
-	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -135,7 +135,7 @@ func serveFile(w ResponseWriter, r *Request, name string, redirect bool) {
 	code := StatusOK
 
 	// use extension to find content type.
-	ext := path.Ext(name)
+	ext := filepath.Ext(name)
 	if ctype := mime.TypeByExtension(ext); ctype != "" {
 		w.SetHeader("Content-Type", ctype)
 	} else {

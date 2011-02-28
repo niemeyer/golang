@@ -9,7 +9,7 @@ package main
 import (
 	"http"
 	"os"
-	"path"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -35,6 +35,8 @@ var googlecode = regexp.MustCompile(`^([a-z0-9\-]+\.googlecode\.com/(svn|hg))(/[
 var github = regexp.MustCompile(`^(github\.com/[a-z0-9A-Z_.\-]+/[a-z0-9A-Z_.\-]+)(/[a-z0-9A-Z_.\-/]*)?$`)
 var bitbucket = regexp.MustCompile(`^(bitbucket\.org/[a-z0-9A-Z_.\-]+/[a-z0-9A-Z_.\-]+)(/[a-z0-9A-Z_.\-/]*)?$`)
 var launchpad = regexp.MustCompile(`^(launchpad\.net/([a-z0-9A-Z_.\-]+(/[a-z0-9A-Z_.\-]+)?|~[a-z0-9A-Z_.\-]+/(\+junk|[a-z0-9A-Z_.\-]+)/[a-z0-9A-Z_.\-]+))(/[a-z0-9A-Z_.\-/]+)?$`)
+
+// BUG(niemeyer): Call sites of vcsCheckout mix slashed and OS-specific paths.
 
 // download checks out or updates pkg from the remote server.
 func download(pkg string) (string, os.Error) {
@@ -178,7 +180,7 @@ func vcsCheckout(vcs *vcs, dst, repo, dashpath string) os.Error {
 		return os.ErrorString("not a directory: " + dst)
 	}
 	if err != nil {
-		parent, _ := path.Split(dst)
+		parent, _ := filepath.Split(dst)
 		if err := os.MkdirAll(parent, 0777); err != nil {
 			return err
 		}

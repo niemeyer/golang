@@ -15,7 +15,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"path"
+	"path/filepath"
 	"runtime"
 	"strings"
 )
@@ -34,7 +34,7 @@ var (
 	parents       = make(map[string]string)
 	root          = runtime.GOROOT()
 	visit         = make(map[string]status)
-	logfile       = path.Join(root, "goinstall.log")
+	logfile       = filepath.Join(root, "goinstall.log")
 	installedPkgs = make(map[string]bool)
 
 	allpkg            = flag.Bool("a", false, "install all previously installed packages")
@@ -160,7 +160,8 @@ func install(pkg, parent string) {
 		dir = pkg
 		local = true
 	} else if isStandardPath(pkg) {
-		dir = path.Join(root, pkg)
+		// BUG(niemeyer): Slashed path from package must be converted to OS-specific path.
+		dir = filepath.Join(root, pkg)
 		local = true
 	} else {
 		var err os.Error
