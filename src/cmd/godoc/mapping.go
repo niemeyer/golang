@@ -155,6 +155,7 @@ func splitFirst(path string) (head, tail string) {
 	return "", path
 }
 
+
 // ToAbsolute maps a relative filesystem path to an absolute filesystem
 // path using the Mapping specified by the receiver. If the path cannot
 // be mapped, the empty string is returned.

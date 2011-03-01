@@ -247,7 +247,9 @@ func initDirTrees() {
 // ----------------------------------------------------------------------------
 // Path mapping
 
-// BUG(niemeyer): Slashed and OS-specific paths are being mixed in several places.
+// TODO(niemeyer): Slashed and OS-specific paths are being mixed in several places.
+// To make this clean in general, support for converting between these two
+// conventions is necessary.
 
 func absolutePath(path, defaultRoot string) string {
 	abspath := fsMap.ToAbsolute(path)
@@ -723,6 +725,7 @@ func extractString(src []byte, rx *regexp.Regexp) (s string) {
 	}
 	return
 }
+
 
 func serveHTMLDoc(w http.ResponseWriter, r *http.Request, abspath, relpath string) {
 	// get HTML body contents

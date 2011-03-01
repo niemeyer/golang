@@ -1,3 +1,7 @@
+// Copyright 2010 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package filepath
 
 import (
@@ -10,7 +14,7 @@ import (
 var ErrBadPattern = os.NewError("syntax error in pattern")
 
 // Match returns true if name matches the shell file name pattern.
-// The syntax used by pattern is:
+// The pattern syntax is:
 //
 //	pattern:
 //		{ term }
@@ -75,7 +79,7 @@ Pattern:
 	return len(name) == 0, nil
 }
 
-// scanChunk gets the next section of pattern, which is a non-star string
+// scanChunk gets the next segment of pattern, which is a non-star string
 // possibly preceded by a star.
 func scanChunk(pattern string) (star bool, chunk, rest string) {
 	for len(pattern) > 0 && pattern[0] == '*' {
@@ -92,7 +96,6 @@ Scan:
 			if i+1 < len(pattern) {
 				i++
 			}
-			continue
 		case '[':
 			inrange = true
 		case ']':
@@ -274,5 +277,6 @@ func glob(dir, pattern string, matches []string) []string {
 // hasMeta returns true if path contains any of the magic characters
 // recognized by Match.
 func hasMeta(path string) bool {
-	return strings.IndexAny(path, "*?[") != -1
+	// TODO(niemeyer): Should other magic characters be added here?
+	return strings.IndexAny(path, "*?[") >= 0
 }

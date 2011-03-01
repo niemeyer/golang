@@ -1,4 +1,4 @@
-Mailed: False
+Mailed: True
 Description:
 	path/filepath: New OS-specific path support
 	
@@ -40,7 +40,16 @@ Files:
 	src/pkg/http/fs.go
 	src/pkg/patch/patch.go
 	src/pkg/path/Makefile
+	src/pkg/path/filepath/Makefile
+	src/pkg/path/filepath/match.go
+	src/pkg/path/filepath/match_test.go
+	src/pkg/path/filepath/path.go
+	src/pkg/path/filepath/path_test.go
+	src/pkg/path/filepath/path_unix.go
+	src/pkg/path/filepath/path_windows.go
 	src/pkg/path/match.go
 	src/pkg/path/match_test.go
 	src/pkg/path/path.go
 	src/pkg/path/path_test.go
+	src/pkg/path/path_unix.go
+	src/pkg/path/path_windows.go
