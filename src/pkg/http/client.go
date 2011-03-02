@@ -16,10 +16,11 @@ import (
 	"strings"
 )
 
-// A Client is an HTTP client.
-// It is not yet possible to create custom Clients; use DefaultClient.
+// A Client is an HTTP client. Its zero value (DefaultClient) is a usable client
+// that uses DefaultTransport.
+// Client is not yet very configurable.
 type Client struct {
-	transport ClientTransport // if nil, DefaultTransport is used
+	Transport ClientTransport // if nil, DefaultTransport is used
 }
 
 // DefaultClient is the default Client and is used by Get, Head, and Post.
@@ -35,6 +36,9 @@ type ClientTransport interface {
 	// be reserved for failure to obtain a response.  Similarly, Do should
 	// not attempt to handle higher-level protocol details such as redirects,
 	// authentication, or cookies.
+	//
+	// Transports may modify the request. The request Headers field is
+	// guaranteed to be initalized.
 	Do(req *Request) (resp *Response, err os.Error)
 }
 
@@ -87,15 +91,15 @@ func matchNoProxy(addr string) bool {
 // Do sends an HTTP request and returns an HTTP response, following
 // policy (e.g. redirects, cookies, auth) as configured on the client.
 //
-// Callers should close resp.Body when done reading it.
+// Callers should close resp.Body when done reading from it.
 //
 // Generally Get, Post, or PostForm will be used instead of Do.
 func (c *Client) Do(req *Request) (resp *Response, err os.Error) {
-	return send(req, c.transport)
+	return send(req, c.Transport)
 }
 
 
-// send issues an HTTP request.  Caller should close resp.Body when done reading it.
+// send issues an HTTP request.  Caller should close resp.Body when done reading from it.
 //
 // TODO: support persistent connections (multiple requests on a single connection).
 // send() method is nonpublic because, when we refactor the code for persistent
@@ -103,7 +107,19 @@ func (c *Client) Do(req *Request) (resp *Response, err os.Error) {
 func send(req *Request, t ClientTransport) (resp *Response, err os.Error) {
 	if t == nil {
 		t = DefaultTransport
+		if t == nil {
+			err = os.NewError("no http.Client.Transport or http.DefaultTransport")
+			return
+		}
 	}
+
+	// Most the callers of send (Get, Post, et al) don't need
+	// Headers, leaving it uninitialized.  We guarantee to the
+	// ClientTransport that this has been initialized, though.
+	if req.Header == nil {
+		req.Header = Header(make(map[string][]string))
+	}
+
 	info := req.URL.RawUserinfo
 	if len(info) > 0 {
 		enc := base64.URLEncoding
@@ -138,7 +154,7 @@ func shouldRedirect(statusCode int) bool {
 // finalURL is the URL from which the response was fetched -- identical to the
 // input URL unless redirects were followed.
 //
-// Caller should close r.Body when done reading it.
+// Caller should close r.Body when done reading from it.
 //
 // Get is a convenience wrapper around DefaultClient.Get.
 func Get(url string) (r *Response, finalURL string, err os.Error) {
@@ -156,7 +172,7 @@ func Get(url string) (r *Response, finalURL string, err os.Error) {
 // finalURL is the URL from which the response was fetched -- identical to the
 // input URL unless redirects were followed.
 //
-// Caller should close r.Body when done reading it.
+// Caller should close r.Body when done reading from it.
 func (c *Client) Get(url string) (r *Response, finalURL string, err os.Error) {
 	// TODO: if/when we add cookie support, the redirected request shouldn't
 	// necessarily supply the same cookies as the original.
@@ -183,7 +199,7 @@ func (c *Client) Get(url string) (r *Response, finalURL string, err os.Error) {
 			break
 		}
 		url = req.URL.String()
-		if r, err = send(&req, c.transport); err != nil {
+		if r, err = send(&req, c.Transport); err != nil {
 			break
 		}
 		if shouldRedirect(r.StatusCode) {
@@ -205,7 +221,7 @@ func (c *Client) Get(url string) (r *Response, finalURL string, err os.Error) {
 
 // Post issues a POST to the specified URL.
 //
-// Caller should close r.Body when done reading it.
+// Caller should close r.Body when done reading from it.
 //
 // Post is a wrapper around DefaultClient.Post
 func Post(url string, bodyType string, body io.Reader) (r *Response, err os.Error) {
@@ -214,7 +230,7 @@ func Post(url string, bodyType string, body io.Reader) (r *Response, err os.Erro
 
 // Post issues a POST to the specified URL.
 //
-// Caller should close r.Body when done reading it.
+// Caller should close r.Body when done reading from it.
 func (c *Client) Post(url string, bodyType string, body io.Reader) (r *Response, err os.Error) {
 	var req Request
 	req.Method = "POST"
@@ -232,13 +248,13 @@ func (c *Client) Post(url string, bodyType string, body io.Reader) (r *Response,
 		return nil, err
 	}
 
-	return send(&req, c.transport)
+	return send(&req, c.Transport)
 }
 
 // PostForm issues a POST to the specified URL, 
 // with data's keys and values urlencoded as the request body.
 //
-// Caller should close r.Body when done reading it.
+// Caller should close r.Body when done reading from it.
 //
 // PostForm is a wrapper around DefaultClient.PostForm
 func PostForm(url string, data map[string]string) (r *Response, err os.Error) {
@@ -248,7 +264,7 @@ func PostForm(url string, data map[string]string) (r *Response, err os.Error) {
 // PostForm issues a POST to the specified URL, 
 // with data's keys and values urlencoded as the request body.
 //
-// Caller should close r.Body when done reading it.
+// Caller should close r.Body when done reading from it.
 func (c *Client) PostForm(url string, data map[string]string) (r *Response, err os.Error) {
 	var req Request
 	req.Method = "POST"
@@ -268,7 +284,7 @@ func (c *Client) PostForm(url string, data map[string]string) (r *Response, err 
 		return nil, err
 	}
 
-	return send(&req, c.transport)
+	return send(&req, c.Transport)
 }
 
 // TODO: remove this function when PostForm takes a multimap.
@@ -294,7 +310,7 @@ func (c *Client) Head(url string) (r *Response, err os.Error) {
 	if req.URL, err = ParseURL(url); err != nil {
 		return
 	}
-	return send(&req, c.transport)
+	return send(&req, c.Transport)
 }
 
 type nopCloser struct {

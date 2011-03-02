@@ -51,13 +51,16 @@ func (t *recordingTransport) Do(req *Request) (resp *Response, err os.Error) {
 
 func TestGetRequestFormat(t *testing.T) {
 	tr := &recordingTransport{}
-	client := &Client{transport: tr}
+	client := &Client{Transport: tr}
 	url := "http://dummy.faketld/"
 	client.Get(url) // Note: doesn't hit network
 	if tr.req.Method != "GET" {
-		t.Fatalf("expected method %q; got %q", "GET", tr.req.Method)
+		t.Errorf("expected method %q; got %q", "GET", tr.req.Method)
 	}
 	if tr.req.URL.String() != url {
-		t.Fatalf("expected URL %q; got %q", url, tr.req.URL.String())
+		t.Errorf("expected URL %q; got %q", url, tr.req.URL.String())
+	}
+	if tr.req.Header == nil {
+		t.Errorf("expected non-nil request Header")
 	}
 }

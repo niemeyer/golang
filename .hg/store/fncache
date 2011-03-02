@@ -4150,3 +4150,5 @@ data/src/pkg/compress/lzw/writer_test.go.i
 data/src/pkg/sync/atomic/doc.go.i
 data/src/cmd/Makefile.i
 data/test/fixedbugs/bug325.go.i
+data/test/bench/Makefile.i
+data/test/init.go.i
