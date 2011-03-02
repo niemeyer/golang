@@ -940,7 +940,13 @@ func (c *typeConv) Type(dtype dwarf.Type) *Type {
 		t.Go = gt // publish before recursive call
 		sub := c.Type(dt.Type)
 		gt.X = sub.Go
-		t.C = sub.C + "*"
+		if sub.C == "" {
+			s := dt.String()
+			i := strings.LastIndex(s, "*")
+			t.C = s[i+1:] + s[:i+1]
+		} else {
+			t.C = sub.C + "*"
+		}
 
 	case *dwarf.QualType:
 		// Ignore qualifier.
