@@ -19,7 +19,7 @@ GOFILES_linux=\
 	path_unix.go
 
 GOFILES_windows=\
-	path_windows.go
+	path_unix.go
 
 GOFILES+=$(GOFILES_$(GOOS))
 

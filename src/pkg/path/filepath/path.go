@@ -217,6 +217,5 @@ func Base(name string) string {
 
 // IsAbs returns true if the path is absolute.
 func IsAbs(path string) bool {
-	// TODO: Add Windows support
 	return strings.HasPrefix(path, "/")
 }
