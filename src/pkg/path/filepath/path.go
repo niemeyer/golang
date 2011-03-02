@@ -19,13 +19,13 @@ import (
 // by purely lexical processing.  It applies the following rules
 // iteratively until no further processing can be done:
 //
-//	1. Replace multiple Separator elements with a single one.
+//	1. Replace multiple path separators with a single one.
 //	2. Eliminate each . path name element (the current directory).
 //	3. Eliminate each inner .. path name element (the parent directory)
 //	   along with the non-.. element that precedes it.
 //	4. Eliminate .. elements that begin a rooted path:
 //	   that is, replace "/.." by "/" at the beginning of a path,
-//         assuming Separator is "/".
+//         assuming Separators is "/".
 //
 // If the result of this process is an empty string, Clean
 // returns the string ".".
@@ -106,13 +106,13 @@ func Clean(path string) string {
 	return string(buf[0:w])
 }
 
-const pathSeps = Separator + VolumeSeparator
+const pathSeps = Separators + VolumeSeparators
 
-// Split splits path immediately following the final Separator,
-// partitioning it into a directory and a file name components.
-// In operating systems where VolumeSeparator is not empty and
-// is found in path after any Separator, Split splits the
-// volume name from the file name instead.
+// Split splits path immediately following the final path
+// separator, partitioning it into a directory and a file name
+// components.  In operating systems where VolumeSeparators is
+// not empty and is found in path after any Separators, Split
+// splits the volume name from the file name instead.
 // If there are no separators in path, Split returns an empty base
 // and file set to path.
 func Split(path string) (base, file string) {
@@ -121,7 +121,7 @@ func Split(path string) (base, file string) {
 }
 
 // Join joins any number of path elements into a single path, adding
-// a Separator if necessary.  All empty strings are ignored.
+// a path separator if necessary.  All empty strings are ignored.
 func Join(elem ...string) string {
 	for i, e := range elem {
 		if e != "" {
@@ -133,7 +133,7 @@ func Join(elem ...string) string {
 
 // Ext returns the file name extension used by path.
 // The extension is the suffix beginning at the final dot
-// in the final Separator-partitioned element of path;
+// in the final Separators-partitioned element of path;
 // it is empty if there is no dot.
 func Ext(path string) string {
 	for i := len(path) - 1; i >= 0 && path[i] != '/'; i-- {
@@ -192,10 +192,10 @@ func Walk(root string, v Visitor, errors chan<- os.Error) {
 	walk(root, f, v, errors)
 }
 
-// Base returns the last path element of the Separator-partitioned name.
-// Trailing Separator elements are removed before extracting the last
-// element.  If the name is empty, "." is returned.  If it consists
-// entirely of Separator elements, a single Separator is returned.
+// Base returns the last path element of the Separators-partitioned name.
+// Trailing path separators are removed before extracting the last
+// path element.  If the name is empty, "." is returned.  If it consists
+// entirely of path separatos, a single path separator is returned.
 func Base(name string) string {
 	if name == "" {
 		return "."

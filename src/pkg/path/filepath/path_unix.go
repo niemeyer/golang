@@ -5,6 +5,6 @@
 package filepath
 
 const (
-	Separator       = "/" // OS-specific path separator
-	VolumeSeparator = ""  // OS-specific volume separator (e.g. ":" for windows)
+	Separators       = "/" // OS-specific path separators
+	VolumeSeparators = ""  // OS-specific volume separators (e.g. ":" for windows)
 )
