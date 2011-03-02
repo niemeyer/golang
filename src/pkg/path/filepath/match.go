@@ -19,8 +19,8 @@ var ErrBadPattern = os.NewError("syntax error in pattern")
 //	pattern:
 //		{ term }
 //	term:
-//		'*'         matches any sequence of characters not in Separators
-//		'?'         matches any single character not in Separators
+//		'*'         matches any sequence of non-Separator characters
+//		'?'         matches any single non-Separator character
 //		'[' [ '^' ] { character-range } ']'
 //		            character class (must be non-empty)
 //		c           matches character c (c != '*', '?', '\\', '[')
@@ -42,7 +42,7 @@ Pattern:
 		star, chunk, pattern = scanChunk(pattern)
 		if star && chunk == "" {
 			// Trailing * matches rest of string unless it has a /.
-			return strings.Index(name, "/") < 0, nil
+			return strings.Index(name, string(Separator)) < 0, nil
 		}
 		// Look for match at current position.
 		t, ok, err := matchChunk(chunk, name)
@@ -59,7 +59,7 @@ Pattern:
 		if star {
 			// Look for match skipping i+1 bytes.
 			// Cannot skip /.
-			for i := 0; i < len(name) && name[i] != '/'; i++ {
+			for i := 0; i < len(name) && name[i] != Separator; i++ {
 				t, ok, err := matchChunk(chunk, name[i+1:])
 				if ok {
 					// if we're the last chunk, make sure we exhausted the name
@@ -157,7 +157,7 @@ func matchChunk(chunk, s string) (rest string, ok bool, err os.Error) {
 			}
 
 		case '?':
-			if s[0] == '/' {
+			if s[0] == Separator {
 				return
 			}
 			_, n := utf8.DecodeRuneInString(s)
@@ -210,7 +210,7 @@ func getEsc(chunk string) (r int, nchunk string, err os.Error) {
 // Glob returns the names of all files matching pattern or nil
 // if there is no matching file. The syntax of patterns is the same
 // as in Match. The pattern may describe hierarchical names such as
-// /usr/*/bin/ed, assuming Separators is "/".
+// /usr/*/bin/ed, assuming Separator is '/'.
 //
 func Glob(pattern string) (matches []string) {
 	if !hasMeta(pattern) {
@@ -224,10 +224,10 @@ func Glob(pattern string) (matches []string) {
 	switch dir {
 	case "":
 		dir = "."
-	case "/":
+	case string(Separator):
 		// nothing
 	default:
-		dir = dir[0 : len(dir)-1] // chop off trailing '/'
+		dir = dir[0 : len(dir)-1] // chop off trailing separator
 	}
 
 	if hasMeta(dir) {
