@@ -54,7 +54,7 @@ exportname(char *s)
 static int
 initname(char *s)
 {
-	return s[0] == 'i' && strcmp(s, "init") == 0;
+	return strcmp(s, "init") == 0;
 }
 
 void
