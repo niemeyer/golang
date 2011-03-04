@@ -4152,3 +4152,10 @@ data/src/cmd/Makefile.i
 data/test/fixedbugs/bug325.go.i
 data/test/bench/Makefile.i
 data/test/init.go.i
+data/src/pkg/image/decode_test.go.i
+data/src/pkg/image/testdata/video-001.jpeg.i
+data/misc/dashboard/builder/package.go.i
+data/src/pkg/image/testdata/video-001.bmp.i
+data/src/pkg/image/testdata/video-001.gif.i
+data/src/pkg/image/testdata/video-001.png.i
+data/src/pkg/image/testdata/video-001.tiff.i
