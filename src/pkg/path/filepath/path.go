@@ -4,7 +4,7 @@
 
 // The filepath package implements utility routines for manipulating
 // filename paths in a way compatible with the target operating
-// system.
+// system-defined file paths.
 package filepath
 
 import (
@@ -13,7 +13,7 @@ import (
 	"strings"
 )
 
-// BUG(niemeyer): Windows support is missing in Clean, Join, Ext, Walk, Base, IsAbs and Match.
+// BUG(niemeyer): Package filepath does not yet work on Windows.
 
 // Clean returns the shortest path name equivalent to path
 // by purely lexical processing.  It applies the following rules
@@ -108,12 +108,9 @@ func Clean(path string) string {
 
 // Split splits path immediately following the final Separator,
 // partitioning it into a directory and a file name components.
-// In operating systems where VolumeSeparator is not empty and
-// is found in path after any Separator, Split splits the
-// volume name from the file name instead.
 // If there are no separators in path, Split returns an empty base
 // and file set to path.
-func Split(path string) (base, file string) {
+func Split(path string) (dir, file string) {
 	i := strings.LastIndex(path, string(Separator))
 	return path[:i+1], path[i+1:]
 }
@@ -131,8 +128,8 @@ func Join(elem ...string) string {
 
 // Ext returns the file name extension used by path.
 // The extension is the suffix beginning at the final dot
-// in the final Separator-partitioned element of path;
-// it is empty if there is no dot.
+// in the final element of path; it is empty if there is
+// no dot.
 func Ext(path string) string {
 	for i := len(path) - 1; i >= 0 && path[i] != Separator; i-- {
 		if path[i] == '.' {
@@ -190,27 +187,27 @@ func Walk(root string, v Visitor, errors chan<- os.Error) {
 	walk(root, f, v, errors)
 }
 
-// Base returns the last path element of the Separator-partitioned name.
-// Trailing Separator elements are removed before extracting the last
-// element.  If the name is empty, "." is returned.  If it consists
-// entirely of Separator elements, a single Separator is returned.
-func Base(name string) string {
-	if name == "" {
+// Base returns the last element of path.
+// Trailing path separators are removed before extracting the last element.
+// If the path is empty, Base returns ".".
+// If the path consists entirely of separators, Base returns a single separator.
+func Base(path string) string {
+	if path == "" {
 		return "."
 	}
 	// Strip trailing slashes.
-	for len(name) > 0 && name[len(name)-1] == Separator {
-		name = name[0 : len(name)-1]
+	for len(path) > 0 && path[len(path)-1] == Separator {
+		path = path[0 : len(path)-1]
 	}
 	// Find the last element
-	if i := strings.LastIndex(name, string(Separator)); i >= 0 {
-		name = name[i+1:]
+	if i := strings.LastIndex(path, string(Separator)); i >= 0 {
+		path = path[i+1:]
 	}
 	// If empty now, it had only slashes.
-	if name == "" {
+	if path == "" {
 		return string(Separator)
 	}
-	return name
+	return path
 }
 
 // IsAbs returns true if the path is absolute.

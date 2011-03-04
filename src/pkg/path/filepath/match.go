@@ -210,7 +210,7 @@ func getEsc(chunk string) (r int, nchunk string, err os.Error) {
 // Glob returns the names of all files matching pattern or nil
 // if there is no matching file. The syntax of patterns is the same
 // as in Match. The pattern may describe hierarchical names such as
-// /usr/*/bin/ed, assuming Separator is '/'.
+// /usr/*/bin/ed (assuming the Separator is '/').
 //
 func Glob(pattern string) (matches []string) {
 	if !hasMeta(pattern) {

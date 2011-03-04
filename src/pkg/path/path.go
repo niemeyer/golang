@@ -133,26 +133,27 @@ func Ext(path string) string {
 	return ""
 }
 
-// Base returns the last path element of the slash-separated name.
-// Trailing slashes are removed before extracting the last element.  If the name is
-// empty, "." is returned.  If it consists entirely of slashes, "/" is returned.
-func Base(name string) string {
-	if name == "" {
+// Base returns the last element of path.
+// Trailing slashes are removed before extracting the last element.
+// If the path is empty, Base returns ".".
+// If the path consists entirely of slashes, Base returns "/".
+func Base(path string) string {
+	if path == "" {
 		return "."
 	}
 	// Strip trailing slashes.
-	for len(name) > 0 && name[len(name)-1] == '/' {
-		name = name[0 : len(name)-1]
+	for len(path) > 0 && path[len(path)-1] == '/' {
+		path = path[0 : len(path)-1]
 	}
 	// Find the last element
-	if i := strings.LastIndex(name, "/"); i >= 0 {
-		name = name[i+1:]
+	if i := strings.LastIndex(path, "/"); i >= 0 {
+		path = path[i+1:]
 	}
 	// If empty now, it had only slashes.
-	if name == "" {
+	if path == "" {
 		return "/"
 	}
-	return name
+	return path
 }
 
 // IsAbs returns true if the path is absolute.
