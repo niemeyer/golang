@@ -195,8 +195,8 @@ else
 	echo "Old version: $OLD_ID"
 	echo "New version: $NEW_ID"
 	add_all
-	#git update-index --no-assume-unchanged .hg/dirstate
 	STATUS=`current_status`
+	#git update-index --no-assume-unchanged .hg/dirstate
 	COMMIT_FAILED=0
 	if [ "$STATUS" != "" ]; then
 		echo "Committing changes to 'master' branch..."
