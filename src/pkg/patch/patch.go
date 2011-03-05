@@ -10,7 +10,7 @@ package patch
 import (
 	"bytes"
 	"os"
-	"path/filepath"
+	"path"
 	"strings"
 )
 
@@ -112,7 +112,7 @@ func Parse(text []byte) (*Set, os.Error) {
 		}
 		return nil, SyntaxError("unexpected patch header line: " + string(s))
 	HaveName:
-		p.Dst = filepath.Clean(p.Dst)
+		p.Dst = path.Clean(p.Dst)
 		if strings.HasPrefix(p.Dst, "../") || strings.HasPrefix(p.Dst, "/") {
 			return nil, SyntaxError("invalid path: " + p.Dst)
 		}
