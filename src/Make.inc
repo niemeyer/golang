@@ -29,7 +29,18 @@ ifeq ($(GOOS),)
 GOOS:=$(GOHOSTOS)
 endif
 
-GOOS_LIST:=darwin freebsd linux tiny plan9 windows
+GOOS_LIST:=\
+	darwin\
+	freebsd\
+	linux\
+	plan9\
+	tiny\
+	windows\
+
+GOARCH_LIST:=\
+	386\
+	amd64\
+	arm\
 
 ifeq ($(filter $(GOOS),$(GOOS_LIST)),)
 $(error Invalid $$GOOS '$(GOOS)'; must be one of: $(GOOS_LIST))
@@ -55,8 +66,6 @@ ifeq ($(GOOS),darwin)
 GOHOSTARCH:=$(GOARCH)
 endif
 
-GOARCH_LIST:=386 amd64 arm
-
 ifeq ($(filter $(GOARCH),$(GOARCH_LIST)),)
 $(error Invalid $$GOARCH '$(GOARCH)'; must be one of: $(GOARCH_LIST))
 endif
@@ -71,7 +80,7 @@ ifneq ($(GOOS),linux)
 $(error Invalid $$GOOS '$(GOOS)' for GOARCH=arm; must be linux)
 endif
 else
-$(error Internal error: missing $$O for '$(GOARCH)')
+$(error Missing $$O for '$(GOARCH)')
 endif
 
 # Save for recursive make to avoid recomputing.
