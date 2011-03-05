@@ -15,6 +15,24 @@ import (
 
 // BUG(niemeyer): Package filepath does not yet work on Windows.
 
+// ToSlash returns the result of replacing each separator character
+// in path with a slash ('/') character.
+func ToSlash(path string) string {
+	if Separator == '/' {
+		return path
+	}
+	return strings.Replace(path, string(Separator), "/", -1)
+}
+
+// FromSlash returns the result of replacing each slash ('/') character
+// in path with a separator character.
+func FromSlash(path string) string {
+	if Separator == '/' {
+		return path
+	}
+	return strings.Replace(path, "/", string(Separator), -1)
+}
+
 // Clean returns the shortest path name equivalent to path
 // by purely lexical processing.  It applies the following rules
 // iteratively until no further processing can be done:

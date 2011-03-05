@@ -9,11 +9,29 @@ import (
 	"testing"
 )
 
-type CleanTest struct {
-	path, clean string
+type PathTest struct {
+	path, result string
 }
 
-var cleantests = []CleanTest{
+var slashtests = []PathTest{
+	{"", ""},
+	{"/", string(Separator)},
+	{"/a/b", string([]byte{Separator, 'a', Separator, 'b'})},
+	{"a//b", string([]byte{'a', Separator, Separator, 'b'})},
+}
+
+func TestFromAndToSlash(t *testing.T) {
+	for _, test := range slashtests {
+		if s := FromSlash(test.path); s != test.result {
+			t.Errorf("FromSlash(%q) = %q, want %q", test.path, s, test.result)
+		}
+		if s := ToSlash(test.result); s != test.path {
+			t.Errorf("ToSlash(%q) = %q, want %q", test.result, s, test.path)
+		}
+	}
+}
+
+var cleantests = []PathTest{
 	// Already clean
 	{"", "."},
 	{"abc", "abc"},
@@ -65,8 +83,8 @@ var cleantests = []CleanTest{
 
 func TestClean(t *testing.T) {
 	for _, test := range cleantests {
-		if s := Clean(test.path); s != test.clean {
-			t.Errorf("Clean(%q) = %q, want %q", test.path, s, test.clean)
+		if s := Clean(test.path); s != test.result {
+			t.Errorf("Clean(%q) = %q, want %q", test.path, s, test.result)
 		}
 	}
 }
@@ -297,8 +315,7 @@ func TestWalk(t *testing.T) {
 	}
 }
 
-var basetests = []CleanTest{
-	// Already clean
+var basetests = []PathTest{
 	{"", "."},
 	{".", "."},
 	{"/.", "."},
@@ -314,8 +331,8 @@ var basetests = []CleanTest{
 
 func TestBase(t *testing.T) {
 	for _, test := range basetests {
-		if s := Base(test.path); s != test.clean {
-			t.Errorf("Base(%q) = %q, want %q", test.path, s, test.clean)
+		if s := Base(test.path); s != test.result {
+			t.Errorf("Base(%q) = %q, want %q", test.path, s, test.result)
 		}
 	}
 }
