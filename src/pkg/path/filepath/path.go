@@ -15,24 +15,6 @@ import (
 
 // BUG(niemeyer): Package filepath does not yet work on Windows.
 
-// ToSlash returns the result of replacing each separator character
-// in path with a slash ('/') character.
-func ToSlash(path string) string {
-	if Separator == '/' {
-		return path
-	}
-	return strings.Replace(path, string(Separator), "/", -1)
-}
-
-// FromSlash returns the result of replacing each slash ('/') character
-// in path with a separator character.
-func FromSlash(path string) string {
-	if Separator == '/' {
-		return path
-	}
-	return strings.Replace(path, "/", string(Separator), -1)
-}
-
 // Clean returns the shortest path name equivalent to path
 // by purely lexical processing.  It applies the following rules
 // iteratively until no further processing can be done:
@@ -122,6 +104,32 @@ func Clean(path string) string {
 	}
 
 	return string(buf[0:w])
+}
+
+// ToSlash returns the result of replacing each separator character
+// in path with a slash ('/') character.
+func ToSlash(path string) string {
+	if Separator == '/' {
+		return path
+	}
+	return strings.Replace(path, string(Separator), "/", -1)
+}
+
+// FromSlash returns the result of replacing each slash ('/') character
+// in path with a separator character.
+func FromSlash(path string) string {
+	if Separator == '/' {
+		return path
+	}
+	return strings.Replace(path, "/", string(Separator), -1)
+}
+
+// SplitList splits a list of paths joined by the OS-specific ListSeparator.
+func SplitList(path string) []string {
+	if path == "" {
+		return []string{}
+	}
+	return strings.Split(path, string(ListSeparator), -1)
 }
 
 // Split splits path immediately following the final Separator,

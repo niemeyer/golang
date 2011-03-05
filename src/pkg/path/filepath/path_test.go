@@ -6,29 +6,12 @@ package filepath
 
 import (
 	"os"
+	"reflect"
 	"testing"
 )
 
 type PathTest struct {
 	path, result string
-}
-
-var slashtests = []PathTest{
-	{"", ""},
-	{"/", string(Separator)},
-	{"/a/b", string([]byte{Separator, 'a', Separator, 'b'})},
-	{"a//b", string([]byte{'a', Separator, Separator, 'b'})},
-}
-
-func TestFromAndToSlash(t *testing.T) {
-	for _, test := range slashtests {
-		if s := FromSlash(test.path); s != test.result {
-			t.Errorf("FromSlash(%q) = %q, want %q", test.path, s, test.result)
-		}
-		if s := ToSlash(test.result); s != test.path {
-			t.Errorf("ToSlash(%q) = %q, want %q", test.result, s, test.path)
-		}
-	}
 }
 
 var cleantests = []PathTest{
@@ -85,6 +68,47 @@ func TestClean(t *testing.T) {
 	for _, test := range cleantests {
 		if s := Clean(test.path); s != test.result {
 			t.Errorf("Clean(%q) = %q, want %q", test.path, s, test.result)
+		}
+	}
+}
+
+const sep = Separator
+
+var slashtests = []PathTest{
+	{"", ""},
+	{"/", string(sep)},
+	{"/a/b", string([]byte{sep, 'a', sep, 'b'})},
+	{"a//b", string([]byte{'a', sep, sep, 'b'})},
+}
+
+func TestFromAndToSlash(t *testing.T) {
+	for _, test := range slashtests {
+		if s := FromSlash(test.path); s != test.result {
+			t.Errorf("FromSlash(%q) = %q, want %q", test.path, s, test.result)
+		}
+		if s := ToSlash(test.result); s != test.path {
+			t.Errorf("ToSlash(%q) = %q, want %q", test.result, s, test.path)
+		}
+	}
+}
+
+type SplitListTest struct {
+	list string
+	result []string
+}
+
+const lsep = ListSeparator
+
+var splitlisttests = []SplitListTest{
+	{"", []string{}},
+	{string([]byte{'a', lsep, 'b'}), []string{"a", "b"}},
+	{string([]byte{lsep, 'a', lsep, 'b'}), []string{"", "a", "b"}},
+}
+
+func TestSplitList(t *testing.T) {
+	for _, test := range splitlisttests {
+		if l := SplitList(test.list); !reflect.DeepEqual(l, test.result) {
+			t.Errorf("SplitList(%q) = %s, want %s", test.list, l, test.result)
 		}
 	}
 }
