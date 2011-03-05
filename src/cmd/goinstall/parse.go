@@ -130,15 +130,15 @@ func goodOSArch(filename string) bool {
 	if n == 0 {
 		return true
 	}
-	if good, found := goodOS[l[n-1]]; found {
+	if good, known := goodOS[l[n-1]]; known {
 		return good
 	}
-	if good, found := goodArch[l[n-1]]; found {
+	if good, known := goodArch[l[n-1]]; known {
 		if !good || n < 2 {
 			return false
 		}
-		good, found = goodOS[l[n-2]]
-		return !found || good
+		good, known = goodOS[l[n-2]]
+		return good || !known
 	}
 	return true
 }
