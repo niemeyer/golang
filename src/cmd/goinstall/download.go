@@ -36,15 +36,13 @@ var github = regexp.MustCompile(`^(github\.com/[a-z0-9A-Z_.\-]+/[a-z0-9A-Z_.\-]+
 var bitbucket = regexp.MustCompile(`^(bitbucket\.org/[a-z0-9A-Z_.\-]+/[a-z0-9A-Z_.\-]+)(/[a-z0-9A-Z_.\-/]*)?$`)
 var launchpad = regexp.MustCompile(`^(launchpad\.net/([a-z0-9A-Z_.\-]+(/[a-z0-9A-Z_.\-]+)?|~[a-z0-9A-Z_.\-]+/(\+junk|[a-z0-9A-Z_.\-]+)/[a-z0-9A-Z_.\-]+))(/[a-z0-9A-Z_.\-/]+)?$`)
 
-// BUG(niemeyer): Call sites of vcsCheckout mix slashed and OS-specific paths.
-
 // download checks out or updates pkg from the remote server.
 func download(pkg string) (string, os.Error) {
 	if strings.Contains(pkg, "..") {
 		return "", os.ErrorString("invalid path (contains ..)")
 	}
 	if m := bitbucket.FindStringSubmatch(pkg); m != nil {
-		if err := vcsCheckout(&hg, root+m[1], "http://"+m[1], m[1]); err != nil {
+		if err := vcsCheckout(&hg, m[1], "http://"+m[1], m[1]); err != nil {
 			return "", err
 		}
 		return root + pkg, nil
@@ -60,7 +58,7 @@ func download(pkg string) (string, os.Error) {
 			// regexp only allows hg, svn to get through
 			panic("missing case in download: " + pkg)
 		}
-		if err := vcsCheckout(v, root+m[1], "https://"+m[1], m[1]); err != nil {
+		if err := vcsCheckout(v, m[1], "https://"+m[1], m[1]); err != nil {
 			return "", err
 		}
 		return root + pkg, nil
@@ -69,7 +67,7 @@ func download(pkg string) (string, os.Error) {
 		if strings.HasSuffix(m[1], ".git") {
 			return "", os.ErrorString("repository " + pkg + " should not have .git suffix")
 		}
-		if err := vcsCheckout(&git, root+m[1], "http://"+m[1]+".git", m[1]); err != nil {
+		if err := vcsCheckout(&git, m[1], "http://"+m[1]+".git", m[1]); err != nil {
 			return "", err
 		}
 		return root + pkg, nil
@@ -77,7 +75,7 @@ func download(pkg string) (string, os.Error) {
 	if m := launchpad.FindStringSubmatch(pkg); m != nil {
 		// Either lp.net/<project>[/<series>[/<path>]]
 		//	 or lp.net/~<user or team>/<project>/<branch>[/<path>]
-		if err := vcsCheckout(&bzr, root+m[1], "https://"+m[1], m[1]); err != nil {
+		if err := vcsCheckout(&bzr, m[1], "https://"+m[1], m[1]); err != nil {
 			return "", err
 		}
 		return root + pkg, nil
@@ -174,8 +172,9 @@ func (v *vcs) updateRepo(dst string) os.Error {
 // exists and -u was specified on the command line)
 // the repository at tag/branch "release".  If there is no
 // such tag or branch, it falls back to the repository tip.
-func vcsCheckout(vcs *vcs, dst, repo, dashpath string) os.Error {
-	dir, err := os.Stat(dst + "/" + vcs.metadir)
+func vcsCheckout(vcs *vcs, pkgprefix, repo, dashpath string) os.Error {
+	dst := filepath.Join(root, filepath.FromSlash(pkgprefix))
+	dir, err := os.Stat(filepath.Join(dst, vcs.metadir))
 	if err == nil && !dir.IsDirectory() {
 		return os.ErrorString("not a directory: " + dst)
 	}
@@ -184,7 +183,7 @@ func vcsCheckout(vcs *vcs, dst, repo, dashpath string) os.Error {
 		if err := os.MkdirAll(parent, 0777); err != nil {
 			return err
 		}
-		if err := run("/", nil, vcs.cmd, vcs.clone, repo, dst); err != nil {
+		if err := run(string(filepath.Separator), nil, vcs.cmd, vcs.clone, repo, dst); err != nil {
 			return err
 		}
 		if err := vcs.updateRepo(dst); err != nil {

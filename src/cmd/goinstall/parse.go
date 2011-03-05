@@ -7,13 +7,13 @@
 package main
 
 import (
-	"path/filepath"
-	"os"
-	"log"
-	"strings"
-	"strconv"
 	"go/ast"
 	"go/parser"
+	"log"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 )
 
 
