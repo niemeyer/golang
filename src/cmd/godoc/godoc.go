@@ -247,31 +247,30 @@ func initDirTrees() {
 // ----------------------------------------------------------------------------
 // Path mapping
 
-// TODO(niemeyer): Slashed and OS-specific paths are being mixed in several places.
-// To make this clean in general, support for converting between these two
-// conventions is necessary.
+// Absolute paths are file system paths (backslash-separated on Windows),
+// but relative paths are always slash-separated.
 
-func absolutePath(path, defaultRoot string) string {
-	abspath := fsMap.ToAbsolute(path)
+func absolutePath(relpath, defaultRoot string) string {
+	abspath := fsMap.ToAbsolute(relpath)
 	if abspath == "" {
 		// no user-defined mapping found; use default mapping
-		abspath = filepath.Join(defaultRoot, path)
+		abspath = filepath.Join(defaultRoot, filepath.FromSlash(relpath))
 	}
 	return abspath
 }
 
 
-func relativePath(path string) string {
-	relpath := fsMap.ToRelative(path)
+func relativeURL(abspath string) string {
+	relpath := fsMap.ToRelative(abspath)
 	if relpath == "" {
-		// prefix must end in '/'
+		// prefix must end in a path separator
 		prefix := *goroot
-		if len(prefix) > 0 && prefix[len(prefix)-1] != '/' {
-			prefix += "/"
+		if len(prefix) > 0 && prefix[len(prefix)-1] != filepath.Separator {
+			prefix += string(filepath.Separator)
 		}
-		if strings.HasPrefix(path, prefix) {
+		if strings.HasPrefix(abspath, prefix) {
 			// no user-defined mapping found; use default mapping
-			relpath = path[len(prefix):]
+			relpath = filepath.ToSlash(abspath[len(prefix):])
 		}
 	}
 	// Only if path is an invalid absolute path is relpath == ""
@@ -486,7 +485,7 @@ func urlFmt(w io.Writer, format string, x ...interface{}) {
 	}
 
 	// map path
-	relpath := relativePath(path)
+	relpath := relativeURL(path)
 
 	// convert to relative URLs so that they can also
 	// be used as relative file names in .txt templates
@@ -835,9 +834,9 @@ func serveFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch filepath.Ext(abspath) {
+	switch path.Ext(relpath) {
 	case ".html":
-		if strings.HasSuffix(abspath, "/index.html") {
+		if strings.HasSuffix(relpath, "/index.html") {
 			// We'll show index.html for the directory.
 			// Use the dir/ version as canonical instead of dir/index.html.
 			http.Redirect(w, r, r.URL.Path[0:len(r.URL.Path)-len("index.html")], http.StatusMovedPermanently)
@@ -862,8 +861,8 @@ func serveFile(w http.ResponseWriter, r *http.Request) {
 		if redirect(w, r) {
 			return
 		}
-		if index := abspath + "/index.html"; isTextFile(index) {
-			serveHTMLDoc(w, r, index, relativePath(index))
+		if index := filepath.Join(abspath, "index.html"); isTextFile(index) {
+			serveHTMLDoc(w, r, index, relativeURL(index))
 			return
 		}
 		serveDirectory(w, r, abspath, relpath)
@@ -1098,7 +1097,7 @@ func (h *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			title = "Command " + info.PDoc.PackageName
 		}
 	default:
-		title = "Directory " + relativePath(info.Dirname)
+		title = "Directory " + relativeURL(info.Dirname)
 		if *showTimestamps {
 			subtitle = "Last update: " + time.SecondsToLocalTime(info.DirTime).String()
 		}

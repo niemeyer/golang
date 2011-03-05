@@ -321,7 +321,7 @@ func main() {
 	if !filepath.IsAbs(path) {
 		abspath = absolutePath(path, pkgHandler.fsRoot)
 	} else {
-		relpath = relativePath(path)
+		relpath = relativeURL(path)
 	}
 
 	var mode PageInfoMode
