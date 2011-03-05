@@ -491,7 +491,9 @@ func (p *Package) loadDWARF(f *File, names []*Name) {
 		f, fok := types[i].(*dwarf.FuncType)
 		if n.Kind != "type" && fok {
 			n.Kind = "func"
+			D.in(f)
 			n.FuncType = conv.FuncType(f)
+			D.out(f)
 		} else {
 			n.Type = conv.Type(types[i])
 			if enums[i] != 0 && n.Type.EnumValues != nil {
@@ -776,12 +778,38 @@ var dwarfToName = map[string]string{
 
 const signedDelta = 64
 
+type Debug struct {
+	depth int
+}
+
+func (d *Debug) in(dtype dwarf.Type) {
+	_, _, line, _ := runtime.Caller(1)
+	fmt.Printf("%d: %4d >>> %s\n", d.depth, line, dtype)
+	d.depth++
+}
+
+func (d *Debug) out(dtype dwarf.Type) {
+	_, _, line, _ := runtime.Caller(1)
+	d.depth--
+	fmt.Printf("%d: %4d <<< %s\n", d.depth, line, dtype)
+}
+
+func (d *Debug) ret(t *Type) {
+	_, _, line, _ := runtime.Caller(1)
+	fmt.Printf("%d: %4d return: t.C == %q\n", d.depth, line, t.C)
+}
+
+var D = &Debug{}
+
 // Type returns a *Type with the same memory layout as
 // dtype when used as the type of a variable or a struct field.
 func (c *typeConv) Type(dtype dwarf.Type) *Type {
 	if t, ok := c.m[dtype]; ok {
 		if t.Go == nil {
 			fatal("type conversion loop at %s", dtype)
+		}
+		if t.C == "" {
+			fmt.Printf("Already seen and t.C == \"\"\n")
 		}
 		return t
 	}
@@ -790,6 +818,7 @@ func (c *typeConv) Type(dtype dwarf.Type) *Type {
 	t.Size = dtype.Size()
 	t.Align = -1
 	t.C = dtype.Common().Name
+	fmt.Printf("New t.C == %q\n", t.C)
 	t.EnumValues = nil
 	c.m[dtype] = t
 
@@ -800,6 +829,7 @@ func (c *typeConv) Type(dtype dwarf.Type) *Type {
 		if t.C == "" {
 			t.C = "void"
 		}
+		D.ret(t)
 		return t
 	}
 
@@ -824,7 +854,9 @@ func (c *typeConv) Type(dtype dwarf.Type) *Type {
 			Len: c.intExpr(dt.Count),
 		}
 		t.Go = gt // publish before recursive call
+		D.in(dtype)
 		sub := c.Type(dt.Type)
+		D.out(dtype)
 		t.Align = sub.Align
 		gt.Elt = sub.Go
 		t.C = fmt.Sprintf("typeof(%s[%d])", sub.C, dt.Count)
@@ -938,20 +970,22 @@ func (c *typeConv) Type(dtype dwarf.Type) *Type {
 
 		gt := &ast.StarExpr{}
 		t.Go = gt // publish before recursive call
+		D.in(dtype)
 		sub := c.Type(dt.Type)
+		D.out(dtype)
 		gt.X = sub.Go
-		if sub.C == "" {
-			s := dt.String()
-			i := strings.LastIndex(s, "*")
-			t.C = s[i+1:] + s[:i+1]
-		} else {
-			t.C = sub.C + "*"
+		t.C = sub.C + "*"
+		if t.C == "*" {
+			fmt.Printf("BUG: t.C == \"*\"\n")
 		}
 
 	case *dwarf.QualType:
 		// Ignore qualifier.
+		D.in(dtype)
 		t = c.Type(dt.Type)
+		D.out(dtype)
 		c.m[dtype] = t
+		D.ret(t)
 		return t
 
 	case *dwarf.StructType:
@@ -994,7 +1028,9 @@ func (c *typeConv) Type(dtype dwarf.Type) *Type {
 		}
 		name := c.Ident("_Ctypedef_" + dt.Name)
 		t.Go = name // publish before recursive call
+		D.in(dtype)
 		sub := c.Type(dt.Type)
+		D.out(dtype)
 		t.Size = sub.Size
 		t.Align = sub.Align
 		if _, ok := typedef[name.Name]; !ok {
@@ -1051,13 +1087,16 @@ func (c *typeConv) Type(dtype dwarf.Type) *Type {
 		fatal("internal error: did not create C name for %s", dtype)
 	}
 
+	D.ret(t)
 	return t
 }
 
 // FuncArg returns a Go type with the same memory layout as
 // dtype when used as the type of a C function argument.
 func (c *typeConv) FuncArg(dtype dwarf.Type) *Type {
+	D.in(dtype)
 	t := c.Type(dtype)
+	D.out(dtype)
 	switch dt := dtype.(type) {
 	case *dwarf.ArrayType:
 		// Arrays are passed implicitly as pointers in C.
@@ -1077,7 +1116,9 @@ func (c *typeConv) FuncArg(dtype dwarf.Type) *Type {
 			// Unless the typedef happens to point to void* since
 			// Go has special rules around using unsafe.Pointer.
 			if _, void := base(ptr.Type).(*dwarf.VoidType); !void {
+				D.in(dtype)
 				return c.Type(ptr)
+				D.out(dtype)
 			}
 		}
 	}
@@ -1105,7 +1146,9 @@ func (c *typeConv) FuncType(dtype *dwarf.FuncType) *FuncType {
 	var r *Type
 	var gr []*ast.Field
 	if _, ok := dtype.ReturnType.(*dwarf.VoidType); !ok && dtype.ReturnType != nil {
+		D.in(dtype)
 		r = c.Type(dtype.ReturnType)
+		D.out(dtype)
 		gr = []*ast.Field{&ast.Field{Type: r.Go}}
 	}
 	return &FuncType{
@@ -1189,7 +1232,9 @@ func (c *typeConv) Struct(dt *dwarf.StructType) (expr *ast.StructType, csyntax s
 			fld = c.pad(fld, f.ByteOffset-off)
 			off = f.ByteOffset
 		}
+		D.in(f.Type)
 		t := c.Type(f.Type)
+		D.out(f.Type)
 		n := len(fld)
 		fld = fld[0 : n+1]
 
