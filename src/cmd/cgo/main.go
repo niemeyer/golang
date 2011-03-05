@@ -82,11 +82,20 @@ type ExpFunc struct {
 	ExpName string // name to use from C
 }
 
+// A TypeRepr contains the string representation of a type.
+// If the FormatArgs field is not empty, the Repr field is
+// used as a format argument for fmt.Sprintf.  Otherwise,
+// Repr is itself the type representation.
+type TypeRepr struct {
+	Repr       string
+	FormatArgs []interface{}
+}
+
 // A Type collects information about a type in both the C and Go worlds.
 type Type struct {
 	Size       int64
 	Align      int64
-	C          string
+	C          *TypeRepr
 	Go         ast.Expr
 	EnumValues map[string]int64
 }
