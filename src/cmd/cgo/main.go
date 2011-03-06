@@ -83,9 +83,6 @@ type ExpFunc struct {
 }
 
 // A TypeRepr contains the string representation of a type.
-// If the FormatArgs field is not empty, the Repr field is
-// used as a format argument for fmt.Sprintf.  Otherwise,
-// Repr is itself the type representation.
 type TypeRepr struct {
 	Repr       string
 	FormatArgs []interface{}

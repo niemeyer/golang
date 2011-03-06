@@ -778,7 +778,7 @@ const signedDelta = 64
 
 // String returns the current type representation.  Format arguments
 // are assembled within this method so that any changes in mutable
-// arguments are taken into account.
+// values are taken into account.
 func (tr *TypeRepr) String() string {
 	if len(tr.Repr) == 0 {
 		return ""
