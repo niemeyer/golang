@@ -15,18 +15,19 @@ import (
 	"sync"
 )
 
-// DefaultTransport is the default implementation of ClientTransport
-// and is used by DefaultClient.  It establishes a new network connection for
-// each call to Do and uses HTTP proxies as directed by the $HTTP_PROXY and
-// $NO_PROXY (or $http_proxy and $no_proxy) environment variables.
-var DefaultTransport ClientTransport = &transport{}
+// DefaultTransport is the default implementation of Transport and is
+// used by DefaultClient.  It establishes a new network connection for
+// each call to Do and uses HTTP proxies as directed by the
+// $HTTP_PROXY and $NO_PROXY (or $http_proxy and $no_proxy)
+// environment variables.
+var DefaultTransport Transport = &transport{}
 
-// transport implements http.ClientTranport for the default case,
-// using TCP connections to either the host or a proxy, serving
-// http or https schemes.  In the future this may become public
-// and support options on keep-alive connection duration, pipelining
-// controls, etc.  For now this is simply a port of the old Go code
-// client code to the http.ClientTransport interface.
+// transport implements Tranport for the default case, using TCP
+// connections to either the host or a proxy, serving http or https
+// schemes.  In the future this may become public and support options
+// on keep-alive connection duration, pipelining controls, etc.  For
+// now this is simply a port of the old Go code client code to the
+// Transport interface.
 type transport struct {
 	// TODO: keep-alives, pipelining, etc using a map from
 	// scheme/host to a connection.  Something like:
@@ -54,7 +55,10 @@ func (ct *transport) Do(req *Request) (resp *Response, err os.Error) {
 		}
 	}
 
+	var write = (*Request).Write
+
 	if proxy != "" {
+		write = (*Request).WriteProxy
 		proxyURL, err = ParseRequestURL(proxy)
 		if err != nil {
 			return nil, os.ErrorString("invalid proxy address")
@@ -129,7 +133,7 @@ func (ct *transport) Do(req *Request) (resp *Response, err os.Error) {
 		}
 	}
 
-	err = req.Write(conn)
+	err = write(req, conn)
 	if err != nil {
 		conn.Close()
 		return nil, err

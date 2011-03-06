@@ -4159,3 +4159,15 @@ data/src/pkg/image/testdata/video-001.bmp.i
 data/src/pkg/image/testdata/video-001.gif.i
 data/src/pkg/image/testdata/video-001.png.i
 data/src/pkg/image/testdata/video-001.tiff.i
+data/src/pkg/http/cookie.go.i
+data/src/pkg/http/cgi/Makefile.i
+data/src/pkg/http/httptest/server.go.i
+data/src/pkg/http/cgi/testdata/test.cgi.i
+data/src/pkg/http/cgi/cgi.go.i
+data/src/pkg/http/cgi/cgi_test.go.i
+data/src/pkg/time/sys.go.i
+data/src/pkg/http/httptest/recorder.go.i
+data/src/pkg/http/range_test.go.i
+data/src/pkg/http/cookie_test.go.i
+data/src/pkg/gob/gobencdec_test.go.i
+data/src/pkg/http/httptest/Makefile.i

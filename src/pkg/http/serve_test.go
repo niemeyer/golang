@@ -4,13 +4,14 @@
 
 // End-to-end serving tests
 
-package http
+package http_test
 
 import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"io"
+	. "http"
+	"http/httptest"
 	"io/ioutil"
 	"os"
 	"net"
@@ -170,13 +171,10 @@ func TestHostHandlers(t *testing.T) {
 	for _, h := range handlers {
 		Handle(h.pattern, stringHandler(h.msg))
 	}
-	l, err := net.Listen("tcp", "127.0.0.1:0") // any port
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer l.Close()
-	go Serve(l, nil)
-	conn, err := net.Dial("tcp", "", l.Addr().String())
+	ts := httptest.NewServer(nil)
+	defer ts.Close()
+
+	conn, err := net.Dial("tcp", "", ts.Listener.Addr().String())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,46 +203,6 @@ func TestHostHandlers(t *testing.T) {
 	}
 }
 
-type responseWriterMethodCall struct {
-	method                 string
-	headerKey, headerValue string // if method == "SetHeader"
-	bytesWritten           []byte // if method == "Write"
-	responseCode           int    // if method == "WriteHeader"
-}
-
-type recordingResponseWriter struct {
-	log []*responseWriterMethodCall
-}
-
-func (rw *recordingResponseWriter) RemoteAddr() string {
-	return "1.2.3.4"
-}
-
-func (rw *recordingResponseWriter) UsingTLS() bool {
-	return false
-}
-
-func (rw *recordingResponseWriter) SetHeader(k, v string) {
-	rw.log = append(rw.log, &responseWriterMethodCall{method: "SetHeader", headerKey: k, headerValue: v})
-}
-
-func (rw *recordingResponseWriter) Write(buf []byte) (int, os.Error) {
-	rw.log = append(rw.log, &responseWriterMethodCall{method: "Write", bytesWritten: buf})
-	return len(buf), nil
-}
-
-func (rw *recordingResponseWriter) WriteHeader(code int) {
-	rw.log = append(rw.log, &responseWriterMethodCall{method: "WriteHeader", responseCode: code})
-}
-
-func (rw *recordingResponseWriter) Flush() {
-	rw.log = append(rw.log, &responseWriterMethodCall{method: "Flush"})
-}
-
-func (rw *recordingResponseWriter) Hijack() (io.ReadWriteCloser, *bufio.ReadWriter, os.Error) {
-	panic("Not supported")
-}
-
 // Tests for http://code.google.com/p/go/issues/detail?id=900
 func TestMuxRedirectLeadingSlashes(t *testing.T) {
 	paths := []string{"//foo.txt", "///foo.txt", "/../../foo.txt"}
@@ -254,35 +212,17 @@ func TestMuxRedirectLeadingSlashes(t *testing.T) {
 			t.Errorf("%s", err)
 		}
 		mux := NewServeMux()
-		resp := new(recordingResponseWriter)
-		resp.log = make([]*responseWriterMethodCall, 0)
+		resp := httptest.NewRecorder()
 
 		mux.ServeHTTP(resp, req)
 
-		dumpLog := func() {
-			t.Logf("For path %q:", path)
-			for _, call := range resp.log {
-				t.Logf("Got call: %s, header=%s, value=%s, buf=%q, code=%d", call.method,
-					call.headerKey, call.headerValue, call.bytesWritten, call.responseCode)
-			}
-		}
-
-		if len(resp.log) != 2 {
-			dumpLog()
-			t.Errorf("expected 2 calls to response writer; got %d", len(resp.log))
+		if loc, expected := resp.Header.Get("Location"), "/foo.txt"; loc != expected {
+			t.Errorf("Expected Location header set to %q; got %q", expected, loc)
 			return
 		}
 
-		if resp.log[0].method != "SetHeader" ||
-			resp.log[0].headerKey != "Location" || resp.log[0].headerValue != "/foo.txt" {
-			dumpLog()
-			t.Errorf("Expected SetHeader of Location to /foo.txt")
-			return
-		}
-
-		if resp.log[1].method != "WriteHeader" || resp.log[1].responseCode != StatusMovedPermanently {
-			dumpLog()
-			t.Errorf("Expected WriteHeader of StatusMovedPermanently")
+		if code, expected := resp.Code, StatusMovedPermanently; code != expected {
+			t.Errorf("Expected response code of StatusMovedPermanently; got %d", code)
 			return
 		}
 	}
@@ -353,13 +293,6 @@ func TestServerTimeouts(t *testing.T) {
 
 // TestIdentityResponse verifies that a handler can unset 
 func TestIdentityResponse(t *testing.T) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("failed to listen on a port: %v", err)
-	}
-	defer l.Close()
-	urlBase := "http://" + l.Addr().String() + "/"
-
 	handler := HandlerFunc(func(rw ResponseWriter, req *Request) {
 		rw.SetHeader("Content-Length", "3")
 		rw.SetHeader("Transfer-Encoding", req.FormValue("te"))
@@ -377,15 +310,15 @@ func TestIdentityResponse(t *testing.T) {
 		}
 	})
 
-	server := &Server{Handler: handler}
-	go server.Serve(l)
+	ts := httptest.NewServer(handler)
+	defer ts.Close()
 
 	// Note: this relies on the assumption (which is true) that
 	// Get sends HTTP/1.1 or greater requests.  Otherwise the
 	// server wouldn't have the choice to send back chunked
 	// responses.
 	for _, te := range []string{"", "identity"} {
-		url := urlBase + "?te=" + te
+		url := ts.URL + "/?te=" + te
 		res, _, err := Get(url)
 		if err != nil {
 			t.Fatalf("error with Get of %s: %v", url, err)
@@ -403,15 +336,15 @@ func TestIdentityResponse(t *testing.T) {
 	}
 
 	// Verify that ErrContentLength is returned
-	url := urlBase + "?overwrite=1"
-	_, _, err = Get(url)
+	url := ts.URL + "/?overwrite=1"
+	_, _, err := Get(url)
 	if err != nil {
 		t.Fatalf("error with Get of %s: %v", url, err)
 	}
 
 	// Verify that the connection is closed when the declared Content-Length
 	// is larger than what the handler wrote.
-	conn, err := net.Dial("tcp", "", l.Addr().String())
+	conn, err := net.Dial("tcp", "", ts.Listener.Addr().String())
 	if err != nil {
 		t.Fatalf("error dialing: %v", err)
 	}
