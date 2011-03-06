@@ -1,23 +1,14 @@
 Mailed: True
 Description:
-	path/filepath: New OS-specific path support
+	path/filepath: new OS-specific path support
 	
 	The path package now contains only functions which
 	deal with slashed paths, sensible for any OS when dealing
 	with network paths or URLs.  OS-specific functionality
 	has been moved into the new path/filepath package.
 	
-	This first change involves mainly the package splitting
-	and adapting the existing code to the new convention.
-	Existing bugs related to compatibility with Windows
-	paths have been left untouched, but identified issues
-	have already been flagged with BUG entries while the
-	coversion was done, so that they may be more easily
-	addressed in future CLs.
-	
-	As an exception, DirSeps and VolumeSeps have been
-	renamed to Separator and VolumeSeparator, and PathSeps
-	has been dropped for being redundant.
+	This also includes fixes for godoc, goinstall and other
+	packages which were mixing slashed and OS-specific paths.
 Files:
 	src/cmd/ebnflint/ebnflint.go
 	src/cmd/godoc/dirtrees.go
@@ -39,7 +30,6 @@ Files:
 	src/pkg/go/scanner/scanner.go
 	src/pkg/http/fs.go
 	src/pkg/io/ioutil/tempfile.go
-	src/pkg/patch/patch.go
 	src/pkg/path/Makefile
 	src/pkg/path/filepath/Makefile
 	src/pkg/path/filepath/match.go
@@ -47,7 +37,6 @@ Files:
 	src/pkg/path/filepath/path.go
 	src/pkg/path/filepath/path_test.go
 	src/pkg/path/filepath/path_unix.go
-	src/pkg/path/filepath/path_windows.go
 	src/pkg/path/match.go
 	src/pkg/path/match_test.go
 	src/pkg/path/path.go
