@@ -38,6 +38,7 @@ Files:
 	src/pkg/go/printer/printer_test.go
 	src/pkg/go/scanner/scanner.go
 	src/pkg/http/fs.go
+	src/pkg/io/ioutil/tempfile.go
 	src/pkg/patch/patch.go
 	src/pkg/path/Makefile
 	src/pkg/path/filepath/Makefile
