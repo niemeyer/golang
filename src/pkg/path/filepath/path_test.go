@@ -2,10 +2,11 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package filepath
+package filepath_test
 
 import (
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -66,13 +67,13 @@ var cleantests = []PathTest{
 
 func TestClean(t *testing.T) {
 	for _, test := range cleantests {
-		if s := Clean(test.path); s != test.result {
+		if s := filepath.Clean(test.path); s != test.result {
 			t.Errorf("Clean(%q) = %q, want %q", test.path, s, test.result)
 		}
 	}
 }
 
-const sep = Separator
+const sep = filepath.Separator
 
 var slashtests = []PathTest{
 	{"", ""},
@@ -83,10 +84,10 @@ var slashtests = []PathTest{
 
 func TestFromAndToSlash(t *testing.T) {
 	for _, test := range slashtests {
-		if s := FromSlash(test.path); s != test.result {
+		if s := filepath.FromSlash(test.path); s != test.result {
 			t.Errorf("FromSlash(%q) = %q, want %q", test.path, s, test.result)
 		}
-		if s := ToSlash(test.result); s != test.path {
+		if s := filepath.ToSlash(test.result); s != test.path {
 			t.Errorf("ToSlash(%q) = %q, want %q", test.result, s, test.path)
 		}
 	}
@@ -97,7 +98,7 @@ type SplitListTest struct {
 	result []string
 }
 
-const lsep = ListSeparator
+const lsep = filepath.ListSeparator
 
 var splitlisttests = []SplitListTest{
 	{"", []string{}},
@@ -107,7 +108,7 @@ var splitlisttests = []SplitListTest{
 
 func TestSplitList(t *testing.T) {
 	for _, test := range splitlisttests {
-		if l := SplitList(test.list); !reflect.DeepEqual(l, test.result) {
+		if l := filepath.SplitList(test.list); !reflect.DeepEqual(l, test.result) {
 			t.Errorf("SplitList(%q) = %s, want %s", test.list, l, test.result)
 		}
 	}
@@ -129,7 +130,7 @@ func TestSplit(t *testing.T) {
 	var splittests []SplitTest
 	splittests = unixsplittests
 	for _, test := range splittests {
-		if d, f := Split(test.path); d != test.dir || f != test.file {
+		if d, f := filepath.Split(test.path); d != test.dir || f != test.file {
 			t.Errorf("Split(%q) = %q, %q, want %q, %q", test.path, d, f, test.dir, test.file)
 		}
 	}
@@ -162,7 +163,7 @@ var jointests = []JoinTest{
 // join takes a []string and passes it to Join.
 func join(elem []string, args ...string) string {
 	args = elem
-	return Join(args...)
+	return filepath.Join(args...)
 }
 
 func TestJoin(t *testing.T) {
@@ -187,7 +188,7 @@ var exttests = []ExtTest{
 
 func TestExt(t *testing.T) {
 	for _, test := range exttests {
-		if x := Ext(test.path); x != test.ext {
+		if x := filepath.Ext(test.path); x != test.ext {
 			t.Errorf("Ext(%q) = %q, want %q", test.path, x, test.ext)
 		}
 	}
@@ -228,7 +229,7 @@ var tree = &Node{
 func walkTree(n *Node, path string, f func(path string, n *Node)) {
 	f(path, n)
 	for _, e := range n.entries {
-		walkTree(e, Join(path, e.name), f)
+		walkTree(e, filepath.Join(path, e.name), f)
 	}
 }
 
@@ -282,12 +283,12 @@ func TestWalk(t *testing.T) {
 
 	// 1) ignore error handling, expect none
 	v := &TestVisitor{}
-	Walk(tree.name, v, nil)
+	filepath.Walk(tree.name, v, nil)
 	checkMarks(t)
 
 	// 2) handle errors, expect none
 	errors := make(chan os.Error, 64)
-	Walk(tree.name, v, errors)
+	filepath.Walk(tree.name, v, errors)
 	select {
 	case err := <-errors:
 		t.Errorf("no error expected, found: %s", err)
@@ -298,8 +299,8 @@ func TestWalk(t *testing.T) {
 
 	if os.Getuid() != 0 {
 		// introduce 2 errors: chmod top-level directories to 0
-		os.Chmod(Join(tree.name, tree.entries[1].name), 0)
-		os.Chmod(Join(tree.name, tree.entries[3].name), 0)
+		os.Chmod(filepath.Join(tree.name, tree.entries[1].name), 0)
+		os.Chmod(filepath.Join(tree.name, tree.entries[3].name), 0)
 		// mark respective subtrees manually
 		markTree(tree.entries[1])
 		markTree(tree.entries[3])
@@ -309,8 +310,8 @@ func TestWalk(t *testing.T) {
 
 		// 3) handle errors, expect two
 		errors = make(chan os.Error, 64)
-		os.Chmod(Join(tree.name, tree.entries[1].name), 0)
-		Walk(tree.name, v, errors)
+		os.Chmod(filepath.Join(tree.name, tree.entries[1].name), 0)
+		filepath.Walk(tree.name, v, errors)
 	Loop:
 		for i := 1; i <= 2; i++ {
 			select {
@@ -332,8 +333,8 @@ func TestWalk(t *testing.T) {
 	}
 
 	// cleanup
-	os.Chmod(Join(tree.name, tree.entries[1].name), 0770)
-	os.Chmod(Join(tree.name, tree.entries[3].name), 0770)
+	os.Chmod(filepath.Join(tree.name, tree.entries[1].name), 0770)
+	os.Chmod(filepath.Join(tree.name, tree.entries[3].name), 0770)
 	if err := os.RemoveAll(tree.name); err != nil {
 		t.Errorf("removeTree: %v", err)
 	}
@@ -355,7 +356,7 @@ var basetests = []PathTest{
 
 func TestBase(t *testing.T) {
 	for _, test := range basetests {
-		if s := Base(test.path); s != test.result {
+		if s := filepath.Base(test.path); s != test.result {
 			t.Errorf("Base(%q) = %q, want %q", test.path, s, test.result)
 		}
 	}
@@ -379,7 +380,7 @@ var isAbsTests = []IsAbsTest{
 
 func TestIsAbs(t *testing.T) {
 	for _, test := range isAbsTests {
-		if r := IsAbs(test.path); r != test.isAbs {
+		if r := filepath.IsAbs(test.path); r != test.isAbs {
 			t.Errorf("IsAbs(%q) = %v, want %v", test.path, r, test.isAbs)
 		}
 	}

@@ -8,8 +8,8 @@
 package filepath
 
 import (
-	"io/ioutil"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -183,7 +183,7 @@ func walk(path string, f *os.FileInfo, v Visitor, errors chan<- os.Error) {
 		return // skip directory entries
 	}
 
-	list, err := ioutil.ReadDir(path)
+	list, err := readDir(path)
 	if err != nil {
 		if errors != nil {
 			errors <- err
@@ -194,6 +194,34 @@ func walk(path string, f *os.FileInfo, v Visitor, errors chan<- os.Error) {
 		walk(Join(path, e.Name), e, v, errors)
 	}
 }
+
+// readDir reads the directory named by dirname and returns
+// a list of sorted directory entries.
+// Copied from io/ioutil to avoid the circular import.
+func readDir(dirname string) ([]*os.FileInfo, os.Error) {
+	f, err := os.Open(dirname, os.O_RDONLY, 0)
+	if err != nil {
+		return nil, err
+	}
+	list, err := f.Readdir(-1)
+	f.Close()
+	if err != nil {
+		return nil, err
+	}
+	fi := make(fileInfoList, len(list))
+	for i := range list {
+		fi[i] = &list[i]
+	}
+	sort.Sort(fi)
+	return fi, nil
+}
+
+// A dirList implements sort.Interface.
+type fileInfoList []*os.FileInfo
+
+func (f fileInfoList) Len() int           { return len(f) }
+func (f fileInfoList) Less(i, j int) bool { return f[i].Name < f[j].Name }
+func (f fileInfoList) Swap(i, j int)      { f[i], f[j] = f[j], f[i] }
 
 // Walk walks the file tree rooted at root, calling v.VisitDir or
 // v.VisitFile for each directory or file in the tree, including root.

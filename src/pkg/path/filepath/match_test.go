@@ -2,10 +2,11 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package filepath
+package filepath_test
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -54,22 +55,22 @@ var matchTests = []MatchTest{
 	{"[\\-x]", "x", true, nil},
 	{"[\\-x]", "-", true, nil},
 	{"[\\-x]", "a", false, nil},
-	{"[]a]", "]", false, ErrBadPattern},
-	{"[-]", "-", false, ErrBadPattern},
-	{"[x-]", "x", false, ErrBadPattern},
-	{"[x-]", "-", false, ErrBadPattern},
-	{"[x-]", "z", false, ErrBadPattern},
-	{"[-x]", "x", false, ErrBadPattern},
-	{"[-x]", "-", false, ErrBadPattern},
-	{"[-x]", "a", false, ErrBadPattern},
-	{"\\", "a", false, ErrBadPattern},
-	{"[a-b-c]", "a", false, ErrBadPattern},
+	{"[]a]", "]", false, filepath.ErrBadPattern},
+	{"[-]", "-", false, filepath.ErrBadPattern},
+	{"[x-]", "x", false, filepath.ErrBadPattern},
+	{"[x-]", "-", false, filepath.ErrBadPattern},
+	{"[x-]", "z", false, filepath.ErrBadPattern},
+	{"[-x]", "x", false, filepath.ErrBadPattern},
+	{"[-x]", "-", false, filepath.ErrBadPattern},
+	{"[-x]", "a", false, filepath.ErrBadPattern},
+	{"\\", "a", false, filepath.ErrBadPattern},
+	{"[a-b-c]", "a", false, filepath.ErrBadPattern},
 	{"*x", "xxx", true, nil},
 }
 
 func TestMatch(t *testing.T) {
 	for _, tt := range matchTests {
-		ok, err := Match(tt.pattern, tt.s)
+		ok, err := filepath.Match(tt.pattern, tt.s)
 		if ok != tt.match || err != tt.err {
 			t.Errorf("Match(%#q, %#q) = %v, %v want %v, nil", tt.pattern, tt.s, ok, err, tt.match)
 		}
@@ -97,7 +98,7 @@ var globTests = []struct {
 
 func TestGlob(t *testing.T) {
 	for _, tt := range globTests {
-		matches := Glob(tt.pattern)
+		matches := filepath.Glob(tt.pattern)
 		if !contains(matches, tt.result) {
 			t.Errorf("Glob(%#q) = %#v want %v", tt.pattern, matches, tt.result)
 		}
