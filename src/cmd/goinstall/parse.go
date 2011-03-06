@@ -150,9 +150,9 @@ func init() {
 	goodOS = make(map[string]bool)
 	goodArch = make(map[string]bool)
 	for _, v := range strings.Fields(goosList) {
-		goodOS[v] = (v == runtime.GOOS)
+		goodOS[v] = v == runtime.GOOS
 	}
 	for _, v := range strings.Fields(goarchList) {
-		goodArch[v] = (v == runtime.GOARCH)
+		goodArch[v] = v == runtime.GOARCH
 	}
 }

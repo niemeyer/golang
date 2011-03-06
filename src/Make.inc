@@ -29,15 +29,14 @@ ifeq ($(GOOS),)
 GOOS:=$(GOHOSTOS)
 endif
 
-GOOS_LIST:=\
+GOOS_LIST=\
 	darwin\
 	freebsd\
 	linux\
 	plan9\
-	tiny\
 	windows\
 
-GOARCH_LIST:=\
+GOARCH_LIST=\
 	386\
 	amd64\
 	arm\
