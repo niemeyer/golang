@@ -10,6 +10,8 @@ GOFILES=\
 	rewrite.go\
 	simplify.go\
 
+NOGOTEST=1
+
 include ../../Make.cmd
 
 test: $(TARG)

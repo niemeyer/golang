@@ -8,6 +8,8 @@ TARG=ebnflint
 GOFILES=\
 	ebnflint.go\
 
+NOGOTEST=1
+
 include ../../Make.cmd
 
 test: $(TARG)

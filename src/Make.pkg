@@ -49,8 +49,12 @@ coverage:
 
 CLEANFILES+=*.so _obj _test _testmain.go *.exe _cgo* *.cgo[12].*
 
-test:
+test.gotest:
 	gotest
+
+ifneq ($(NOGOTEST),1)
+test: test.gotest
+endif
 
 bench:
 	gotest -test.bench=. -test.run="Do not run tests"
