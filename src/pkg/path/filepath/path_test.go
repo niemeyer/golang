@@ -93,7 +93,7 @@ func TestFromAndToSlash(t *testing.T) {
 }
 
 type SplitListTest struct {
-	list string
+	list   string
 	result []string
 }
 

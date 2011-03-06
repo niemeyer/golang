@@ -217,7 +217,7 @@ func install(pkg, parent string) {
 // Is this a local path?  /foo ./foo ../foo . ..
 func isLocalPath(s string) bool {
 	const sep = string(filepath.Separator)
-	return strings.HasPrefix(s, sep) || strings.HasPrefix(s, "." + sep) || strings.HasPrefix(s, ".." + sep) || s == "." || s == ".."
+	return strings.HasPrefix(s, sep) || strings.HasPrefix(s, "."+sep) || strings.HasPrefix(s, ".."+sep) || s == "." || s == ".."
 }
 
 // Is this a standard package path?  strings container/vector etc.
