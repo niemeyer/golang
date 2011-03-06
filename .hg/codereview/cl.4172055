@@ -1,6 +1,4 @@
-Author: n13m3y3r@gmail.com
-
-Mailed: False
+Mailed: True
 Description:
 	goinstall: handle $(GOOS) and $(GOARCH) in filenames
 	
@@ -13,13 +11,14 @@ Description:
 	
 	Files with those names are only included if the $(GOOS) and
 	$(GOARCH) match the current system.
-	
-	**NOT READY FOR MERGE** The tests in this branch break
-	the build due to existent bugs being fixed elsewhere.
 Files:
+	.hgignore
 	src/Make.cmd
 	src/Make.inc
+	src/Make.pkg
+	src/cmd/ebnflint/Makefile
+	src/cmd/gofmt/Makefile
 	src/cmd/goinstall/Makefile
 	src/cmd/goinstall/parse.go
 	src/cmd/goinstall/syslist_test.go
-	src/run.bash
+	src/pkg/Makefile
