@@ -21,3 +21,6 @@ syslist.go:
 	echo 'package main' >>$@
 	echo 'const goosList = "$(GOOS_LIST)"' >>$@
 	echo 'const goarchList = "$(GOARCH_LIST)"' >>$@
+
+test:
+	gotest

@@ -29,13 +29,6 @@ nuke: clean
 	rm -f $(QUOTED_GOBIN)/$(TARG)
 
 # for gotest
-test.gotest:
-	gotest
-
-ifneq ($(NOGOTEST),1)
-test: test.gotest
-endif
-
 testpackage: _test/main.a
 
 testpackage-clean:
