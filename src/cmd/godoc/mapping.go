@@ -72,7 +72,7 @@ type mapping struct {
 //	localname -> path
 //
 // is added to the Mapping object, in the order of occurrence.
-// For instance, in a Linux OS, the argument:
+// For instance, under Unix, the argument:
 //
 //	/home/user:/home/build/public
 //
