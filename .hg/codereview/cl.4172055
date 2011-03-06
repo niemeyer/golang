@@ -13,11 +13,7 @@ Description:
 	$(GOARCH) match the current system.
 Files:
 	.hgignore
-	src/Make.cmd
 	src/Make.inc
-	src/Make.pkg
-	src/cmd/ebnflint/Makefile
-	src/cmd/gofmt/Makefile
 	src/cmd/goinstall/Makefile
 	src/cmd/goinstall/parse.go
 	src/cmd/goinstall/syslist_test.go
