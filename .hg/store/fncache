@@ -4171,3 +4171,9 @@ data/src/pkg/http/range_test.go.i
 data/src/pkg/http/cookie_test.go.i
 data/src/pkg/gob/gobencdec_test.go.i
 data/src/pkg/http/httptest/Makefile.i
+data/src/pkg/path/filepath/path_test.go.i
+data/src/pkg/path/filepath/path.go.i
+data/src/pkg/path/filepath/match.go.i
+data/src/pkg/path/filepath/path_unix.go.i
+data/src/pkg/path/filepath/Makefile.i
+data/src/pkg/path/filepath/match_test.go.i
