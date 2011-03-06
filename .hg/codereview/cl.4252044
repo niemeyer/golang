@@ -1,0 +1,45 @@
+Mailed: True
+Description:
+	path/filepath: new OS-specific path support
+	
+	The path package now contains only functions which
+	deal with slashed paths, sensible for any OS when dealing
+	with network paths or URLs.  OS-specific functionality
+	has been moved into the new path/filepath package.
+	
+	This also includes fixes for godoc, goinstall and other
+	packages which were mixing slashed and OS-specific paths.
+Files:
+	src/cmd/ebnflint/ebnflint.go
+	src/cmd/godoc/dirtrees.go
+	src/cmd/godoc/godoc.go
+	src/cmd/godoc/index.go
+	src/cmd/godoc/main.go
+	src/cmd/godoc/mapping.go
+	src/cmd/godoc/utils.go
+	src/cmd/gofmt/gofmt.go
+	src/cmd/goinstall/download.go
+	src/cmd/goinstall/main.go
+	src/cmd/goinstall/parse.go
+	src/cmd/govet/govet.go
+	src/cmd/hgpatch/main.go
+	src/pkg/Makefile
+	src/pkg/go/parser/interface.go
+	src/pkg/go/printer/printer.go
+	src/pkg/go/printer/printer_test.go
+	src/pkg/go/scanner/scanner.go
+	src/pkg/http/fs.go
+	src/pkg/io/ioutil/tempfile.go
+	src/pkg/path/Makefile
+	src/pkg/path/filepath/Makefile
+	src/pkg/path/filepath/match.go
+	src/pkg/path/filepath/match_test.go
+	src/pkg/path/filepath/path.go
+	src/pkg/path/filepath/path_test.go
+	src/pkg/path/filepath/path_unix.go
+	src/pkg/path/match.go
+	src/pkg/path/match_test.go
+	src/pkg/path/path.go
+	src/pkg/path/path_test.go
+	src/pkg/path/path_unix.go
+	src/pkg/path/path_windows.go
