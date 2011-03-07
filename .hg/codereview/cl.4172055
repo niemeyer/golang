@@ -1,0 +1,20 @@
+Mailed: True
+Description:
+	goinstall: handle $(GOOS) and $(GOARCH) in filenames
+	
+	This enables goinstall to handle .go and .c files (for cgo)
+	which are named after the following patterns:
+	
+	    name_$(GOOS).*
+	    name_$(GOARCH).*
+	    name_$(GOOS)_$(GOARCH).*
+	
+	Files with those names are only included if the $(GOOS) and
+	$(GOARCH) match the current system.
+Files:
+	.hgignore
+	src/Make.inc
+	src/cmd/goinstall/Makefile
+	src/cmd/goinstall/parse.go
+	src/cmd/goinstall/syslist_test.go
+	src/pkg/Makefile

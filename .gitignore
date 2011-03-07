@@ -62,6 +62,7 @@ src/cmd/godefs/godefs
 src/cmd/godoc/godoc
 src/cmd/gofmt/gofmt
 src/cmd/goinstall/goinstall
+src/cmd/goinstall/syslist.go
 src/cmd/gopack/gopack
 src/cmd/govet/govet
 src/cmd/goyacc/goyacc
