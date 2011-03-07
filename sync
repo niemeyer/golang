@@ -157,7 +157,7 @@ if [ "$PUSH" = 1 ]; then
 		echo "No remote branches to delete."
 	fi
 	echo "Pushing all local branches..."
-	git push --all
+	git push --force --all
 	exit $?
 fi
 
@@ -239,8 +239,8 @@ if [ "$CL_NUMBER" != "" -o "$CL_CREATE" = 1 ]; then
 	else
 		MESSAGE="Updated from CL $CL_NUMBER"
 		checkout $CL_BRANCH
-		echo "Merging branch 'master' in branch '$CL_BRANCH'..."
-		git merge master
+		echo "Rebasing branch '$CL_BRANCH' on master..."
+		git rebase master
 		echo "Reverting previous changes from CL $CL_NUMBER..."
 		hg revert @$CL_NUMBER > /dev/null 2> /dev/null || true
 	fi
@@ -262,8 +262,8 @@ if [ "$CL_NUMBER" != "" -o "$CL_CREATE" = 1 ]; then
 else
 	checkout $INITIAL_BRANCH
 
-	if [ "$INITIAL_BRANCH" != master -a "$NEW_ID" != "$OLD_ID" ]; then
-		echo "Merging branch 'master' in branch '$INITIAL_BRANCH'..."
-		git merge master
-	fi
+	#if [ "$INITIAL_BRANCH" != master -a "$NEW_ID" != "$OLD_ID" ]; then
+	#	echo "Merging branch 'master' in branch '$INITIAL_BRANCH'..."
+	#	git merge master
+	#fi
 fi
