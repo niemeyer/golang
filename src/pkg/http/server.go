@@ -81,7 +81,10 @@ type ResponseWriter interface {
 
 	// Flush sends any buffered data to the client.
 	Flush()
+}
 
+// A Hijacker is an HTTP request which be taken over by an HTTP handler.
+type Hijacker interface {
 	// Hijack lets the caller take over the connection.
 	// After a call to Hijack(), the HTTP server library
 	// will not do anything else with the connection.
@@ -282,6 +285,9 @@ func (w *response) WriteHeader(code int) {
 		if !connectionHeaderSet {
 			w.SetHeader("Connection", "keep-alive")
 		}
+	} else if !w.req.ProtoAtLeast(1, 1) {
+		// Client did not ask to keep connection alive.
+		w.closeAfterReply = true
 	}
 
 	// Cannot use Content-Length with non-identity Transfer-Encoding.

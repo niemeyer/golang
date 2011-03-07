@@ -4177,3 +4177,17 @@ data/src/pkg/path/filepath/match.go.i
 data/src/pkg/path/filepath/path_unix.go.i
 data/src/pkg/path/filepath/Makefile.i
 data/src/pkg/path/filepath/match_test.go.i
+data/misc/cgo/test/basic.go.i
+data/src/pkg/hash/fnv/fnv_test.go.i
+data/src/cmd/goinstall/syslist_test.go.i
+data/misc/cgo/test/Makefile.i
+data/src/pkg/hash/fnv/fnv.go.i
+data/misc/cgo/test/callback_c.c.i
+data/misc/cgo/test/issue1328.go.i
+data/src/pkg/hash/fnv/Makefile.i
+data/misc/cgo/test/issue1560.go.i
+data/misc/cgo/test/callback.go.i
+data/misc/cgo/test/align.go.i
+data/misc/cgo/test/issue1222.go.i
+data/misc/cgo/test/cgo_test.go.i
+data/misc/cgo/test/runtime.c.i

@@ -94,6 +94,7 @@ DIRS=\
 	hash/adler32\
 	hash/crc32\
 	hash/crc64\
+	hash/fnv\
 	html\
 	http\
 	http/cgi\
@@ -189,7 +190,6 @@ NOTEST=\
 	../cmd/ebnflint\
 	../cmd/godoc\
 	../cmd/gofmt\
-	../cmd/goinstall\
 	../cmd/govet\
 	../cmd/goyacc\
 	../cmd/hgpatch\
