@@ -96,6 +96,18 @@ add_all() {
 	git add -A $1 > /dev/null 2> /dev/null || true
 }
 
+# commit
+#
+# Commit changes with provided arguments, possibly committing
+# dirstate changes separately.
+commit() {
+	if [ "`current_status .hg/dirstate`" != "" ]; then
+		git commit -m "Updated dirstate." .hg/dirstate
+	fi
+	git commit "$@"
+}
+
+
 CL_NUMBER=
 CL_CREATE=0
 PUSH=0
@@ -200,6 +212,7 @@ else
 	COMMIT_FAILED=0
 	if [ "$STATUS" != "" ]; then
 		echo "Committing changes to 'master' branch..."
+		# Don't use commit function here so that dirstate goes together.
 		if ! git commit -m "Updated to hg $NEW_ID" > /dev/null; then
 			COMMIT_FAILED=1
 		fi
@@ -215,7 +228,7 @@ if [ "$REVIEW_STATUS" != "" ]; then
 	if [ "$NEW_ID" = "$OLD_ID" ]; then
 		add_all .hg/codereview
 		echo "Committing code review changes to 'master' branch..."
-		echo "Code reviews changed:\n$REVIEW_STATUS" | git commit -F - > /dev/null
+		echo "Code reviews changed:\n$REVIEW_STATUS" | commit -F - > /dev/null
 	fi
 fi
 
@@ -254,7 +267,7 @@ if [ "$CL_NUMBER" != "" -o "$CL_CREATE" = 1 ]; then
 	STATUS=`current_status`
 	if [ "`current_status`" != "" ]; then
 		echo "Committing changes to branch '$CL_BRANCH'..."
-		git commit -m "$MESSAGE" > /dev/null
+		commit -m "$MESSAGE" > /dev/null
 	else
 		echo "CL has no changes."
 	fi
