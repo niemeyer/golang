@@ -1,0 +1,9 @@
+Mailed: True
+Description:
+	goinstall: handle .s files with gc
+	
+	As a data point, with this change goinstall is able to
+	fully build package big out of the box.
+Files:
+	src/cmd/goinstall/make.go
+	src/cmd/goinstall/parse.go
