@@ -656,10 +656,19 @@ typedcl2(Type *pt, Type *t)
 {
 	Node *n;
 
+	// override declaration in unsafe.go for Pointer.
+	// there is no way in Go code to define unsafe.Pointer
+	// so we have to supply it.
+	if(incannedimport &&
+	   strcmp(importpkg->name, "unsafe") == 0 &&
+	   strcmp(pt->nod->sym->name, "Pointer") == 0) {
+		t = types[TUNSAFEPTR];
+	}
+
 	if(pt->etype == TFORW)
 		goto ok;
 	if(!eqtype(pt->orig, t))
-		yyerror("inconsistent definition for type %S during import\n\t%lT\n\t%lT", pt->sym, pt, t);
+		yyerror("inconsistent definition for type %S during import\n\t%lT\n\t%lT", pt->sym, pt->orig, t);
 	return;
 
 ok:
@@ -684,13 +693,13 @@ ok:
  * turn a parsed struct into a type
  */
 static Type**
-stotype(NodeList *l, int et, Type **t)
+stotype(NodeList *l, int et, Type **t, int funarg)
 {
 	Type *f, *t1, *t2, **t0;
 	Strlit *note;
 	int lno;
 	NodeList *init;
-	Node *n;
+	Node *n, *left;
 	char *what;
 
 	t0 = t;
@@ -707,15 +716,18 @@ stotype(NodeList *l, int et, Type **t)
 
 		if(n->op != ODCLFIELD)
 			fatal("stotype: oops %N\n", n);
+		left = n->left;
+		if(funarg && isblank(left))
+			left = N;
 		if(n->right != N) {
-			if(et == TINTER && n->left != N) {
+			if(et == TINTER && left != N) {
 				// queue resolution of method type for later.
 				// right now all we need is the name list.
 				// avoids cycles for recursive interface types.
 				n->type = typ(TINTERMETH);
 				n->type->nname = n->right;
 				n->right = N;
-				n->left->type = n->type;
+				left->type = n->type;
 				queuemethod(n);
 			} else {
 				typecheck(&n->right, Etype);
@@ -724,8 +736,8 @@ stotype(NodeList *l, int et, Type **t)
 					*t0 = T;
 					return t0;
 				}
-				if(n->left != N)
-					n->left->type = n->type;
+				if(left != N)
+					left->type = n->type;
 				n->right = N;
 				if(n->embedded && n->type != T) {
 					t1 = n->type;
@@ -763,7 +775,7 @@ stotype(NodeList *l, int et, Type **t)
 			break;
 		}
 
-		if(et == TINTER && n->left == N) {
+		if(et == TINTER && left == N) {
 			// embedded interface - inline the methods
 			if(n->type->etype != TINTER) {
 				if(n->type->etype == TFORW)
@@ -796,8 +808,8 @@ stotype(NodeList *l, int et, Type **t)
 		f->width = BADWIDTH;
 		f->isddd = n->isddd;
 
-		if(n->left != N && n->left->op == ONAME) {
-			f->nname = n->left;
+		if(left != N && left->op == ONAME) {
+			f->nname = left;
 			f->embedded = n->embedded;
 			f->sym = f->nname->sym;
 			if(importpkg && !exportname(f->sym->name))
@@ -839,7 +851,7 @@ dostruct(NodeList *l, int et)
 	}
 	t = typ(et);
 	t->funarg = funarg;
-	stotype(l, et, &t->type);
+	stotype(l, et, &t->type, funarg);
 	if(t->type == T && l != nil) {
 		t->broke = 1;
 		return t;
@@ -933,8 +945,6 @@ checkarglist(NodeList *all, int input)
 			t = n;
 			n = N;
 		}
-		if(isblank(n))
-			n = N;
 		if(n != N && n->sym == S) {
 			t = n;
 			n = N;
@@ -1151,9 +1161,9 @@ addmethod(Sym *sf, Type *t, int local)
 	}
 
 	if(d == T)
-		stotype(list1(n), 0, &pa->method);
+		stotype(list1(n), 0, &pa->method, 0);
 	else
-		stotype(list1(n), 0, &d->down);
+		stotype(list1(n), 0, &d->down, 0);
 	return;
 }
 

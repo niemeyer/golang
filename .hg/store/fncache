@@ -4191,3 +4191,15 @@ data/misc/cgo/test/align.go.i
 data/misc/cgo/test/issue1222.go.i
 data/misc/cgo/test/cgo_test.go.i
 data/misc/cgo/test/runtime.c.i
+data/src/pkg/go/typechecker/testdata/test3.src.i
+data/src/pkg/http/cgi/matryoshka_test.go.i
+data/src/pkg/go/typechecker/testdata/test0.src.i
+data/test/fixedbugs/bug326.go.i
+data/misc/vim/indent/go.vim.i
+data/src/pkg/http/cgi/child.go.i
+data/src/pkg/go/typechecker/testdata/test1.src.i
+data/src/pkg/go/typechecker/type.go.i
+data/src/pkg/http/cgi/host_test.go.i
+data/src/pkg/http/cgi/child_test.go.i
+data/src/pkg/go/typechecker/testdata/test4.src.i
+data/src/pkg/http/cgi/host.go.i

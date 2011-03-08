@@ -110,8 +110,8 @@ type GobTest2 struct {
 }
 
 type GobTest3 struct {
-	X int     // guarantee we have  something in common with GobTest*
-	G *Gobber // TODO: should be able to satisfy interface without a pointer
+	X int // guarantee we have  something in common with GobTest*
+	G *Gobber
 }
 
 type GobTest4 struct {
@@ -126,6 +126,16 @@ type GobTest5 struct {
 
 type GobTestIgnoreEncoder struct {
 	X int // guarantee we have  something in common with GobTest*
+}
+
+type GobTestValueEncDec struct {
+	X int          // guarantee we have  something in common with GobTest*
+	G StringStruct // not a pointer.
+}
+
+type GobTestIndirectEncDec struct {
+	X int             // guarantee we have  something in common with GobTest*
+	G ***StringStruct // indirections to the receiver.
 }
 
 func TestGobEncoderField(t *testing.T) {
@@ -159,6 +169,50 @@ func TestGobEncoderField(t *testing.T) {
 	}
 	if *y.G != 23 {
 		t.Errorf("expected '23 got %d", *y.G)
+	}
+}
+
+// Even though the field is a value, we can still take its address
+// and should be able to call the methods.
+func TestGobEncoderValueField(t *testing.T) {
+	b := new(bytes.Buffer)
+	// First a field that's a structure.
+	enc := NewEncoder(b)
+	err := enc.Encode(GobTestValueEncDec{17, StringStruct{"HIJKL"}})
+	if err != nil {
+		t.Fatal("encode error:", err)
+	}
+	dec := NewDecoder(b)
+	x := new(GobTestValueEncDec)
+	err = dec.Decode(x)
+	if err != nil {
+		t.Fatal("decode error:", err)
+	}
+	if x.G.s != "HIJKL" {
+		t.Errorf("expected `HIJKL` got %s", x.G.s)
+	}
+}
+
+// GobEncode/Decode should work even if the value is
+// more indirect than the receiver.
+func TestGobEncoderIndirectField(t *testing.T) {
+	b := new(bytes.Buffer)
+	// First a field that's a structure.
+	enc := NewEncoder(b)
+	s := &StringStruct{"HIJKL"}
+	sp := &s
+	err := enc.Encode(GobTestIndirectEncDec{17, &sp})
+	if err != nil {
+		t.Fatal("encode error:", err)
+	}
+	dec := NewDecoder(b)
+	x := new(GobTestIndirectEncDec)
+	err = dec.Decode(x)
+	if err != nil {
+		t.Fatal("decode error:", err)
+	}
+	if (***x.G).s != "HIJKL" {
+		t.Errorf("expected `HIJKL` got %s", (***x.G).s)
 	}
 }
 
@@ -275,8 +329,7 @@ func TestGobEncoderStructSingleton(t *testing.T) {
 func TestGobEncoderNonStructSingleton(t *testing.T) {
 	b := new(bytes.Buffer)
 	enc := NewEncoder(b)
-	g := Gobber(1234) // TODO: shouldn't need to take the address here.
-	err := enc.Encode(&g)
+	err := enc.Encode(Gobber(1234))
 	if err != nil {
 		t.Fatal("encode error:", err)
 	}
