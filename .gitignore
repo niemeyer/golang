@@ -1,6 +1,7 @@
 src/pkg/launchpad.net
 *.cgo*.go
 *.cgo*.c
+.hg/last-message.txt
 
 .DS_Store
 *.[568ao]
