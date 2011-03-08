@@ -14,6 +14,7 @@ Options:
   --new-cl [<info>]   Create a new CL and an empty branch named #-<info>
                       to hold it
   --push              Push all branches to the origin remote
+  --submit            Submit the current CL branch to hg
   --sync              Synchronize master with the tip of hg
 "
 
@@ -206,6 +207,10 @@ fi
 STATUS=`current_status`
 if [ "$STATUS" != "" ]; then
 	fatal "git status is not clean:\n$STATUS"
+fi
+HG_UNKNOWN=`hg status --unknown`
+if [ "$HG_UNKNOWN" != "" ]; then
+	fatal "hg has unknown files:\n$HG_UNKOWN"
 fi
 
 if [ "$SUBMIT" = 1 ]; then
