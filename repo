@@ -224,6 +224,8 @@ if [ "$SUBMIT" = 1 ]; then
 
 	if [ "$SUBMIT_FAILED" = 1 ]; then
 		fatal "hg submit failed"
+	else
+		commit -m "Removed submitted CL $CL_NUMBER description." .hg/codereview/cl.$CL_NUMBER
 	fi
 
 	exit 0
