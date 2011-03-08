@@ -93,6 +93,20 @@ checkout() {
 	git checkout -b $1 $2 > /dev/null
 }
 
+# enable_sync
+#
+# Enable synchronization with hg.
+enable_sync() {
+	sed -i 's/^\(pre.*enable-.*=\).*$/\1 true/' .hg/hgrc
+}
+
+# disable_sync
+#
+# Disable synchronization with hg.
+disable_sync() {
+	sed -i 's/^\(pre.*enable-.*=\).*$/\1 false/' .hg/hgrc
+}
+
 # add_all
 #
 # Adds all changes to the current git branch.
@@ -120,12 +134,16 @@ CL_NUMBER=
 CL_CREATE=0
 PUSH=0
 SYNC=0
+SUBMIT=0
 while [ $# -gt 0 ]; do
 	OPTION=$1
 	shift
 	case "$OPTION" in
 	--sync)
 		SYNC=1
+		;;
+	--submit)
+		SUBMIT=1
 		;;
 	--push)
 		PUSH=1
@@ -190,12 +208,32 @@ if [ "$STATUS" != "" ]; then
 	fatal "git status is not clean:\n$STATUS"
 fi
 
+if [ "$SUBMIT" = 1 ]; then
+	CL_BRANCH=`current_branch`
+	CL_NUMBER=`echo $CL_BRANCH | cut -d- -f1`
+	if ! echo "$CL_NUMBER" | grep '^[0-9]\+$' > /dev/null; then
+		fatal "can't submit branch '$CL_BRANCH'"
+	fi
+
+	enable_sync
+	SUBMIT_FAILED=0
+	if ! hg submit $CL_NUMBER; then
+		SUBMIT_FAILED=1
+	fi
+	disable_sync
+
+	if [ "$SUBMIT_FAILED" = 1 ]; then
+		fatal "hg submit failed"
+	fi
+
+	exit 0
+fi
+
 checkout master
 
 echo "Running 'hg sync' to synchronize with tip..."
 
-# Enable synchronization.
-sed -i 's/^\(pre.*enable-.*=\).*$/\1 true/' .hg/hgrc
+enable_sync
 
 OLD_ID=`hg id -i -n`
 HG_FAILED=0
@@ -204,8 +242,7 @@ if ! hg sync; then
 fi
 NEW_ID=`hg id -i -n`
 
-# Disable synchronization again.
-sed -i 's/^\(pre.*enable-.*=\).*$/\1 false/' .hg/hgrc
+disable_sync
 
 if [ "$HG_FAILED" = 1 ]; then
 	fatal "'hg sync' failed"
