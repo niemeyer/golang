@@ -1,7 +1,7 @@
 #!/bin/sh
 
 USAGE="
-Usage: sync [options]
+Usage: repo [options]
 
 sync will synchronize the master branch with 'hg sync' and commit the
 changes.  If the current branch is not the master, it will also merge
@@ -9,8 +9,12 @@ the changes made to master into the current branch.
 
 Options:
 
-  --cl #[-info]   Sync the provided CL to a local branch with the
-                  provided name, creating it if necessary.
+  --cl #[-<info>]     Sync the provided CL to a local branch with the
+                      provided name, creating the branch if necessary.
+  --new-cl [<info>]   Create a new CL and an empty branch named #-<info>
+                      to hold it
+  --push              Push all branches to the origin remote
+  --sync              Synchronize master with the tip of hg
 "
 
 set -e
@@ -107,14 +111,22 @@ commit() {
 	git commit "$@"
 }
 
+if [ $# -eq 0 ]; then
+	echo "$USAGE"
+	exit 1
+fi
 
 CL_NUMBER=
 CL_CREATE=0
 PUSH=0
+SYNC=0
 while [ $# -gt 0 ]; do
 	OPTION=$1
 	shift
 	case "$OPTION" in
+	--sync)
+		SYNC=1
+		;;
 	--push)
 		PUSH=1
 		if [ -n "$1" ]; then
