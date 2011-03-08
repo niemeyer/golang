@@ -1,0 +1,7 @@
+Mailed: True
+Description:
+	Make.cmd: also clean _test*
+	
+	Fixes issue 1593.
+Files:
+	src/Make.cmd
