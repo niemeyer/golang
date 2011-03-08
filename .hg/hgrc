@@ -1,3 +1,5 @@
+%include ~/.hgrc.go-auth
+
 [paths]
 default = https://go.googlecode.com/hg/
 
