@@ -8,6 +8,7 @@ codereview = /home/niemeyer/src/go/lib/codereview/codereview.py
 
 [ui]
 username = Gustavo Niemeyer <gustavo@niemeyer.net>
+ignore.local = .hgignore-local
 
 [hooks]
 prechangegroup.enable-pull = false
