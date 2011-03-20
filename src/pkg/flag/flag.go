@@ -56,7 +56,7 @@
 
 		flag.Bool(...)  // global options
 		flag.Parse()  // parse leading command
-		subcmd := flag.Args(0)
+		subcmd := flag.Arg[0]
 		switch subcmd {
 			// add per-subcommand options
 		}
@@ -68,6 +68,7 @@ package flag
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 )
 
@@ -205,16 +206,34 @@ type allFlags struct {
 
 var flags *allFlags
 
-// VisitAll visits the flags, calling fn for each. It visits all flags, even those not set.
+// sortFlags returns the flags as a slice in lexicographical sorted order.
+func sortFlags(flags map[string]*Flag) []*Flag {
+	list := make(sort.StringArray, len(flags))
+	i := 0
+	for _, f := range flags {
+		list[i] = f.Name
+		i++
+	}
+	list.Sort()
+	result := make([]*Flag, len(list))
+	for i, name := range list {
+		result[i] = flags[name]
+	}
+	return result
+}
+
+// VisitAll visits the flags in lexicographical order, calling fn for each.
+// It visits all flags, even those not set.
 func VisitAll(fn func(*Flag)) {
-	for _, f := range flags.formal {
+	for _, f := range sortFlags(flags.formal) {
 		fn(f)
 	}
 }
 
-// Visit visits the flags, calling fn for each. It visits only those flags that have been set.
+// Visit visits the flags in lexicographical order, calling fn for each.
+// It visits only those flags that have been set.
 func Visit(fn func(*Flag)) {
-	for _, f := range flags.actual {
+	for _, f := range sortFlags(flags.actual) {
 		fn(f)
 	}
 }
@@ -270,6 +289,7 @@ func failf(format string, a ...interface{}) {
 	os.Exit(2)
 }
 
+// NFlag returns the number of flags that have been set.
 func NFlag() int { return len(flags.actual) }
 
 // Arg returns the i'th command-line argument.  Arg(0) is the first remaining argument

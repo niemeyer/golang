@@ -558,7 +558,8 @@ type Fooer interface {
 
 <p>
 A type must then implement the <code>ImplementsFooer</code> method to be a
-<code>Fooer</code>, clearly documenting the fact.
+<code>Fooer</code>, clearly documenting the fact and announcing it in
+<a href="/cmd/godoc/">godoc</a>'s output.
 </p>
 
 <pre>
@@ -1032,7 +1033,7 @@ type checks, reflection, and even panic-time stack traces.
 
 <p>
 A trivial C "hello, world" program compiled and linked statically using gcc
-on Linux is around 750 kB.  An equivalent Go program is around 1.8 MB, but
+on Linux is around 750 kB.  An equivalent Go program is around 1.1 MB, but
 that includes more powerful run-time support.  We believe that with some effort
 the size of Go binaries can be reduced.
 

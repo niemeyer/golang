@@ -83,7 +83,7 @@ func exec(rw http.ResponseWriter, args []string) (status int) {
 	if *verbose {
 		log.Printf("executing %v", args)
 	}
-	p, err := os.StartProcess(bin, args, os.Environ(), *goroot, fds)
+	p, err := os.StartProcess(bin, args, &os.ProcAttr{Files: fds, Dir: *goroot})
 	defer r.Close()
 	w.Close()
 	if err != nil {
@@ -111,7 +111,7 @@ func exec(rw http.ResponseWriter, args []string) (status int) {
 		os.Stderr.Write(buf.Bytes())
 	}
 	if rw != nil {
-		rw.SetHeader("content-type", "text/plain; charset=utf-8")
+		rw.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		rw.Write(buf.Bytes())
 	}
 
@@ -152,7 +152,7 @@ func usage() {
 
 func loggingHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		log.Printf("%s\t%s", w.RemoteAddr(), req.URL)
+		log.Printf("%s\t%s", req.RemoteAddr, req.URL)
 		h.ServeHTTP(w, req)
 	})
 }
@@ -221,6 +221,9 @@ func makeRx(names []string) (rx *regexp.Regexp) {
 func main() {
 	flag.Usage = usage
 	flag.Parse()
+
+	// Clean goroot: normalize path separator.
+	*goroot = filepath.Clean(*goroot)
 
 	// Check usage: either server and no args, or command line and args
 	if (*httpAddr != "") != (flag.NArg() == 0) {

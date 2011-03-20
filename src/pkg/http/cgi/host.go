@@ -74,9 +74,13 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		"PATH_INFO=" + pathInfo,
 		"SCRIPT_NAME=" + root,
 		"SCRIPT_FILENAME=" + h.Path,
-		"REMOTE_ADDR=" + rw.RemoteAddr(),
-		"REMOTE_HOST=" + rw.RemoteAddr(),
+		"REMOTE_ADDR=" + req.RemoteAddr,
+		"REMOTE_HOST=" + req.RemoteAddr,
 		"SERVER_PORT=" + port,
+	}
+
+	if req.TLS != nil {
+		env = append(env, "HTTPS=on")
 	}
 
 	if len(req.Cookie) > 0 {
@@ -139,7 +143,7 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	linebody := line.NewReader(cmd.Stdout, 1024)
-	headers := make(map[string]string)
+	headers := rw.Header()
 	statusCode := http.StatusOK
 	for {
 		line, isPrefix, err := linebody.ReadLine()
@@ -181,11 +185,8 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			}
 			statusCode = code
 		default:
-			headers[header] = val
+			headers.Add(header, val)
 		}
-	}
-	for h, v := range headers {
-		rw.SetHeader(h, v)
 	}
 	rw.WriteHeader(statusCode)
 

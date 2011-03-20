@@ -47,9 +47,9 @@ type parser struct {
 	lineComment *ast.CommentGroup // last line comment
 
 	// Next token
-	pos token.Pos   // token position
-	tok token.Token // one token look-ahead
-	lit []byte      // token literal
+	pos  token.Pos   // token position
+	tok  token.Token // one token look-ahead
+	lit_ []byte      // token literal (slice into original source, don't hold on to it)
 
 	// Non-syntactic parser control
 	exprLev int // < 0: in control clause, >= 0: in expression
@@ -92,6 +92,15 @@ func (p *parser) init(fset *token.FileSet, filename string, src []byte, mode uin
 
 	// for the same reason, set up a label scope
 	p.openLabelScope()
+}
+
+
+func (p *parser) lit() []byte {
+	// make a copy of p.lit_ so that we don't hold on to
+	// a copy of the entire source indirectly in the AST
+	t := make([]byte, len(p.lit_))
+	copy(t, p.lit_)
+	return t
 }
 
 
@@ -235,7 +244,7 @@ func (p *parser) next0() {
 		s := p.tok.String()
 		switch {
 		case p.tok.IsLiteral():
-			p.printTrace(s, string(p.lit))
+			p.printTrace(s, string(p.lit_))
 		case p.tok.IsOperator(), p.tok.IsKeyword():
 			p.printTrace("\"" + s + "\"")
 		default:
@@ -243,7 +252,7 @@ func (p *parser) next0() {
 		}
 	}
 
-	p.pos, p.tok, p.lit = p.scanner.Scan()
+	p.pos, p.tok, p.lit_ = p.scanner.Scan()
 }
 
 // Consume a comment and return it and the line on which it ends.
@@ -251,15 +260,15 @@ func (p *parser) consumeComment() (comment *ast.Comment, endline int) {
 	// /*-style comments may end on a different line than where they start.
 	// Scan the comment for '\n' chars and adjust endline accordingly.
 	endline = p.file.Line(p.pos)
-	if p.lit[1] == '*' {
-		for _, b := range p.lit {
+	if p.lit_[1] == '*' {
+		for _, b := range p.lit_ {
 			if b == '\n' {
 				endline++
 			}
 		}
 	}
 
-	comment = &ast.Comment{p.pos, p.lit}
+	comment = &ast.Comment{p.pos, p.lit()}
 	p.next0()
 
 	return
@@ -349,12 +358,12 @@ func (p *parser) errorExpected(pos token.Pos, msg string) {
 	if pos == p.pos {
 		// the error happened at the current position;
 		// make the error message more specific
-		if p.tok == token.SEMICOLON && p.lit[0] == '\n' {
+		if p.tok == token.SEMICOLON && p.lit_[0] == '\n' {
 			msg += ", found newline"
 		} else {
 			msg += ", found '" + p.tok.String() + "'"
 			if p.tok.IsLiteral() {
-				msg += " " + string(p.lit)
+				msg += " " + string(p.lit_)
 			}
 		}
 	}
@@ -386,7 +395,7 @@ func (p *parser) parseIdent() *ast.Ident {
 	pos := p.pos
 	name := "_"
 	if p.tok == token.IDENT {
-		name = string(p.lit)
+		name = string(p.lit_)
 		p.next()
 	} else {
 		p.expect(token.IDENT) // use expect() error handling
@@ -525,7 +534,7 @@ func (p *parser) parseFieldDecl() *ast.Field {
 	// optional tag
 	var tag *ast.BasicLit
 	if p.tok == token.STRING {
-		tag = &ast.BasicLit{p.pos, p.tok, p.lit}
+		tag = &ast.BasicLit{p.pos, p.tok, p.lit()}
 		p.next()
 	}
 
@@ -943,7 +952,7 @@ func (p *parser) parseOperand() ast.Expr {
 		return ident
 
 	case token.INT, token.FLOAT, token.IMAG, token.CHAR, token.STRING:
-		x := &ast.BasicLit{p.pos, p.tok, p.lit}
+		x := &ast.BasicLit{p.pos, p.tok, p.lit()}
 		p.next()
 		return x
 
@@ -1518,29 +1527,6 @@ func (p *parser) parseIfStmt() *ast.IfStmt {
 }
 
 
-func (p *parser) parseCaseClause() *ast.CaseClause {
-	if p.trace {
-		defer un(trace(p, "CaseClause"))
-	}
-
-	pos := p.pos
-	var x []ast.Expr
-	if p.tok == token.CASE {
-		p.next()
-		x = p.parseExprList()
-	} else {
-		p.expect(token.DEFAULT)
-	}
-
-	colon := p.expect(token.COLON)
-	p.openScope()
-	body := p.parseStmtList()
-	p.closeScope()
-
-	return &ast.CaseClause{pos, x, colon, body}
-}
-
-
 func (p *parser) parseTypeList() (list []ast.Expr) {
 	if p.trace {
 		defer un(trace(p, "TypeList"))
@@ -1556,16 +1542,20 @@ func (p *parser) parseTypeList() (list []ast.Expr) {
 }
 
 
-func (p *parser) parseTypeCaseClause() *ast.TypeCaseClause {
+func (p *parser) parseCaseClause(exprSwitch bool) *ast.CaseClause {
 	if p.trace {
-		defer un(trace(p, "TypeCaseClause"))
+		defer un(trace(p, "CaseClause"))
 	}
 
 	pos := p.pos
-	var types []ast.Expr
+	var list []ast.Expr
 	if p.tok == token.CASE {
 		p.next()
-		types = p.parseTypeList()
+		if exprSwitch {
+			list = p.parseExprList()
+		} else {
+			list = p.parseTypeList()
+		}
 	} else {
 		p.expect(token.DEFAULT)
 	}
@@ -1575,7 +1565,7 @@ func (p *parser) parseTypeCaseClause() *ast.TypeCaseClause {
 	body := p.parseStmtList()
 	p.closeScope()
 
-	return &ast.TypeCaseClause{pos, types, colon, body}
+	return &ast.CaseClause{pos, list, colon, body}
 }
 
 
@@ -1620,28 +1610,21 @@ func (p *parser) parseSwitchStmt() ast.Stmt {
 		p.exprLev = prevLev
 	}
 
-	if isExprSwitch(s2) {
-		lbrace := p.expect(token.LBRACE)
-		var list []ast.Stmt
-		for p.tok == token.CASE || p.tok == token.DEFAULT {
-			list = append(list, p.parseCaseClause())
-		}
-		rbrace := p.expect(token.RBRACE)
-		body := &ast.BlockStmt{lbrace, list, rbrace}
-		p.expectSemi()
-		return &ast.SwitchStmt{pos, s1, p.makeExpr(s2), body}
-	}
-
-	// type switch
-	// TODO(gri): do all the checks!
+	exprSwitch := isExprSwitch(s2)
 	lbrace := p.expect(token.LBRACE)
 	var list []ast.Stmt
 	for p.tok == token.CASE || p.tok == token.DEFAULT {
-		list = append(list, p.parseTypeCaseClause())
+		list = append(list, p.parseCaseClause(exprSwitch))
 	}
 	rbrace := p.expect(token.RBRACE)
 	p.expectSemi()
 	body := &ast.BlockStmt{lbrace, list, rbrace}
+
+	if exprSwitch {
+		return &ast.SwitchStmt{pos, s1, p.makeExpr(s2), body}
+	}
+	// type switch
+	// TODO(gri): do all the checks!
 	return &ast.TypeSwitchStmt{pos, s1, s2, body}
 }
 
@@ -1864,10 +1847,10 @@ func (p *parser) parseStmt() (s ast.Stmt) {
 // ----------------------------------------------------------------------------
 // Declarations
 
-type parseSpecFunction func(p *parser, doc *ast.CommentGroup) ast.Spec
+type parseSpecFunction func(p *parser, doc *ast.CommentGroup, iota int) ast.Spec
 
 
-func parseImportSpec(p *parser, doc *ast.CommentGroup) ast.Spec {
+func parseImportSpec(p *parser, doc *ast.CommentGroup, _ int) ast.Spec {
 	if p.trace {
 		defer un(trace(p, "ImportSpec"))
 	}
@@ -1883,7 +1866,7 @@ func parseImportSpec(p *parser, doc *ast.CommentGroup) ast.Spec {
 
 	var path *ast.BasicLit
 	if p.tok == token.STRING {
-		path = &ast.BasicLit{p.pos, p.tok, p.lit}
+		path = &ast.BasicLit{p.pos, p.tok, p.lit()}
 		p.next()
 	} else {
 		p.expect(token.STRING) // use expect() error handling
@@ -1894,7 +1877,7 @@ func parseImportSpec(p *parser, doc *ast.CommentGroup) ast.Spec {
 }
 
 
-func parseConstSpec(p *parser, doc *ast.CommentGroup) ast.Spec {
+func parseConstSpec(p *parser, doc *ast.CommentGroup, iota int) ast.Spec {
 	if p.trace {
 		defer un(trace(p, "ConstSpec"))
 	}
@@ -1902,7 +1885,7 @@ func parseConstSpec(p *parser, doc *ast.CommentGroup) ast.Spec {
 	idents := p.parseIdentList()
 	typ := p.tryType()
 	var values []ast.Expr
-	if typ != nil || p.tok == token.ASSIGN {
+	if typ != nil || p.tok == token.ASSIGN || iota == 0 {
 		p.expect(token.ASSIGN)
 		values = p.parseExprList()
 	}
@@ -1919,7 +1902,7 @@ func parseConstSpec(p *parser, doc *ast.CommentGroup) ast.Spec {
 }
 
 
-func parseTypeSpec(p *parser, doc *ast.CommentGroup) ast.Spec {
+func parseTypeSpec(p *parser, doc *ast.CommentGroup, _ int) ast.Spec {
 	if p.trace {
 		defer un(trace(p, "TypeSpec"))
 	}
@@ -1939,7 +1922,7 @@ func parseTypeSpec(p *parser, doc *ast.CommentGroup) ast.Spec {
 }
 
 
-func parseVarSpec(p *parser, doc *ast.CommentGroup) ast.Spec {
+func parseVarSpec(p *parser, doc *ast.CommentGroup, _ int) ast.Spec {
 	if p.trace {
 		defer un(trace(p, "VarSpec"))
 	}
@@ -1976,13 +1959,13 @@ func (p *parser) parseGenDecl(keyword token.Token, f parseSpecFunction) *ast.Gen
 	if p.tok == token.LPAREN {
 		lparen = p.pos
 		p.next()
-		for p.tok != token.RPAREN && p.tok != token.EOF {
-			list = append(list, f(p, p.leadComment))
+		for iota := 0; p.tok != token.RPAREN && p.tok != token.EOF; iota++ {
+			list = append(list, f(p, p.leadComment, iota))
 		}
 		rparen = p.expect(token.RPAREN)
 		p.expectSemi()
 	} else {
-		list = append(list, f(p, nil))
+		list = append(list, f(p, nil, 0))
 	}
 
 	return &ast.GenDecl{doc, pos, keyword, lparen, list, rparen}

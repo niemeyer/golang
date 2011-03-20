@@ -41,8 +41,10 @@ CLEANDIRS=\
 	cgo\
 	ebnflint\
 	godoc\
+	gofix\
 	gofmt\
 	goinstall\
+	gotype\
 	goyacc\
 	hgpatch\
 

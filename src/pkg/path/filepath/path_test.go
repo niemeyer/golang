@@ -68,7 +68,7 @@ var cleantests = []PathTest{
 
 func TestClean(t *testing.T) {
 	for _, test := range cleantests {
-		if s := filepath.Clean(test.path); s != test.result {
+		if s := filepath.ToSlash(filepath.Clean(test.path)); s != test.result {
 			t.Errorf("Clean(%q) = %q, want %q", test.path, s, test.result)
 		}
 	}
@@ -161,6 +161,14 @@ var jointests = []JoinTest{
 	{[]string{"", ""}, ""},
 }
 
+var winjointests = []JoinTest{
+	{[]string{`directory`, `file`}, `directory\file`},
+	{[]string{`C:\Windows\`, `System32`}, `C:\Windows\System32`},
+	{[]string{`C:\Windows\`, ``}, `C:\Windows`},
+	{[]string{`C:\`, `Windows`}, `C:\Windows`},
+	{[]string{`C:`, `Windows`}, `C:\Windows`},
+}
+
 // join takes a []string and passes it to Join.
 func join(elem []string, args ...string) string {
 	args = elem
@@ -168,8 +176,11 @@ func join(elem []string, args ...string) string {
 }
 
 func TestJoin(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		jointests = append(jointests, winjointests...)
+	}
 	for _, test := range jointests {
-		if p := join(test.elem); p != test.path {
+		if p := join(test.elem); p != filepath.FromSlash(test.path) {
 			t.Errorf("join(%q) = %q, want %q", test.elem, p, test.path)
 		}
 	}
@@ -261,6 +272,7 @@ func checkMarks(t *testing.T) {
 
 // Assumes that each node name is unique. Good enough for a test.
 func mark(name string) {
+	name = filepath.ToSlash(name)
 	walkTree(tree, tree.name, func(path string, n *Node) {
 		if n.name == name {
 			n.mark++
@@ -302,7 +314,7 @@ func TestWalk(t *testing.T) {
 	}
 	checkMarks(t)
 
-	if os.Getuid() != 0 {
+	if os.Getuid() > 0 {
 		// introduce 2 errors: chmod top-level directories to 0
 		os.Chmod(filepath.Join(tree.name, tree.entries[1].name), 0)
 		os.Chmod(filepath.Join(tree.name, tree.entries[3].name), 0)
@@ -361,7 +373,7 @@ var basetests = []PathTest{
 
 func TestBase(t *testing.T) {
 	for _, test := range basetests {
-		if s := filepath.Base(test.path); s != test.result {
+		if s := filepath.ToSlash(filepath.Base(test.path)); s != test.result {
 			t.Errorf("Base(%q) = %q, want %q", test.path, s, test.result)
 		}
 	}
@@ -372,7 +384,7 @@ type IsAbsTest struct {
 	isAbs bool
 }
 
-var isAbsTests = []IsAbsTest{
+var isabstests = []IsAbsTest{
 	{"", false},
 	{"/", true},
 	{"/usr/bin/gcc", true},
@@ -383,10 +395,90 @@ var isAbsTests = []IsAbsTest{
 	{"lala", false},
 }
 
+var winisabstests = []IsAbsTest{
+	{`C:\`, true},
+	{`c\`, false},
+	{`c::`, false},
+	{`/`, true},
+	{`\`, true},
+	{`\Windows`, true},
+}
+
 func TestIsAbs(t *testing.T) {
-	for _, test := range isAbsTests {
+	if runtime.GOOS == "windows" {
+		isabstests = append(isabstests, winisabstests...)
+	}
+	for _, test := range isabstests {
 		if r := filepath.IsAbs(test.path); r != test.isAbs {
 			t.Errorf("IsAbs(%q) = %v, want %v", test.path, r, test.isAbs)
+		}
+	}
+}
+
+type EvalSymlinksTest struct {
+	path, dest string
+}
+
+var EvalSymlinksTestDirs = []EvalSymlinksTest{
+	{"test", ""},
+	{"test/dir", ""},
+	{"test/dir/link3", "../../"},
+	{"test/link1", "../test"},
+	{"test/link2", "dir"},
+}
+
+var EvalSymlinksTests = []EvalSymlinksTest{
+	{"test", "test"},
+	{"test/dir", "test/dir"},
+	{"test/dir/../..", "."},
+	{"test/link1", "test"},
+	{"test/link2", "test/dir"},
+	{"test/link1/dir", "test/dir"},
+	{"test/link2/..", "test"},
+	{"test/dir/link3", "."},
+	{"test/link2/link3/test", "test"},
+}
+
+func TestEvalSymlinks(t *testing.T) {
+	// Symlinks are not supported under windows.
+	if runtime.GOOS == "windows" {
+		return
+	}
+	defer os.RemoveAll("test")
+	for _, d := range EvalSymlinksTestDirs {
+		var err os.Error
+		if d.dest == "" {
+			err = os.Mkdir(d.path, 0755)
+		} else {
+			err = os.Symlink(d.dest, d.path)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	// relative
+	for _, d := range EvalSymlinksTests {
+		if p, err := filepath.EvalSymlinks(d.path); err != nil {
+			t.Errorf("EvalSymlinks(%v) error: %v", d.path, err)
+		} else if p != d.dest {
+			t.Errorf("EvalSymlinks(%v)=%v, want %v", d.path, p, d.dest)
+		}
+	}
+	// absolute
+	goroot, err := filepath.EvalSymlinks(os.Getenv("GOROOT"))
+	if err != nil {
+		t.Fatalf("EvalSymlinks(%q) error: %v", os.Getenv("GOROOT"), err)
+	}
+	testroot := filepath.Join(goroot, "src", "pkg", "path", "filepath")
+	for _, d := range EvalSymlinksTests {
+		a := EvalSymlinksTest{
+			filepath.Join(testroot, d.path),
+			filepath.Join(testroot, d.dest),
+		}
+		if p, err := filepath.EvalSymlinks(a.path); err != nil {
+			t.Errorf("EvalSymlinks(%v) error: %v", a.path, err)
+		} else if p != a.dest {
+			t.Errorf("EvalSymlinks(%v)=%v, want %v", a.path, p, a.dest)
 		}
 	}
 }

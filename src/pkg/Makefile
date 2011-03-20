@@ -37,6 +37,7 @@ DIRS=\
 	crypto/cast5\
 	crypto/cipher\
 	crypto/dsa\
+	crypto/ecdsa\
 	crypto/elliptic\
 	crypto/hmac\
 	crypto/md4\
@@ -154,7 +155,9 @@ DIRS=\
 	../cmd/cgo\
 	../cmd/ebnflint\
 	../cmd/godoc\
+	../cmd/gofix\
 	../cmd/gofmt\
+	../cmd/gotype\
 	../cmd/goinstall\
 	../cmd/govet\
 	../cmd/goyacc\
@@ -199,7 +202,7 @@ NOBENCH=\
 
 # Disable tests that depend on an external network.
 ifeq ($(DISABLE_NET_TESTS),1)
-NOTEST+=http net syslog
+NOTEST+=net syslog
 endif
 
 # Disable tests that windows cannot run yet.
