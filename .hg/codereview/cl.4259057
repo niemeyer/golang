@@ -1,0 +1,9 @@
+Mailed: True
+Description:
+	goinstall: handle .c files with gc when cgo isn't used
+	
+	As a data point, this enables goinstall to handle the standard
+	syscall package almost unchanged (there's one file with the _bsd
+	extension, and a .c file which isn't supposed to be compiled in).
+Files:
+	src/cmd/goinstall/make.go
