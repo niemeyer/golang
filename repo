@@ -155,7 +155,7 @@ while [ $# -gt 0 ]; do
 	--new-cl)
 		CL_CREATE=1
 		if [ -z "$1" ]; then
-			CL_BRANCH_SUFFIX=
+			fatal "--new-cl requires a branch suffix argument"
 		else
 			CL_BRANCH_SUFFIX="-$1"
 		fi
