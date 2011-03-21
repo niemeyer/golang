@@ -75,7 +75,7 @@ func modeToFiles(mode, fd int) (*os.File, *os.File, os.Error) {
 
 // Run starts the named binary running with
 // arguments argv and environment envv.
-// If the dir argument is not empty, the child chdirs
+// If the dir argument is not empty, the child changes
 // into the directory before executing the binary.
 // It returns a pointer to a new Cmd representing
 // the command or an error.
