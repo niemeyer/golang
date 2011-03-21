@@ -135,6 +135,7 @@ CL_NUMBER=
 CL_CREATE=0
 PUSH=0
 SYNC=0
+NO_SYNC=0
 SUBMIT=0
 while [ $# -gt 0 ]; do
 	OPTION=$1
@@ -142,6 +143,9 @@ while [ $# -gt 0 ]; do
 	case "$OPTION" in
 	--sync)
 		SYNC=1
+		;;
+	--no-sync)
+		NO_SYNC=1
 		;;
 	--submit)
 		SUBMIT=1
@@ -238,53 +242,55 @@ fi
 
 checkout master
 
-echo "Running 'hg sync' to synchronize with tip..."
+if [ "$NO_SYNC" = 0 ]; then
+	echo "Running 'hg sync' to synchronize with tip..."
 
-enable_sync
+	enable_sync
 
-OLD_ID=`hg id -i -n`
-HG_FAILED=0
-if ! hg sync; then
-	HG_FAILED=1
-fi
-NEW_ID=`hg id -i -n`
+	OLD_ID=`hg id -i -n`
+	HG_FAILED=0
+	if ! hg sync; then
+		HG_FAILED=1
+	fi
+	NEW_ID=`hg id -i -n`
 
-disable_sync
+	disable_sync
 
-if [ "$HG_FAILED" = 1 ]; then
-	fatal "'hg sync' failed"
-fi
+	if [ "$HG_FAILED" = 1 ]; then
+		fatal "'hg sync' failed"
+	fi
 
-REVIEW_STATUS=`current_status .hg/codereview | sed 's/.hg\/codereview//'`
+	REVIEW_STATUS=`current_status .hg/codereview | sed 's/.hg\/codereview//'`
 
-if [ "$NEW_ID" = "$OLD_ID" ]; then
-	echo "hg is already up-to-date."
-else
-	echo "Old version: $OLD_ID"
-	echo "New version: $NEW_ID"
-	add_all
-	STATUS=`current_status`
-	#git update-index --no-assume-unchanged .hg/dirstate
-	COMMIT_FAILED=0
-	if [ "$STATUS" != "" ]; then
-		echo "Committing changes to 'master' branch..."
-		# Don't use commit function here so that dirstate goes together.
-		if ! git commit -m "Updated to hg $NEW_ID" > /dev/null; then
-			COMMIT_FAILED=1
+	if [ "$NEW_ID" = "$OLD_ID" ]; then
+		echo "hg is already up-to-date."
+	else
+		echo "Old version: $OLD_ID"
+		echo "New version: $NEW_ID"
+		add_all
+		STATUS=`current_status`
+		#git update-index --no-assume-unchanged .hg/dirstate
+		COMMIT_FAILED=0
+		if [ "$STATUS" != "" ]; then
+			echo "Committing changes to 'master' branch..."
+			# Don't use commit function here so that dirstate goes together.
+			if ! git commit -m "Updated to hg $NEW_ID" > /dev/null; then
+				COMMIT_FAILED=1
+			fi
+		fi
+		#git update-index --assume-unchanged .hg/dirstate
+		if [ $COMMIT_FAILED = 1 ]; then
+			fatal "git commit failed"
 		fi
 	fi
-	#git update-index --assume-unchanged .hg/dirstate
-	if [ $COMMIT_FAILED = 1 ]; then
-		fatal "git commit failed"
-	fi
-fi
 
-if [ "$REVIEW_STATUS" != "" ]; then
-	echo "Code reviews changed:\n$REVIEW_STATUS"
-	if [ "$NEW_ID" = "$OLD_ID" ]; then
-		add_all .hg/codereview
-		echo "Committing code review changes to 'master' branch..."
-		echo "Code reviews changed:\n$REVIEW_STATUS" | commit -F - > /dev/null
+	if [ "$REVIEW_STATUS" != "" ]; then
+		echo "Code reviews changed:\n$REVIEW_STATUS"
+		if [ "$NEW_ID" = "$OLD_ID" ]; then
+			add_all .hg/codereview
+			echo "Committing code review changes to 'master' branch..."
+			echo "Code reviews changed:\n$REVIEW_STATUS" | commit -F - > /dev/null
+		fi
 	fi
 fi
 
