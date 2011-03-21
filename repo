@@ -237,6 +237,22 @@ if [ "$SUBMIT" = 1 ]; then
 		commit -m "Removed submitted CL $CL_NUMBER description." .hg/codereview/cl.$CL_NUMBER
 	fi
 
+	# Remove changes done to .hg on the submit.
+	git reset --hard
+
+	# Drop all revisions which modified the dirstate.
+	for REVISION in `git rev-list master...HEAD --grep='Updated dirstate.'`; do
+		echo "Dropping dirstate revision $REVISION..."
+		git rebase --onto $REVISION^ $REVISION
+	done
+
+	echo "Merging $CL_BRANCH onto master..."
+	checkout master
+	git merge --no-ff $CL_BRANCH
+
+	echo "Removing $CL_BRANCH..."
+	git branch -d $CL_BRANCH
+
 	exit 0
 fi
 
