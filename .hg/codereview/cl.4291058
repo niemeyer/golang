@@ -1,0 +1,10 @@
+Mailed: True
+Description:
+	rpc: increase server_test timeout
+	
+	These timeouts are breaking tests in very slow
+	systems every once in a while.  I've noticed
+	problems when compiling the Ubuntu packages for
+	arm, specifically.
+Files:
+	src/pkg/rpc/server_test.go
