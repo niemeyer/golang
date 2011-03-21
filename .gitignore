@@ -61,10 +61,12 @@ src/cmd/cgo/cgo
 src/cmd/ebnflint/ebnflint
 src/cmd/godefs/godefs
 src/cmd/godoc/godoc
+src/cmd/gofix/gofix
 src/cmd/gofmt/gofmt
 src/cmd/goinstall/goinstall
 src/cmd/goinstall/syslist.go
 src/cmd/gopack/gopack
+src/cmd/gotype/gotype
 src/cmd/govet/govet
 src/cmd/goyacc/goyacc
 src/cmd/hgpatch/hgpatch
