@@ -1,4 +1,5 @@
-Mailed: False
+Mailed: True
 Description:
 	exec: document dir option for Run
 Files:
+	src/pkg/exec/exec.go
