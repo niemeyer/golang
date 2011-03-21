@@ -1,20 +1,6 @@
-Mailed: False
+Mailed: True
 Description:
 	filepath: new Abs function
-	
-	The new filepath.Abs function returns an absolute and
-	clean representation of path.
-	
-	The choice of stating explicitly that it returns a clean
-	version is based on the fact that joining relative paths
-	commonly leads to dirty versions such as "/a/.",
-	"/a/./b", etc.
-	
-	We might opt to Clean it only when the provided path is
-	not detected to be absolute, but the fact that an absolute
-	path is being passed to Abs is a clear indication that the
-	developer got the input in an unknown state, so it feels
-	good to stay simple and clean it up at all times.
 Files:
 	src/pkg/path/filepath/path.go
 	src/pkg/path/filepath/path_test.go
