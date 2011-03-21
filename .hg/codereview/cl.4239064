@@ -1,8 +1,0 @@
-Mailed: True
-Description:
-	build: reenable clean.bash without gomake
-	
-	This change had already been made in revision 7371, but
-	was then undone with changes in revision 7606.
-Files:
-	src/clean.bash
