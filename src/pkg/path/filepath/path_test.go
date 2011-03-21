@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -459,9 +460,9 @@ func TestEvalSymlinks(t *testing.T) {
 	// relative
 	for _, d := range EvalSymlinksTests {
 		if p, err := filepath.EvalSymlinks(d.path); err != nil {
-			t.Errorf("EvalSymlinks(%v) error: %v", d.path, err)
+			t.Errorf("EvalSymlinks(%q) error: %v", d.path, err)
 		} else if p != d.dest {
-			t.Errorf("EvalSymlinks(%v)=%v, want %v", d.path, p, d.dest)
+			t.Errorf("EvalSymlinks(%q)=%q, want %q", d.path, p, d.dest)
 		}
 	}
 	// absolute
@@ -476,9 +477,36 @@ func TestEvalSymlinks(t *testing.T) {
 			filepath.Join(testroot, d.dest),
 		}
 		if p, err := filepath.EvalSymlinks(a.path); err != nil {
-			t.Errorf("EvalSymlinks(%v) error: %v", a.path, err)
+			t.Errorf("EvalSymlinks(%q) error: %v", a.path, err)
 		} else if p != a.dest {
-			t.Errorf("EvalSymlinks(%v)=%v, want %v", a.path, p, a.dest)
+			t.Errorf("EvalSymlinks(%q)=%q, want %q", a.path, p, a.dest)
+		}
+	}
+}
+
+var abstests = []PathTest{
+	{"/already/abs", "/already/abs"},
+	{"src", "$CWD/src"},
+	{"./src", "$CWD/src"},
+	{"../other", "$CWD/../other"},
+}
+
+func TestAbs(t *testing.T) {
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal("Getwd failed: " + err.String())
+	}
+	defer os.Chdir(oldwd)
+	cwd := os.Getenv("GOROOT")
+	os.Chdir(cwd)
+	for _, test := range abstests {
+		abspath, err := filepath.Abs(test.path)
+		if err != nil {
+			t.Errorf("Abs(%q) error: %v", err)
+		}
+		want := filepath.Clean(strings.Replace(test.result, "$CWD", cwd, -1))
+		if abspath != want {
+			t.Errorf("Abs(%q)=%q, want %q", test.path, abspath, want)
 		}
 	}
 }
