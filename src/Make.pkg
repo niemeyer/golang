@@ -41,6 +41,14 @@ CGO_OFILES+=$(patsubst %.go,%.cgo2.o,$(CGOFILES)) _cgo_export.o
 OFILES+=_cgo_defun.$O _cgo_import.$O $(CGO_OFILES)
 endif
 
+ifdef SWIGFILES
+GOFILES+=$(patsubst %.swig,_obj/%.go,$(patsubst %.swigcxx,%.swig,$(SWIGFILES)))
+OFILES+=$(patsubst %.swig,_obj/%_gc.$O,$(patsubst %.swigcxx,%.swig,$(SWIGFILES)))
+SWIG_PREFIX=$(subst /,-,$(TARG))
+SWIG_SOS+=$(patsubst %.swig,_obj/$(SWIG_PREFIX)-%.so,$(patsubst %.swigcxx,%.swig,$(SWIGFILES)))
+INSTALLFILES+=$(patsubst %.swig,$(pkgdir)/swig/$(SWIG_PREFIX)-%.so,$(patsubst %.swigcxx,%.swig,$(SWIGFILES)))
+endif
+
 PREREQ+=$(patsubst %,%.make,$(DEPS))
 
 coverage:
@@ -51,6 +59,9 @@ CLEANFILES+=*.so _obj _test _testmain.go *.exe _cgo* *.cgo[12].*
 
 test:
 	gotest
+
+testshort:
+	gotest -test.short -test.timeout=60
 
 bench:
 	gotest -test.bench=. -test.run="Do not run tests"
@@ -172,6 +183,54 @@ RUNTIME_CFLAGS=-I$(pkgdir)
 # Compile _cgo_defun.c with 6c; needs access to the runtime headers.
 _cgo_defun.$O: _obj/_cgo_defun.c
 	$(CC) $(CFLAGS) $(RUNTIME_CFLAGS) -I . -o "$@" _obj/_cgo_defun.c
+
+# To use swig in a Go package, add a line
+#
+#	SWIGFILES=x.swig
+#
+# to the main Makefile.  This signals that SWIG should process the
+#.swig file when building the package.
+#
+# To wrap C code, use an extension of .swig.  To wrap C++ code, use an
+# extension of .swigcxx.
+#
+#	SWIGFILES=myclib.swig mycxxlib.swigcxx
+
+ifdef SWIGFILES
+_obj/%._swig_run _obj/%.go _obj/%_gc.c _obj/%_wrap.c: %.swig
+	@mkdir -p _obj
+	swig -go -module $* -soname $(SWIG_PREFIX)-$*.so -o _obj/$*_wrap.c -outdir _obj $<
+
+_obj/%._swig_run _obj/%.go _obj/%_gc.c _obj/%_wrap.cxx: %.swigcxx
+	@mkdir -p _obj
+	swig -go -c++ -module $* -soname $(SWIG_PREFIX)-$*.so -o _obj/$*_wrap.cxx -outdir _obj $<
+
+_obj/%_gc.$O: _obj/%_gc.c
+	$(CC) $(CFLAGS) -I . -I$(pkgdir) -o "$@" _obj/$*_gc.c
+
+_obj/%_wrap.o: _obj/%_wrap.c
+	$(HOST_CC) $(_CGO_CFLAGS_$(GOARCH)) -I . -g -fPIC -O2 -o $@ -c $^ $(SWIG_CFLAGS)
+
+HOST_CXX=g++
+
+_obj/%_wrapcxx.o: _obj/%_wrap.cxx
+	$(HOST_CXX) $(_CGO_CFLAGS_$(GOARCH)) -I . -g -fPIC -O2 -o $@ -c $^ $(SWIG_CXXFLAGS)
+
+_obj/$(SWIG_PREFIX)-%.so: _obj/%_wrap.o
+	$(HOST_CC) $(_CGO_CFLAGS_$(GOARCH)) -o $@ $^ $(SWIG_LDFLAGS) $(_CGO_LDFLAGS_$(GOOS)) $(_SWIG_LDFLAGS_$(GOOS))
+
+_obj/$(SWIG_PREFIX)-%.so: _obj/%_wrapcxx.o
+	$(HOST_CXX) $(_CGO_CFLAGS_$(GOARCH)) -o $@ $^ $(SWIG_LDFLAGS) $(_CGO_LDFLAGS_$(GOOS)) $(_SWIG_LDFLAGS_$(GOOS))
+
+$(pkgdir)/swig/$(SWIG_PREFIX)-%.so: _obj/$(SWIG_PREFIX)-%.so
+	@test -d $(QUOTED_GOROOT)/pkg && mkdir -p $(pkgdir)/swig
+	cp $< "$@"
+
+all: $(SWIG_SOS)
+
+SWIG_RPATH=-r $(pkgdir)/swig
+
+endif
 
 # Generic build rules.
 # These come last so that the rules above can override them

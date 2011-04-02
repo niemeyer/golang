@@ -157,8 +157,9 @@ DIRS=\
 	../cmd/godoc\
 	../cmd/gofix\
 	../cmd/gofmt\
-	../cmd/gotype\
 	../cmd/goinstall\
+	../cmd/gotest\
+	../cmd/gotype\
 	../cmd/govet\
 	../cmd/goyacc\
 	../cmd/hgpatch\
@@ -169,7 +170,7 @@ DIRS+=\
 
 endif
 
-NOTEST=\
+NOTEST+=\
 	crypto\
 	crypto/openpgp/error\
 	debug/proc\
@@ -184,7 +185,6 @@ NOTEST=\
 	net/dict\
 	rand\
 	runtime/cgo\
-	runtime/pprof\
 	syscall\
 	testing\
 	testing/iotest\
@@ -193,11 +193,12 @@ NOTEST=\
 	../cmd/ebnflint\
 	../cmd/godoc\
 	../cmd/gofmt\
+	../cmd/gotest\
 	../cmd/govet\
 	../cmd/goyacc\
 	../cmd/hgpatch\
 
-NOBENCH=\
+NOBENCH+=\
 	container/vector\
 
 # Disable tests that depend on an external network.
@@ -223,6 +224,7 @@ clean.dirs: $(addsuffix .clean, $(DIRS))
 install.dirs: $(addsuffix .install, $(DIRS))
 nuke.dirs: $(addsuffix .nuke, $(DIRS))
 test.dirs: $(addsuffix .test, $(TEST))
+testshort.dirs: $(addsuffix .testshort, $(TEST))
 bench.dirs: $(addsuffix .bench, $(BENCH))
 
 %.clean:
@@ -237,6 +239,9 @@ bench.dirs: $(addsuffix .bench, $(BENCH))
 %.test:
 	+$(MAKE) -C $* test
 
+%.testshort:
+	+$(MAKE) -C $* testshort
+
 %.bench:
 	+$(MAKE) -C $* bench	
 
@@ -245,6 +250,8 @@ clean: clean.dirs
 install: install.dirs
 
 test:	test.dirs
+
+testshort: testshort.dirs
 
 bench:	bench.dirs ../../test/garbage.bench
 

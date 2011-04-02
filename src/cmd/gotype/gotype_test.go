@@ -5,25 +5,56 @@
 package main
 
 import (
+	"go/ast"
+	"os"
 	"path/filepath"
 	"runtime"
+	"path"
 	"testing"
 )
 
 
-func testDir(t *testing.T, dir, pkg string) {
+func testImporter(importPath string) (string, *ast.Scope, os.Error) {
+	_, pkgName := path.Split(importPath) // filename is package name for std library
+	return pkgName, ast.NewScope(nil), nil
+}
+
+
+func runTest(t *testing.T, path, pkg string) {
+	exitCode = 0
 	*pkgName = pkg
 	*recursive = false
-	processDirectory(dir)
+	importer = testImporter
+
+	if pkg == "" {
+		processFiles([]string{path}, true)
+	} else {
+		processDirectory(path)
+	}
+
 	if exitCode != 0 {
-		t.Errorf("processing %d failed: exitCode = %d", dir, exitCode)
+		t.Errorf("processing %s failed: exitCode = %d", path, exitCode)
 	}
 }
 
 
+var tests = []struct {
+	path string
+	pkg  string
+}{
+	// individual files
+	{"testdata/test1.go", ""},
+
+	// directories
+	{filepath.Join(runtime.GOROOT(), "src/pkg/go/ast"), "ast"},
+	{filepath.Join(runtime.GOROOT(), "src/pkg/go/token"), "scanner"},
+	{filepath.Join(runtime.GOROOT(), "src/pkg/go/scanner"), "scanner"},
+	{filepath.Join(runtime.GOROOT(), "src/pkg/go/parser"), "parser"},
+}
+
+
 func Test(t *testing.T) {
-	testDir(t, ".", "main")
-	testDir(t, filepath.Join(runtime.GOROOT(), "src/pkg/go/ast"), "ast")
-	testDir(t, filepath.Join(runtime.GOROOT(), "src/pkg/go/scanner"), "scanner")
-	testDir(t, filepath.Join(runtime.GOROOT(), "src/pkg/go/parser"), "parser")
+	for _, test := range tests {
+		runTest(t, test.path, test.pkg)
+	}
 }

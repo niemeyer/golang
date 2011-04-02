@@ -34,7 +34,6 @@ ok:
 	RET
 
 // func Syscall6(trap uintptr, a1, a2, a3, a4, a5, a6 uintptr) (r1, r2, err uintptr);
-// Actually Syscall5 but the rest of the code expects it to be named Syscall6.
 TEXT	·Syscall6(SB),7,$0
 	CALL	runtime·entersyscall(SB)
 	MOVL	4(SP), AX	// syscall entry
@@ -43,7 +42,7 @@ TEXT	·Syscall6(SB),7,$0
 	MOVL	16(SP), DX
 	MOVL	20(SP), SI
 	MOVL	24(SP), DI
-	// 28(SP) is ignored
+	MOVL	28(SP), BP
 	INT	$0x80
 	CMPL	AX, $0xfffff001
 	JLS	ok6
@@ -83,7 +82,6 @@ ok1:
 	RET
 
 // func RawSyscall6(trap uintptr, a1, a2, a3, a4, a5, a6 uintptr) (r1, r2, err uintptr);
-// Actually RawSyscall5 but the rest of the code expects it to be named RawSyscall6.
 TEXT	·RawSyscall6(SB),7,$0
 	MOVL	4(SP), AX	// syscall entry
 	MOVL	8(SP), BX
@@ -91,7 +89,7 @@ TEXT	·RawSyscall6(SB),7,$0
 	MOVL	16(SP), DX
 	MOVL	20(SP), SI
 	MOVL	24(SP), DI
-	// 28(SP) is ignored
+	MOVL	28(SP), BP
 	INT	$0x80
 	CMPL	AX, $0xfffff001
 	JLS	ok2

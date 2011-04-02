@@ -36,6 +36,7 @@ Adam Langley <agl@golang.org>
 Adrian O'Grady <elpollouk@gmail.com>
 Albert Strasheim <fullung@gmail.com>
 Alex Brainman <alex.brainman@gmail.com>
+Alexey Borzenkov <snaury@gmail.com>
 Amrut Joshi <amrut.joshi@gmail.com>
 Andrei Vieru <euvieru@gmail.com>
 Andrew Gerrand <adg@golang.org>
@@ -76,6 +77,7 @@ Daniel Nadasi <dnadasi@google.com>
 Daniel Theophanes <kardianos@gmail.com>
 Dave Cheney <dave@cheney.net>
 David Anderson <danderson@google.com>
+David Forsythe <dforsythe@gmail.com>
 David G. Andersen <dave.andersen@gmail.com>
 David Symonds <dsymonds@golang.org>
 David Titarenco <david.titarenco@gmail.com>
@@ -111,6 +113,7 @@ Jan Mercl <befelemepeseveze@gmail.com>
 Jeff R. Allen <jra@nella.org> <jeff.allen@gmail.com>
 Jim McGrath <jimmc2@gmail.com>
 Joe Poirier <jdpoirier@gmail.com>
+John DeNero <denero@google.com>
 Jonathan Wills <runningwild@gmail.com>
 Jos Visser <josv@google.com>
 Jose Luis Vázquez González <josvazg@gmail.com>
@@ -163,11 +166,13 @@ Risto Jaakko Saarelma <rsaarelm@gmail.com>
 Rob Pike <r@golang.org>
 Robert Griesemer <gri@golang.org>
 Robert Hencke <robert.hencke@gmail.com>
+Roger Pau Monné <royger@gmail.com>
 Roger Peppe <rogpeppe@gmail.com>
 Ross Light <rlight2@gmail.com>
 Russ Cox <rsc@golang.org>
 Ryan Hitchman <hitchmanr@gmail.com>
 Sam Thorogood <thorogood@google.com> <sam.thorogood@gmail.com>
+Sameer Ajmani <ajmani@gmail.com>
 Scott Lawrence <bytbox@gmail.com>
 Scott Schwartz <scotts@golang.org>
 Sebastien Binet	<seb.binet@gmail.com>

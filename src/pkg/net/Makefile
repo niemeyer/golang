@@ -6,6 +6,7 @@ include ../../Make.inc
 
 TARG=net
 GOFILES=\
+	cgo_stub.go\
 	dial.go\
 	dnsmsg.go\
 	fd_$(GOOS).go\
@@ -13,6 +14,7 @@ GOFILES=\
 	ip.go\
 	ipsock.go\
 	iprawsock.go\
+	lookup.go\
 	net.go\
 	parse.go\
 	pipe.go\
@@ -24,6 +26,7 @@ GOFILES=\
 GOFILES_freebsd=\
 	newpollserver.go\
 	fd.go\
+	file.go\
 	dnsconfig.go\
 	dnsclient.go\
 	port.go\
@@ -31,6 +34,7 @@ GOFILES_freebsd=\
 GOFILES_darwin=\
 	newpollserver.go\
 	fd.go\
+	file.go\
 	dnsconfig.go\
 	dnsclient.go\
 	port.go\
@@ -38,12 +42,14 @@ GOFILES_darwin=\
 GOFILES_linux=\
 	newpollserver.go\
 	fd.go\
+	file.go\
 	dnsconfig.go\
 	dnsclient.go\
 	port.go\
 
 GOFILES_windows=\
 	resolv_windows.go\
+	file_windows.go\
 
 GOFILES+=$(GOFILES_$(GOOS))
 

@@ -222,22 +222,24 @@ func (t *CommonType) name() string { return t.Name }
 
 var (
 	// Primordial types, needed during initialization.
-	tBool      = bootstrapType("bool", false, 1)
-	tInt       = bootstrapType("int", int(0), 2)
-	tUint      = bootstrapType("uint", uint(0), 3)
-	tFloat     = bootstrapType("float", float64(0), 4)
-	tBytes     = bootstrapType("bytes", make([]byte, 0), 5)
-	tString    = bootstrapType("string", "", 6)
-	tComplex   = bootstrapType("complex", 0+0i, 7)
-	tInterface = bootstrapType("interface", interface{}(nil), 8)
+	// Always passed as pointers so the interface{} type
+	// goes through without losing its interfaceness.
+	tBool      = bootstrapType("bool", (*bool)(nil), 1)
+	tInt       = bootstrapType("int", (*int)(nil), 2)
+	tUint      = bootstrapType("uint", (*uint)(nil), 3)
+	tFloat     = bootstrapType("float", (*float64)(nil), 4)
+	tBytes     = bootstrapType("bytes", (*[]byte)(nil), 5)
+	tString    = bootstrapType("string", (*string)(nil), 6)
+	tComplex   = bootstrapType("complex", (*complex128)(nil), 7)
+	tInterface = bootstrapType("interface", (*interface{})(nil), 8)
 	// Reserve some Ids for compatible expansion
-	tReserved7 = bootstrapType("_reserved1", struct{ r7 int }{}, 9)
-	tReserved6 = bootstrapType("_reserved1", struct{ r6 int }{}, 10)
-	tReserved5 = bootstrapType("_reserved1", struct{ r5 int }{}, 11)
-	tReserved4 = bootstrapType("_reserved1", struct{ r4 int }{}, 12)
-	tReserved3 = bootstrapType("_reserved1", struct{ r3 int }{}, 13)
-	tReserved2 = bootstrapType("_reserved1", struct{ r2 int }{}, 14)
-	tReserved1 = bootstrapType("_reserved1", struct{ r1 int }{}, 15)
+	tReserved7 = bootstrapType("_reserved1", (*struct{ r7 int })(nil), 9)
+	tReserved6 = bootstrapType("_reserved1", (*struct{ r6 int })(nil), 10)
+	tReserved5 = bootstrapType("_reserved1", (*struct{ r5 int })(nil), 11)
+	tReserved4 = bootstrapType("_reserved1", (*struct{ r4 int })(nil), 12)
+	tReserved3 = bootstrapType("_reserved1", (*struct{ r3 int })(nil), 13)
+	tReserved2 = bootstrapType("_reserved1", (*struct{ r2 int })(nil), 14)
+	tReserved1 = bootstrapType("_reserved1", (*struct{ r1 int })(nil), 15)
 )
 
 // Predefined because it's needed by the Decoder
@@ -405,7 +407,7 @@ func (s *structType) string() string { return s.safeString(make(map[typeId]bool)
 func newStructType(name string) *structType {
 	s := &structType{CommonType{Name: name}, nil}
 	// For historical reasons we set the id here rather than init.
-	// Se the comment in newTypeObject for details.
+	// See the comment in newTypeObject for details.
 	setTypeId(s)
 	return s
 }
@@ -543,7 +545,7 @@ func getBaseType(name string, rt reflect.Type) (gobType, os.Error) {
 // getType returns the Gob type describing the given reflect.Type.
 // Should be called only when handling GobEncoders/Decoders,
 // which may be pointers.  All other types are handled through the
-//  base type, never a pointer.
+// base type, never a pointer.
 // typeLock must be held.
 func getType(name string, ut *userTypeInfo, rt reflect.Type) (gobType, os.Error) {
 	typ, present := types[rt]
@@ -559,14 +561,15 @@ func getType(name string, ut *userTypeInfo, rt reflect.Type) (gobType, os.Error)
 
 func checkId(want, got typeId) {
 	if want != got {
-		fmt.Fprintf(os.Stderr, "checkId: %d should be %d\n", int(want), int(got))
+		fmt.Fprintf(os.Stderr, "checkId: %d should be %d\n", int(got), int(want))
 		panic("bootstrap type wrong id: " + got.name() + " " + got.string() + " not " + want.string())
 	}
 }
 
-// used for building the basic types; called only from init()
+// used for building the basic types; called only from init().  the incoming
+// interface always refers to a pointer.
 func bootstrapType(name string, e interface{}, expect typeId) typeId {
-	rt := reflect.Typeof(e)
+	rt := reflect.Typeof(e).(*reflect.PtrType).Elem()
 	_, present := types[rt]
 	if present {
 		panic("bootstrap type already present: " + name + ", " + rt.String())
