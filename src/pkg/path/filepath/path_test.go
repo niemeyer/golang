@@ -484,11 +484,15 @@ func TestEvalSymlinks(t *testing.T) {
 	}
 }
 
-var abstests = []PathTest{
-	{"/already/abs", "/already/abs"},
-	{"src", "$CWD/src"},
-	{"./src", "$CWD/src"},
-	{"../other", "$CWD/../other"},
+// Test paths relative to $GOROOT/src
+var abstests = []string{
+	"../AUTHORS",
+	"pkg/../../AUTHORS",
+	"Make.pkg",
+	"pkg/Makefile",
+
+	// Already absolute
+	"$GOROOT/src/Make.pkg",
 }
 
 func TestAbs(t *testing.T) {
@@ -497,16 +501,25 @@ func TestAbs(t *testing.T) {
 		t.Fatal("Getwd failed: " + err.String())
 	}
 	defer os.Chdir(oldwd)
-	cwd := os.Getenv("GOROOT")
+	goroot := os.Getenv("GOROOT")
+	cwd := filepath.Join(goroot, "src")
 	os.Chdir(cwd)
-	for _, test := range abstests {
-		abspath, err := filepath.Abs(test.path)
+	for _, path := range abstests {
+		path = strings.Replace(path, "$GOROOT", goroot, -1)
+		abspath, err := filepath.Abs(path)
 		if err != nil {
-			t.Errorf("Abs(%q) error: %v", err)
+			t.Errorf("Abs(%q) error: %v", path, err)
 		}
-		want := filepath.Clean(strings.Replace(test.result, "$CWD", cwd, -1))
-		if abspath != want {
-			t.Errorf("Abs(%q)=%q, want %q", test.path, abspath, want)
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Errorf("%s: %s", path, err)
+		}
+		absinfo, err := os.Stat(abspath)
+		if err != nil || absinfo.Ino != info.Ino {
+			t.Errorf("Abs(%q)=%q, not the same file", path, abspath)
+		}
+		if !filepath.IsAbs(abspath) {
+			t.Errorf("Abs(%q)=%q, not an absolute path", path, abspath)
 		}
 	}
 }
