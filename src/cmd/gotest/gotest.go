@@ -145,7 +145,7 @@ func setEnvironment() {
 }
 
 // getTestFileNames gets the set of files we're looking at.
-// If gotest has no arguments, it scans the current directory for *_test.go files.
+// If gotest has no arguments, it scans for file names matching "[^.]*_test.go".
 func getTestFileNames() {
 	names := fileNames
 	if len(names) == 0 {
@@ -155,11 +155,11 @@ func getTestFileNames() {
 			Fatalf("Glob pattern error: %s", err)
 		}
 		if len(names) == 0 {
-			Fatalf(`no test files found: no match for "*_test.go"`)
+			Fatalf(`no test files found: no match for "[^.]*_test.go"`)
 		}
 	}
 	for _, n := range names {
-		fd, err := os.Open(n, os.O_RDONLY, 0)
+		fd, err := os.Open(n)
 		if err != nil {
 			Fatalf("%s: %s", n, err)
 		}
@@ -254,7 +254,8 @@ func doRun(argv []string, returnStdout bool) string {
 	if xFlag {
 		fmt.Printf("gotest: %s\n", strings.Join(argv, " "))
 	}
-	if runtime.GOOS == "windows" && argv[0] == "gomake" {
+	command := argv[0]
+	if runtime.GOOS == "windows" && command == "gomake" {
 		// gomake is a shell script and it cannot be executed directly on Windows.
 		cmd := ""
 		for i, v := range argv {
@@ -268,7 +269,7 @@ func doRun(argv []string, returnStdout bool) string {
 	var err os.Error
 	argv[0], err = exec.LookPath(argv[0])
 	if err != nil {
-		Fatalf("can't find %s: %s", argv[0], err)
+		Fatalf("can't find %s: %s", command, err)
 	}
 	procAttr := &os.ProcAttr{
 		Env: env,
@@ -288,7 +289,7 @@ func doRun(argv []string, returnStdout bool) string {
 	}
 	proc, err := os.StartProcess(argv[0], argv, procAttr)
 	if err != nil {
-		Fatalf("make failed to start: %s", err)
+		Fatalf("%s failed to start: %s", command, err)
 	}
 	if returnStdout {
 		defer r.Close()
@@ -296,7 +297,7 @@ func doRun(argv []string, returnStdout bool) string {
 	}
 	waitMsg, err := proc.Wait(0)
 	if err != nil || waitMsg == nil {
-		Fatalf("%s failed: %s", argv[0], err)
+		Fatalf("%s failed: %s", command, err)
 	}
 	if !waitMsg.Exited() || waitMsg.ExitStatus() != 0 {
 		Fatalf("%q failed: %s", strings.Join(argv, " "), waitMsg)
@@ -313,7 +314,7 @@ func doRun(argv []string, returnStdout bool) string {
 
 // writeTestmainGo generates the test program to be compiled, "./_testmain.go".
 func writeTestmainGo() {
-	f, err := os.Open("_testmain.go", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
+	f, err := os.Create("_testmain.go")
 	if err != nil {
 		Fatalf("can't create _testmain.go: %s", err)
 	}

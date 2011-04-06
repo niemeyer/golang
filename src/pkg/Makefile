@@ -32,10 +32,10 @@ DIRS=\
 	container/vector\
 	crypto\
 	crypto/aes\
-	crypto/block\
 	crypto/blowfish\
 	crypto/cast5\
 	crypto/cipher\
+	crypto/des\
 	crypto/dsa\
 	crypto/ecdsa\
 	crypto/elliptic\
@@ -209,7 +209,6 @@ endif
 # Disable tests that windows cannot run yet.
 ifeq ($(GOOS),windows)
 NOTEST+=os/signal    # no signals
-NOTEST+=path         # tree walking does not work
 NOTEST+=syslog       # no network
 NOTEST+=time         # no syscall.Kill, syscall.SIGCHLD for sleep tests
 endif
@@ -231,16 +230,19 @@ bench.dirs: $(addsuffix .bench, $(BENCH))
 	+$(MAKE) -C $* clean
 
 %.install:
-	+$(MAKE) -C $* install
+	+@echo install $*
+	+@$(MAKE) -C $* install >$*/build.out 2>&1 || (echo INSTALL FAIL $*; cat $*/build.out; exit 1)
 
 %.nuke:
 	+$(MAKE) -C $* nuke
 
 %.test:
-	+$(MAKE) -C $* test
+	+@echo test $*
+	+@$(MAKE) -C $* test >$*/test.out 2>&1 || (echo TEST FAIL $*; cat $*/test.out; exit 1)
 
 %.testshort:
-	+$(MAKE) -C $* testshort
+	+@echo test $*
+	+@$(MAKE) -C $* testshort >$*/test.out 2>&1 || (echo TEST FAIL $*; cat $*/test.out; exit 1)
 
 %.bench:
 	+$(MAKE) -C $* bench	

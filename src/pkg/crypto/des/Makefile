@@ -1,19 +1,13 @@
-# Copyright 2009 The Go Authors. All rights reserved.
+# Copyright 2010 The Go Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style
 # license that can be found in the LICENSE file.
 
 include ../../../Make.inc
 
-TARG=crypto/block
+TARG=crypto/des
 GOFILES=\
-	cbc.go\
-	cfb.go\
+	block.go\
 	cipher.go\
-	cmac.go\
-	ctr.go\
-	eax.go\
-	ecb.go\
-	ofb.go\
-	xor.go\
+	const.go\
 
 include ../../../Make.pkg

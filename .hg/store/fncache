@@ -4294,3 +4294,4 @@ data/src/pkg/crypto/des/Makefile.i
 data/src/cmd/gofix/osopen.go.i
 data/src/pkg/crypto/des/block.go.i
 data/src/pkg/crypto/des/const.go.i
+data/src/pkg/os/dir_unix.go.i
