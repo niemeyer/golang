@@ -1,0 +1,2 @@
+tar-ignore = .hg
+tar-ignore = .git
