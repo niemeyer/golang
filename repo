@@ -15,7 +15,8 @@ Options:
                       to hold it
   --push              Push all branches to the origin remote
   --submit            Submit the current CL branch to hg
-  --sync              Synchronize master with the tip of hg
+  --sync              Synchronize master with hg tip (or revision of -r)
+  -r <revision>       Use the provided revision
 "
 
 set -e
@@ -137,12 +138,22 @@ PUSH=0
 SYNC=0
 NO_SYNC=0
 SUBMIT=0
+REVISION_REQ=
+REVISION_ARG=
 while [ $# -gt 0 ]; do
 	OPTION=$1
 	shift
 	case "$OPTION" in
 	--sync)
 		SYNC=1
+		;;
+	-r)
+		if [ -z "$1" ]; then
+			fatal "$OPTION takes an argument"
+		fi
+		REVISION_REQ="$1"
+		REVISION_ARG="-r $1"
+		shift
 		;;
 	--no-sync)
 		NO_SYNC=1
@@ -179,6 +190,10 @@ while [ $# -gt 0 ]; do
 		;;
 	esac
 done
+
+if [ -n "$REVISION_REQ" -a "$SYNC" = 0 ]; then
+	fatal "-r provided without a supported action"
+fi
 
 if [ "$PUSH" = 1 ]; then
 	echo "Listing remote branches..."
@@ -265,7 +280,7 @@ if [ "$NO_SYNC" = 0 ]; then
 
 	OLD_ID=`hg id -i -n`
 	HG_FAILED=0
-	if ! hg sync; then
+	if ! ( hg sync && hg update $REVISION_ARG ); then
 		HG_FAILED=1
 	fi
 	NEW_ID=`hg id -i -n`
@@ -289,8 +304,9 @@ if [ "$NO_SYNC" = 0 ]; then
 		COMMIT_FAILED=0
 		if [ "$STATUS" != "" ]; then
 			echo "Committing changes to 'master' branch..."
+			MESSAGE="Updated to hg $NEW_ID (`hg id -t`)"
 			# Don't use commit function here so that dirstate goes together.
-			if ! git commit -m "Updated to hg $NEW_ID" > /dev/null; then
+			if ! git commit -m "$MESSAGE" > /dev/null; then
 				COMMIT_FAILED=1
 			fi
 		fi
