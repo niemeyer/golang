@@ -4287,3 +4287,10 @@ data/src/pkg/syscall/exec_plan9.go.i
 data/src/pkg/syscall/zsyscall_plan9_386.go.i
 data/src/pkg/path/filepath/path_plan9.go.i
 data/src/pkg/syscall/zerrors_plan9_386.go.i
+data/src/pkg/crypto/des/cipher.go.i
+data/src/cmd/gofix/osopen_test.go.i
+data/src/pkg/crypto/des/des_test.go.i
+data/src/pkg/crypto/des/Makefile.i
+data/src/cmd/gofix/osopen.go.i
+data/src/pkg/crypto/des/block.go.i
+data/src/pkg/crypto/des/const.go.i
