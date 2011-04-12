@@ -4339,3 +4339,6 @@ data/src/cmd/gofix/reflect_test.go.i
 data/src/cmd/gofix/testdata/reflect.decode.go.out.i
 data/doc/codewalk/functions.xml.i
 data/src/cmd/gofix/reflect.go.i
+data/src/pkg/image/ycbcr/Makefile.i
+data/src/pkg/image/ycbcr/ycbcr.go.i
+data/src/pkg/image/ycbcr/ycbcr_test.go.i
