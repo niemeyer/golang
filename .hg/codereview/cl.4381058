@@ -1,0 +1,4 @@
+Mailed: False
+Description:
+	openpgp: Fix improper := shadowing
+Files:
