@@ -7,3 +7,5 @@ Description:
 	was done with pyflakes, and a few existent problems were fixed on
 	the way.
 Files:
+	misc/dashboard/godashboard/gobuild.py
+	misc/dashboard/godashboard/package.py
