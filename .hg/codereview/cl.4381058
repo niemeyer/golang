@@ -1,5 +1,0 @@
-Mailed: True
-Description:
-	openpgp: Fix improper := shadowing
-Files:
-	src/pkg/crypto/openpgp/armor/encode.go
