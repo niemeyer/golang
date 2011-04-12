@@ -135,6 +135,7 @@ yyerror(char *fmt, ...)
 	int i;
 	static int lastsyntax;
 	va_list arg;
+	char buf[512], *p;
 
 	if(strncmp(fmt, "syntax error", 12) == 0) {
 		nsyntaxerrors++;
@@ -146,6 +147,16 @@ yyerror(char *fmt, ...)
 		if(lastsyntax == lexlineno)
 			return;
 		lastsyntax = lexlineno;
+		
+		if(strstr(fmt, "{ or {")) {
+			// The grammar has { and LBRACE but both show up as {.
+			// Rewrite syntax error referring to "{ or {" to say just "{".
+			strecpy(buf, buf+sizeof buf, fmt);
+			p = strstr(buf, "{ or {");
+			if(p)
+				memmove(p+1, p+6, strlen(p+6)+1);
+			fmt = buf;
+		}
 		
 		// look for parse state-specific errors in list (see go.errors).
 		for(i=0; i<nelem(yymsg); i++) {
@@ -1889,8 +1900,9 @@ assignop(Type *src, Type *dst, char **why)
 		return OCONVNOP;
 	
 	// 2. src and dst have identical underlying types
-	// and either src or dst is not a named type.
-	if(eqtype(src->orig, dst->orig) && (src->sym == S || dst->sym == S))
+	// and either src or dst is not a named type or
+	// both are interface types.
+	if(eqtype(src->orig, dst->orig) && (src->sym == S || dst->sym == S || src->etype == TINTER))
 		return OCONVNOP;
 
 	// 3. dst is an interface type and src implements dst.
