@@ -21,6 +21,8 @@ _cgo_*
 _obj
 _test
 _testmain.go
+test.out
+build.out
 y.tab.[ch]
 doc/htmlgen
 misc/cgo/life/run.out
