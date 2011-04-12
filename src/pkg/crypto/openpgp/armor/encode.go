@@ -20,7 +20,7 @@ func writeSlices(out io.Writer, slices ...[]byte) (err os.Error) {
 	for _, s := range slices {
 		_, err := out.Write(s)
 		if err != nil {
-			return
+			return err
 		}
 	}
 	return
