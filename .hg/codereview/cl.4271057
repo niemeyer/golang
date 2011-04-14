@@ -1,6 +1,0 @@
-Mailed: True
-Description:
-	filepath: new Abs function
-Files:
-	src/pkg/path/filepath/path.go
-	src/pkg/path/filepath/path_test.go
