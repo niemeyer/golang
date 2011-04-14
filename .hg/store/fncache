@@ -4342,3 +4342,12 @@ data/src/cmd/gofix/reflect.go.i
 data/src/pkg/image/ycbcr/Makefile.i
 data/src/pkg/image/ycbcr/ycbcr.go.i
 data/src/pkg/image/ycbcr/ycbcr_test.go.i
+data/src/pkg/exp/eval/eval.i
+data/src/pkg/exp/eval/eval.d
+data/test/func6.go.i
+data/src/cmd/gofmt/gofmt_test.go.i
+data/src/pkg/go/ast/print_test.go.i
+data/test/gc2.go.i
+data/src/cmd/gofmt/testdata/rewrite1.golden.i
+data/src/cmd/gofmt/testdata/rewrite1.input.i
+data/misc/vim/ftplugin/go/fmt.vim.i
