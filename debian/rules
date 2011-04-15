@@ -17,6 +17,7 @@ PKGDIR=debian/golang-weekly
 
 clean:
 	dh_clean
+	[ ! -d .hg ] || /bin/bash -c "src/version.bash > VERSION"
 	cd src && ./clean.bash
 	cd debian/gorun && make clean
 	rm -rf bin/ pkg/
@@ -26,7 +27,6 @@ binary-arch: clean
 	dh_installdirs
 	mkdir -p $(PKGDIR)/usr/lib/go/src
 	
-	cp -r doc lib $(PKGDIR)/usr/lib/go
 	cp -r src/pkg src/cmd $(PKGDIR)/usr/lib/go/src
 	find src/ -maxdepth 1 -type f -exec cp {} $(PKGDIR)/usr/lib/go/src/ \;
 	
@@ -35,7 +35,7 @@ binary-arch: clean
 	PATH=$(GOROOT)/bin:$(PATH) /bin/bash -c "cd debian/gorun && make install"
 	test -f bin/gorun
 
-	cp -r pkg $(PKGDIR)/usr/lib/go
+	cp -r pkg lib $(PKGDIR)/usr/lib/go
 	cp -r bin $(PKGDIR)/usr
 
 	sed -i 's/GOROOT=.*/GOROOT=\/usr\/lib\/go/' $(PKGDIR)/usr/bin/gomake
