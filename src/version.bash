@@ -3,6 +3,12 @@
 # Use of this source code is governed by a BSD-style
 # license that can be found in the LICENSE file.
 
+# If there's no hg info, look for a saved version.
+if [ -n "$GOROOT" -a ! -d "$GOROOT/.hg" -a -f "$GOROOT/VERSION" ]; then
+	cat $GOROOT/VERSION
+	exit 0
+fi
+
 # Check that we can use 'hg'
 if ! hg version > /dev/null 2>&1; then
 	echo 'hg not installed' 1>&2
@@ -28,4 +34,3 @@ if [ "$TAG" != "" ]; then
 fi
 
 echo $VERSION
-
