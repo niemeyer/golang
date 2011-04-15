@@ -9,6 +9,7 @@ Homepage: http://golang.org
 Package: golang-weekly
 Architecture: any
 Depends: ${misc:Depends}
+Conflicts: golang
 Description: Go language compiler and tools (gc)
  The Go programming language is an open source project to make
  programmers more productive. Go is expressive, concise, clean,
