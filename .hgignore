@@ -21,6 +21,7 @@ _cgo_*
 _obj
 _test
 _testmain.go
+VERSION
 build.out
 test.out
 y.tab.[ch]
@@ -57,6 +58,7 @@ test/run.out
 test/times.out
 test/garbage/*.out
 goinstall.log
+VERSION
 
 syntax:regexp
 ^bin/
