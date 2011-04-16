@@ -160,8 +160,8 @@ func install(pkg, parent string) {
 		dir = pkg
 		local = true
 	} else if isStandardPath(pkg) {
-		dir = filepath.Join(root, filepath.FromSlash(pkg))
-		local = true
+		visit[pkg] = done
+		return
 	} else {
 		var err os.Error
 		dir, err = download(pkg)
