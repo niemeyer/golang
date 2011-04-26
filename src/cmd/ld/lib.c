@@ -438,7 +438,7 @@ ldobj(Biobuf *f, char *pkg, int64 len, char *pn, int whence)
 		return;
 	}
 	t = smprint("%s %s %s", getgoos(), thestring, getgoversion());
-	if(strcmp(line+10, t) != 0) {
+	if(strcmp(line+10, t) != 0 && !debug['f']) {
 		diag("%s: object is [%s] expected [%s]", pn, line+10, t);
 		free(t);
 		return;
@@ -1033,7 +1033,7 @@ mkfwd(void)
 	Prog *p;
 	int i;
 	int32 dwn[LOG], cnt[LOG];
-	Prog *lst[LOG], *last;
+	Prog *lst[LOG];
 
 	for(i=0; i<LOG; i++) {
 		if(i == 0)
@@ -1044,7 +1044,6 @@ mkfwd(void)
 		lst[i] = P;
 	}
 	i = 0;
-	last = nil;
 	for(cursym = textp; cursym != nil; cursym = cursym->next) {
 		for(p = cursym->text; p != P; p = p->link) {
 			if(p->link == P) {

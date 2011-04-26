@@ -681,7 +681,7 @@ asmb(void)
 {
 	int32 magic;
 	int a, dynsym;
-	vlong vl, va, startva, fo, w, symo, elfsymo, elfstro, elfsymsize, machlink;
+	vlong vl, startva, symo, elfsymo, elfstro, elfsymsize, machlink;
 	ElfEhdr *eh;
 	ElfPhdr *ph, *pph;
 	ElfShdr *sh;
@@ -846,10 +846,7 @@ asmb(void)
 		/* elf amd-64 */
 
 		eh = getElfEhdr();
-		fo = HEADR;
 		startva = INITTEXT - HEADR;
-		va = startva + fo;
-		w = segtext.filelen;
 
 		/* This null SHdr must appear before all others */
 		sh = newElfShdr(elfstr[ElfStrEmpty]);

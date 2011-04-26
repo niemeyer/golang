@@ -56,7 +56,7 @@ typechecklist(NodeList *l, int top)
 		typecheck(&l->n, top);
 }
 
-static char* typekind[] = {
+static char* _typekind[] = {
 	[TINT]		= "int",
 	[TUINT]		= "uint",
 	[TINT8]		= "int8",
@@ -82,7 +82,21 @@ static char* typekind[] = {
 	[TMAP]		= "map",
 	[TARRAY]	= "array",
 	[TFUNC]		= "func",
+	[TNIL]		= "nil",
+	[TIDEAL]	= "ideal number",
 };
+
+static char*
+typekind(int et)
+{
+	static char buf[50];
+	char *s;
+	
+	if(0 <= et && et < nelem(_typekind) && (s=_typekind[et]) != nil)
+		return s;
+	snprint(buf, sizeof buf, "etype=%d", et);
+	return buf;
+}
 
 /*
  * type check node *np.
@@ -406,7 +420,7 @@ reswitch:
 		}
 		if(!okfor[op][et]) {
 		notokfor:
-			yyerror("invalid operation: %#N (operator %#O not defined on %s)", n, op, typekind[et]);
+			yyerror("invalid operation: %#N (operator %#O not defined on %s)", n, op, typekind(et));
 			goto error;
 		}
 		// okfor allows any array == array;
@@ -992,9 +1006,13 @@ reswitch:
 		defaultlit(&n->right, T);
 		
 		// copy([]byte, string)
-		if(isslice(n->left->type) && n->left->type->type == types[TUINT8] && n->right->type->etype == TSTRING)
-			goto ret;
-
+		if(isslice(n->left->type) && n->right->type->etype == TSTRING) {
+		        if (n->left->type->type ==types[TUINT8])
+			        goto ret;
+		        yyerror("arguments to copy have different element types: %lT and string", n->left->type);
+			goto error;
+		}
+			       
 		if(!isslice(n->left->type) || !isslice(n->right->type)) {
 			if(!isslice(n->left->type) && !isslice(n->right->type))
 				yyerror("arguments to copy must be slices; have %lT, %lT", n->left->type, n->right->type);

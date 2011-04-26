@@ -315,6 +315,7 @@ struct	Pkg
 {
 	char*	name;
 	Strlit*	path;
+	Sym*	pathsym;
 	char*	prefix;
 	Pkg*	link;
 	char	exported;	// import line written in export data
@@ -581,6 +582,7 @@ struct	Io
 	Biobuf*	bin;
 	int32	ilineno;
 	int	nlsemi;
+	int	eofnl;
 	int	peekc;
 	int	peekc1;	// second peekc for ...
 	char*	cp;	// used for content when bin==nil

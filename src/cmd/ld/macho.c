@@ -12,10 +12,10 @@
 
 static	int	macho64;
 static	MachoHdr	hdr;
-static	MachoLoad	load[16];
+static	MachoLoad	*load;
 static	MachoSeg	seg[16];
 static	MachoDebug	xdebug[16];
-static	int	nload, nseg, ndebug, nsect;
+static	int	nload, mload, nseg, ndebug, nsect;
 
 void
 machoinit(void)
@@ -43,11 +43,18 @@ newMachoLoad(uint32 type, uint32 ndata)
 {
 	MachoLoad *l;
 
-	if(nload >= nelem(load)) {
-		diag("too many loads");
-		errorexit();
+	if(nload >= mload) {
+		if(mload == 0)
+			mload = 1;
+		else
+			mload *= 2;
+		load = realloc(load, mload*sizeof load[0]);
+		if(load == nil) {
+			diag("out of memory");
+			errorexit();
+		}
 	}
-	
+
 	if(macho64 && (ndata & 1))
 		ndata++;
 	
@@ -342,11 +349,13 @@ asmbmacho(void)
 
 	msect = newMachoSect(ms, "__data");
 	msect->addr = va+v;
-	msect->size = symaddr(lookup(".got", 0)) - msect->addr;
 	msect->off = v;
+	msect->size = segdata.filelen;
 
 	s = lookup(".got", 0);
 	if(s->size > 0) {
+		msect->size = symaddr(s) - msect->addr;
+
 		msect = newMachoSect(ms, "__nl_symbol_ptr");
 		msect->addr = symaddr(s);
 		msect->size = s->size;

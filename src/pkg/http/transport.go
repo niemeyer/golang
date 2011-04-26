@@ -6,6 +6,7 @@ package http
 
 import (
 	"bufio"
+	"bytes"
 	"compress/gzip"
 	"crypto/tls"
 	"encoding/base64"
@@ -217,6 +218,9 @@ func (t *Transport) getConn(cm *connectMethod) (*persistConn, os.Error) {
 
 	conn, err := net.Dial("tcp", cm.addr())
 	if err != nil {
+		if cm.proxyURL != nil {
+			err = fmt.Errorf("http: error connecting to proxy %s: %v", cm.proxyURL, err)
+		}
 		return nil, err
 	}
 
@@ -288,10 +292,28 @@ func (t *Transport) getConn(cm *connectMethod) (*persistConn, os.Error) {
 
 // useProxy returns true if requests to addr should use a proxy,
 // according to the NO_PROXY or no_proxy environment variable.
+// addr is always a canonicalAddr with a host and port.
 func (t *Transport) useProxy(addr string) bool {
 	if len(addr) == 0 {
 		return true
 	}
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if host == "localhost" {
+		return false
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		if ip4 := ip.To4(); ip4 != nil && ip4[0] == 127 {
+			// 127.0.0.0/8 loopback isn't proxied.
+			return false
+		}
+		if bytes.Equal(ip, net.IPv6loopback) {
+			return false
+		}
+	}
+
 	no_proxy := t.getenvEitherCase("NO_PROXY")
 	if no_proxy == "*" {
 		return false
@@ -510,12 +532,12 @@ func (pc *persistConn) roundTrip(req *Request) (resp *Response, err os.Error) {
 		re.res.Header.Del("Content-Encoding")
 		re.res.Header.Del("Content-Length")
 		re.res.ContentLength = -1
-		var err os.Error
-		re.res.Body, err = gzip.NewReader(re.res.Body)
+		gzReader, err := gzip.NewReader(re.res.Body)
 		if err != nil {
 			pc.close()
 			return nil, err
 		}
+		re.res.Body = &readFirstCloseBoth{gzReader, re.res.Body}
 	}
 
 	return re.res, re.err
@@ -583,4 +605,19 @@ func (es *bodyEOFSignal) Close() (err os.Error) {
 		es.fn = nil
 	}
 	return
+}
+
+type readFirstCloseBoth struct {
+	io.ReadCloser
+	io.Closer
+}
+
+func (r *readFirstCloseBoth) Close() os.Error {
+	if err := r.ReadCloser.Close(); err != nil {
+		return err
+	}
+	if err := r.Closer.Close(); err != nil {
+		return err
+	}
+	return nil
 }

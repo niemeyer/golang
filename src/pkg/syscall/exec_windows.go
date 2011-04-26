@@ -8,6 +8,7 @@ package syscall
 
 import (
 	"sync"
+	"unsafe"
 	"utf16"
 )
 
@@ -217,9 +218,10 @@ func joinExeDirAndFName(dir, p string) (name string, err int) {
 }
 
 type ProcAttr struct {
-	Dir   string
-	Env   []string
-	Files []int
+	Dir        string
+	Env        []string
+	Files      []int
+	HideWindow bool
 }
 
 var zeroAttributes ProcAttr
@@ -279,8 +281,12 @@ func StartProcess(argv0 string, argv []string, attr *ProcAttr) (pid, handle int,
 		}
 	}
 	si := new(StartupInfo)
-	GetStartupInfo(si)
+	si.Cb = uint32(unsafe.Sizeof(*si))
 	si.Flags = STARTF_USESTDHANDLES
+	if attr.HideWindow {
+		si.Flags |= STARTF_USESHOWWINDOW
+		si.ShowWindow = SW_HIDE
+	}
 	si.StdInput = fd[0]
 	si.StdOutput = fd[1]
 	si.StdErr = fd[2]

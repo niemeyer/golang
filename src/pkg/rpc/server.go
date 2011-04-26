@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 /*
-	The rpc package provides access to the exported methods of an object across a
+	Package rpc provides access to the exported methods of an object across a
 	network or other I/O connection.  A server registers an object, making it visible
 	as a service with the name of the type of the object.  After registration, exported
 	methods of the object will be accessible remotely.  A server may register multiple
@@ -133,7 +133,7 @@ const (
 // Precompute the reflect type for os.Error.  Can't use os.Error directly
 // because Typeof takes an empty interface value.  This is annoying.
 var unusedError *os.Error
-var typeOfOsError = reflect.Typeof(unusedError).Elem()
+var typeOfOsError = reflect.TypeOf(unusedError).Elem()
 
 type methodType struct {
 	sync.Mutex // protects counters
@@ -219,8 +219,8 @@ func (server *Server) register(rcvr interface{}, name string, useName bool) os.E
 		server.serviceMap = make(map[string]*service)
 	}
 	s := new(service)
-	s.typ = reflect.Typeof(rcvr)
-	s.rcvr = reflect.NewValue(rcvr)
+	s.typ = reflect.TypeOf(rcvr)
+	s.rcvr = reflect.ValueOf(rcvr)
 	sname := reflect.Indirect(s.rcvr).Type().Name()
 	if useName {
 		sname = name
@@ -296,12 +296,6 @@ func (server *Server) register(rcvr interface{}, name string, useName bool) os.E
 type InvalidRequest struct{}
 
 var invalidRequest = InvalidRequest{}
-
-func _new(t reflect.Type) reflect.Value {
-	v := reflect.Zero(t)
-	v.Set(reflect.Zero(t.Elem()).Addr())
-	return v
-}
 
 func (server *Server) sendResponse(sending *sync.Mutex, req *Request, reply interface{}, codec ServerCodec, errmsg string) {
 	resp := server.getResponse()
@@ -411,8 +405,8 @@ func (server *Server) ServeCodec(codec ServerCodec) {
 		}
 
 		// Decode the argument value.
-		argv := _new(mtype.ArgType)
-		replyv := _new(mtype.ReplyType)
+		argv := reflect.New(mtype.ArgType.Elem())
+		replyv := reflect.New(mtype.ReplyType.Elem())
 		err = codec.ReadRequestBody(argv.Interface())
 		if err != nil {
 			if err == os.EOF || err == io.ErrUnexpectedEOF {

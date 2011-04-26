@@ -247,7 +247,7 @@ func TestServerTimeouts(t *testing.T) {
 	server := &Server{Handler: handler, ReadTimeout: 0.25 * second, WriteTimeout: 0.25 * second}
 	go server.Serve(l)
 
-	url := fmt.Sprintf("http://localhost:%d/", addr.Port)
+	url := fmt.Sprintf("http://%s/", addr)
 
 	// Hit the HTTP server successfully.
 	tr := &Transport{DisableKeepAlives: true} // they interfere with this test
@@ -265,7 +265,7 @@ func TestServerTimeouts(t *testing.T) {
 
 	// Slow client that should timeout.
 	t1 := time.Nanoseconds()
-	conn, err := net.Dial("tcp", fmt.Sprintf("localhost:%d", addr.Port))
+	conn, err := net.Dial("tcp", addr.String())
 	if err != nil {
 		t.Fatalf("Dial: %v", err)
 	}
@@ -588,7 +588,7 @@ func TestServerExpect(t *testing.T) {
 		sendf := func(format string, args ...interface{}) {
 			_, err := fmt.Fprintf(conn, format, args...)
 			if err != nil {
-				t.Fatalf("Error writing %q: %v", format, err)
+				t.Fatalf("On test %#v, error writing %q: %v", test, format, err)
 			}
 		}
 		go func() {
@@ -614,5 +614,102 @@ func TestServerExpect(t *testing.T) {
 
 	for _, test := range serverExpectTests {
 		runTest(test)
+	}
+}
+
+func TestServerConsumesRequestBody(t *testing.T) {
+	log := make(chan string, 100)
+
+	ts := httptest.NewServer(HandlerFunc(func(w ResponseWriter, r *Request) {
+		log <- "got_request"
+		w.WriteHeader(StatusOK)
+		log <- "wrote_header"
+	}))
+	defer ts.Close()
+
+	conn, err := net.Dial("tcp", ts.Listener.Addr().String())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer conn.Close()
+
+	bufr := bufio.NewReader(conn)
+	gotres := make(chan bool)
+	go func() {
+		line, err := bufr.ReadString('\n')
+		if err != nil {
+			t.Fatal(err)
+		}
+		log <- line
+		gotres <- true
+	}()
+
+	size := 1 << 20
+	log <- "writing_request"
+	fmt.Fprintf(conn, "POST / HTTP/1.0\r\nContent-Length: %d\r\n\r\n", size)
+	time.Sleep(25e6) // give server chance to misbehave & speak out of turn
+	log <- "slept_after_req_headers"
+	conn.Write([]byte(strings.Repeat("a", size)))
+
+	<-gotres
+	expected := []string{
+		"writing_request", "got_request",
+		"slept_after_req_headers", "wrote_header",
+		"HTTP/1.0 200 OK\r\n"}
+	for step, e := range expected {
+		if g := <-log; e != g {
+			t.Errorf("on step %d expected %q, got %q", step, e, g)
+		}
+	}
+}
+
+func TestTimeoutHandler(t *testing.T) {
+	sendHi := make(chan bool, 1)
+	writeErrors := make(chan os.Error, 1)
+	sayHi := HandlerFunc(func(w ResponseWriter, r *Request) {
+		<-sendHi
+		_, werr := w.Write([]byte("hi"))
+		writeErrors <- werr
+	})
+	timeout := make(chan int64, 1) // write to this to force timeouts
+	ts := httptest.NewServer(NewTestTimeoutHandler(sayHi, timeout))
+	defer ts.Close()
+
+	// Succeed without timing out:
+	sendHi <- true
+	res, _, err := Get(ts.URL)
+	if err != nil {
+		t.Error(err)
+	}
+	if g, e := res.StatusCode, StatusOK; g != e {
+		t.Errorf("got res.StatusCode %d; expected %d", g, e)
+	}
+	body, _ := ioutil.ReadAll(res.Body)
+	if g, e := string(body), "hi"; g != e {
+		t.Errorf("got body %q; expected %q", g, e)
+	}
+	if g := <-writeErrors; g != nil {
+		t.Errorf("got unexpected Write error on first request: %v", g)
+	}
+
+	// Times out:
+	timeout <- 1
+	res, _, err = Get(ts.URL)
+	if err != nil {
+		t.Error(err)
+	}
+	if g, e := res.StatusCode, StatusServiceUnavailable; g != e {
+		t.Errorf("got res.StatusCode %d; expected %d", g, e)
+	}
+	body, _ = ioutil.ReadAll(res.Body)
+	if !strings.Contains(string(body), "<title>Timeout</title>") {
+		t.Errorf("expected timeout body; got %q", string(body))
+	}
+
+	// Now make the previously-timed out handler speak again,
+	// which verifies the panic is handled:
+	sendHi <- true
+	if g, e := <-writeErrors, ErrHandlerTimeout; g != e {
+		t.Errorf("expected Write error of %v; got %v", e, g)
 	}
 }

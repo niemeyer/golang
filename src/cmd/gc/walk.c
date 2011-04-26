@@ -142,7 +142,9 @@ walkdeftype(Node *n)
 	}
 
 	// copy new type and clear fields
-	// that don't come along
+	// that don't come along.
+	// anything zeroed here must be zeroed in
+	// typedcl2 too.
 	maplineno = n->type->maplineno;
 	embedlineno = n->type->embedlineno;
 	*n->type = *t;
@@ -197,7 +199,6 @@ Node*
 walkdef(Node *n)
 {
 	int lno;
-	NodeList *init;
 	Node *e;
 	Type *t;
 	NodeList *l;
@@ -236,7 +237,6 @@ walkdef(Node *n)
 	if(n->type != T || n->sym == S)	// builtin or no name
 		goto ret;
 
-	init = nil;
 	switch(n->op) {
 	default:
 		fatal("walkdef %O", n->op);
@@ -380,14 +380,13 @@ walkstmt(Node **np)
 {
 	NodeList *init;
 	NodeList *ll, *rl;
-	int cl, lno;
+	int cl;
 	Node *n, *f;
 
 	n = *np;
 	if(n == N)
 		return;
 
-	lno = lineno;
 	setlineno(n);
 
 	switch(n->op) {
@@ -1359,7 +1358,7 @@ walkexpr(Node **np, NodeList **init)
 
 	case OSTRARRAYBYTE:
 		// stringtoslicebyte(string) []byte;
-		n = mkcall("stringtoslicebyte", n->type, init, n->left);
+		n = mkcall("stringtoslicebyte", n->type, init, conv(n->left, types[TSTRING]));
 		goto ret;
 
 	case OSTRARRAYRUNE:
@@ -1788,7 +1787,7 @@ walkprint(Node *nn, NodeList **init, int defer)
 					on = syslook("printiface", 1);
 				argtype(on, n->type);		// any-1
 			}
-		} else if(isptr[et] || et == TCHAN || et == TMAP || et == TFUNC) {
+		} else if(isptr[et] || et == TCHAN || et == TMAP || et == TFUNC || et == TUNSAFEPTR) {
 			if(defer) {
 				fmtprint(&fmt, "%%p");
 			} else {

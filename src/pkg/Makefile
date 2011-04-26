@@ -120,6 +120,7 @@ DIRS=\
 	netchan\
 	os\
 	os/signal\
+	os/user\
 	patch\
 	path\
 	path/filepath\
@@ -183,7 +184,6 @@ NOTEST+=\
 	hash\
 	http/pprof\
 	http/httptest\
-	image/jpeg\
 	net/dict\
 	rand\
 	runtime/cgo\
@@ -201,11 +201,6 @@ NOTEST+=\
 
 NOBENCH+=\
 	container/vector\
-
-# Disable tests that depend on an external network.
-ifeq ($(DISABLE_NET_TESTS),1)
-NOTEST+=net syslog
-endif
 
 # Disable tests that windows cannot run yet.
 ifeq ($(GOOS),windows)

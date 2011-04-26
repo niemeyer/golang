@@ -560,6 +560,7 @@ funcargs(Node *nt)
 {
 	Node *n;
 	NodeList *l;
+	int gen;
 
 	if(nt->op != OTFUNC)
 		fatal("funcargs %O", nt->op);
@@ -589,6 +590,7 @@ funcargs(Node *nt)
 	}
 
 	// declare the out arguments.
+	gen = 0;
 	for(l=nt->rlist; l; l=l->next) {
 		n = l->n;
 		if(n->op != ODCLFIELD)
@@ -596,6 +598,11 @@ funcargs(Node *nt)
 		if(n->left != N) {
 			n->left->op = ONAME;
 			n->left->ntype = n->right;
+			if(isblank(n->left)) {
+				// Give it a name so we can assign to it during return.
+				snprint(namebuf, sizeof(namebuf), ".anon%d", gen++);
+				n->left->sym = lookup(namebuf);
+			}
 			declare(n->left, PPARAMOUT);
 		}
 	}
@@ -677,6 +684,10 @@ ok:
 	pt->nod = n;
 	pt->sym = n->sym;
 	pt->sym->lastlineno = parserline();
+	pt->siggen = 0;
+	pt->printed = 0;
+	pt->deferwidth = 0;
+	pt->local = 0;
 	declare(n, PEXTERN);
 
 	checkwidth(pt);
@@ -697,12 +708,10 @@ stotype(NodeList *l, int et, Type **t, int funarg)
 	Type *f, *t1, *t2, **t0;
 	Strlit *note;
 	int lno;
-	NodeList *init;
 	Node *n, *left;
 	char *what;
 
 	t0 = t;
-	init = nil;
 	lno = lineno;
 	what = "field";
 	if(et == TINTER)
@@ -1130,6 +1139,32 @@ addmethod(Sym *sf, Type *t, int local)
 	pa = pa->type;
 	f = methtype(pa);
 	if(f == T) {
+		t = pa;
+		if(t != T) {
+			if(isptr[t->etype]) {
+				if(t->sym != S) {
+					yyerror("invalid receiver type %T (%T is a pointer type)", pa, t);
+					return;
+				}
+				t = t->type;
+			}
+		}
+		if(t != T) {
+			if(t->sym == S) {
+				yyerror("invalid receiver type %T (%T is an unnamed type)", pa, t);
+				return;
+			}
+			if(isptr[t->etype]) {
+				yyerror("invalid receiver type %T (%T is a pointer type)", pa, t);
+				return;
+			}
+			if(t->etype == TINTER) {
+				yyerror("invalid receiver type %T (%T is an interface type)", pa, t);
+				return;
+			}
+		}
+		// Should have picked off all the reasons above,
+		// but just in case, fall back to generic error.
 		yyerror("invalid receiver type %T", pa);
 		return;
 	}

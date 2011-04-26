@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// This package implements utility functions to help with black box testing.
+// Package quick implements utility functions to help with black box testing.
 package quick
 
 import (
@@ -59,37 +59,37 @@ func Value(t reflect.Type, rand *rand.Rand) (value reflect.Value, ok bool) {
 
 	switch concrete := t; concrete.Kind() {
 	case reflect.Bool:
-		return reflect.NewValue(rand.Int()&1 == 0), true
+		return reflect.ValueOf(rand.Int()&1 == 0), true
 	case reflect.Float32:
-		return reflect.NewValue(randFloat32(rand)), true
+		return reflect.ValueOf(randFloat32(rand)), true
 	case reflect.Float64:
-		return reflect.NewValue(randFloat64(rand)), true
+		return reflect.ValueOf(randFloat64(rand)), true
 	case reflect.Complex64:
-		return reflect.NewValue(complex(randFloat32(rand), randFloat32(rand))), true
+		return reflect.ValueOf(complex(randFloat32(rand), randFloat32(rand))), true
 	case reflect.Complex128:
-		return reflect.NewValue(complex(randFloat64(rand), randFloat64(rand))), true
+		return reflect.ValueOf(complex(randFloat64(rand), randFloat64(rand))), true
 	case reflect.Int16:
-		return reflect.NewValue(int16(randInt64(rand))), true
+		return reflect.ValueOf(int16(randInt64(rand))), true
 	case reflect.Int32:
-		return reflect.NewValue(int32(randInt64(rand))), true
+		return reflect.ValueOf(int32(randInt64(rand))), true
 	case reflect.Int64:
-		return reflect.NewValue(randInt64(rand)), true
+		return reflect.ValueOf(randInt64(rand)), true
 	case reflect.Int8:
-		return reflect.NewValue(int8(randInt64(rand))), true
+		return reflect.ValueOf(int8(randInt64(rand))), true
 	case reflect.Int:
-		return reflect.NewValue(int(randInt64(rand))), true
+		return reflect.ValueOf(int(randInt64(rand))), true
 	case reflect.Uint16:
-		return reflect.NewValue(uint16(randInt64(rand))), true
+		return reflect.ValueOf(uint16(randInt64(rand))), true
 	case reflect.Uint32:
-		return reflect.NewValue(uint32(randInt64(rand))), true
+		return reflect.ValueOf(uint32(randInt64(rand))), true
 	case reflect.Uint64:
-		return reflect.NewValue(uint64(randInt64(rand))), true
+		return reflect.ValueOf(uint64(randInt64(rand))), true
 	case reflect.Uint8:
-		return reflect.NewValue(uint8(randInt64(rand))), true
+		return reflect.ValueOf(uint8(randInt64(rand))), true
 	case reflect.Uint:
-		return reflect.NewValue(uint(randInt64(rand))), true
+		return reflect.ValueOf(uint(randInt64(rand))), true
 	case reflect.Uintptr:
-		return reflect.NewValue(uintptr(randInt64(rand))), true
+		return reflect.ValueOf(uintptr(randInt64(rand))), true
 	case reflect.Map:
 		numElems := rand.Intn(complexSize)
 		m := reflect.MakeMap(concrete)
@@ -107,8 +107,8 @@ func Value(t reflect.Type, rand *rand.Rand) (value reflect.Value, ok bool) {
 		if !ok {
 			return reflect.Value{}, false
 		}
-		p := reflect.Zero(concrete)
-		p.Set(v.Addr())
+		p := reflect.New(concrete.Elem())
+		p.Elem().Set(v)
 		return p, true
 	case reflect.Slice:
 		numElems := rand.Intn(complexSize)
@@ -127,9 +127,9 @@ func Value(t reflect.Type, rand *rand.Rand) (value reflect.Value, ok bool) {
 		for i := 0; i < numChars; i++ {
 			codePoints[i] = rand.Intn(0x10ffff)
 		}
-		return reflect.NewValue(string(codePoints)), true
+		return reflect.ValueOf(string(codePoints)), true
 	case reflect.Struct:
-		s := reflect.Zero(t)
+		s := reflect.New(t).Elem()
 		for i := 0; i < s.NumField(); i++ {
 			v, ok := Value(concrete.Field(i).Type, rand)
 			if !ok {
@@ -336,7 +336,7 @@ func arbitraryValues(args []reflect.Value, f reflect.Type, config *Config, rand 
 }
 
 func functionAndType(f interface{}) (v reflect.Value, t reflect.Type, ok bool) {
-	v = reflect.NewValue(f)
+	v = reflect.ValueOf(f)
 	ok = v.Kind() == reflect.Func
 	if !ok {
 		return
