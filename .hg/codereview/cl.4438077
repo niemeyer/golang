@@ -1,6 +1,0 @@
-Mailed: True
-Description:
-	reflect: Fix Copy of arrays
-Files:
-	src/pkg/reflect/all_test.go
-	src/pkg/reflect/value.go
