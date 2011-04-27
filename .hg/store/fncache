@@ -4384,3 +4384,9 @@ data/src/pkg/image/jpeg/writer_test.go.i
 data/src/pkg/net/cgo_bsd.go.i
 data/src/pkg/os/user/lookup_stubs.go.i
 data/src/pkg/reflect/set_test.go.i
+data/src/cmd/goinstall/path.go.i
+data/src/pkg/http/fcgi/fcgi.go.i
+data/src/pkg/http/fcgi/child.go.i
+data/src/pkg/http/fcgi/Makefile.i
+data/src/pkg/http/fcgi/fcgi_test.go.i
+data/test/func7.go.i
