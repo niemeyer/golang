@@ -6,6 +6,7 @@ package http
 
 import (
 	"bufio"
+	"bytes"
 	"compress/gzip"
 	"crypto/tls"
 	"encoding/base64"
@@ -217,6 +218,9 @@ func (t *Transport) getConn(cm *connectMethod) (*persistConn, os.Error) {
 
 	conn, err := net.Dial("tcp", cm.addr())
 	if err != nil {
+		if cm.proxyURL != nil {
+			err = fmt.Errorf("http: error connecting to proxy %s: %v", cm.proxyURL, err)
+		}
 		return nil, err
 	}
 
@@ -288,10 +292,28 @@ func (t *Transport) getConn(cm *connectMethod) (*persistConn, os.Error) {
 
 // useProxy returns true if requests to addr should use a proxy,
 // according to the NO_PROXY or no_proxy environment variable.
+// addr is always a canonicalAddr with a host and port.
 func (t *Transport) useProxy(addr string) bool {
 	if len(addr) == 0 {
 		return true
 	}
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if host == "localhost" {
+		return false
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		if ip4 := ip.To4(); ip4 != nil && ip4[0] == 127 {
+			// 127.0.0.0/8 loopback isn't proxied.
+			return false
+		}
+		if bytes.Equal(ip, net.IPv6loopback) {
+			return false
+		}
+	}
+
 	no_proxy := t.getenvEitherCase("NO_PROXY")
 	if no_proxy == "*" {
 		return false
@@ -510,12 +532,13 @@ func (pc *persistConn) roundTrip(req *Request) (resp *Response, err os.Error) {
 		re.res.Header.Del("Content-Encoding")
 		re.res.Header.Del("Content-Length")
 		re.res.ContentLength = -1
-		var err os.Error
-		re.res.Body, err = gzip.NewReader(re.res.Body)
+		esb := re.res.Body.(*bodyEOFSignal)
+		gzReader, err := gzip.NewReader(esb.body)
 		if err != nil {
 			pc.close()
 			return nil, err
 		}
+		esb.body = &readFirstCloseBoth{gzReader, esb.body}
 	}
 
 	return re.res, re.err
@@ -554,7 +577,7 @@ func responseIsKeepAlive(res *Response) bool {
 func readResponseWithEOFSignal(r *bufio.Reader, requestMethod string) (resp *Response, err os.Error) {
 	resp, err = ReadResponse(r, requestMethod)
 	if err == nil && resp.ContentLength != 0 {
-		resp.Body = &bodyEOFSignal{resp.Body, nil}
+		resp.Body = &bodyEOFSignal{body: resp.Body}
 	}
 	return
 }
@@ -563,12 +586,16 @@ func readResponseWithEOFSignal(r *bufio.Reader, requestMethod string) (resp *Res
 // once, right before the final Read() or Close() call returns, but after
 // EOF has been seen.
 type bodyEOFSignal struct {
-	body io.ReadCloser
-	fn   func()
+	body     io.ReadCloser
+	fn       func()
+	isClosed bool
 }
 
 func (es *bodyEOFSignal) Read(p []byte) (n int, err os.Error) {
 	n, err = es.body.Read(p)
+	if es.isClosed && n > 0 {
+		panic("http: unexpected bodyEOFSignal Read after Close; see issue 1725")
+	}
 	if err == os.EOF && es.fn != nil {
 		es.fn()
 		es.fn = nil
@@ -577,10 +604,27 @@ func (es *bodyEOFSignal) Read(p []byte) (n int, err os.Error) {
 }
 
 func (es *bodyEOFSignal) Close() (err os.Error) {
+	es.isClosed = true
 	err = es.body.Close()
 	if err == nil && es.fn != nil {
 		es.fn()
 		es.fn = nil
 	}
 	return
+}
+
+type readFirstCloseBoth struct {
+	io.ReadCloser
+	io.Closer
+}
+
+func (r *readFirstCloseBoth) Close() os.Error {
+	if err := r.ReadCloser.Close(); err != nil {
+		r.Closer.Close()
+		return err
+	}
+	if err := r.Closer.Close(); err != nil {
+		return err
+	}
+	return nil
 }

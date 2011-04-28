@@ -61,6 +61,11 @@ func main() {
 	}
 	root += filepath.FromSlash("/src/pkg/")
 
+	if os.Getuid() != 0 && os.Getenv("GOPATH") == "" {
+		fmt.Fprintf(os.Stderr, "%s: set $GOPATH to the directory you want packages installed to\n", argv0)
+		os.Exit(1)
+	}
+
 	// special case - "unsafe" is already installed
 	visit["unsafe"] = done
 
@@ -150,6 +155,7 @@ func install(pkg, parent string) {
 	// Check whether package is local or remote.
 	// If remote, download or update it.
 	var dir string
+	proot := gopath[0] // default to GOROOT
 	local := false
 	if strings.HasPrefix(pkg, "http://") {
 		fmt.Fprintf(os.Stderr, "%s: %s: 'http://' used in remote path, try '%s'\n", argv0, pkg, pkg[7:])
@@ -163,8 +169,9 @@ func install(pkg, parent string) {
 		visit[pkg] = done
 		return
 	} else {
-		var err os.Error
-		dir, err = download(pkg)
+		proot = findPkgroot(pkg)
+		err := download(pkg, proot.srcDir())
+		dir = filepath.Join(proot.srcDir(), pkg)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %s: %s\n", argv0, pkg, err)
 			errors = true
@@ -192,18 +199,11 @@ func install(pkg, parent string) {
 			install(p, pkg)
 		}
 	}
-	if dirInfo.pkgName == "main" {
-		if !errors {
-			fmt.Fprintf(os.Stderr, "%s: %s's dependencies are installed.\n", argv0, pkg)
-		}
-		errors = true
-		visit[pkg] = done
-		return
-	}
 
 	// Install this package.
 	if !errors {
-		if err := domake(dir, pkg, local); err != nil {
+		isCmd := dirInfo.pkgName == "main"
+		if err := domake(dir, pkg, proot, local, isCmd); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: installing %s: %s\n", argv0, pkg, err)
 			errors = true
 		} else if !local && *logPkgs {

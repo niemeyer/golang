@@ -474,8 +474,8 @@ assigned to a variable.
 <p>
 <h2>An I/O Package</h2>
 <p>
-Next we'll look at a simple package for doing file I/O with the usual
-sort of open/close/read/write interface.  Here's the start of <code>file.go</code>:
+Next we'll look at a simple package for doing file I/O with an
+open/close/read/write interface.  Here's the start of <code>file.go</code>:
 <p>
 <pre> <!-- progs/file.go /package/ /^}/ -->
 05    package file
@@ -554,10 +554,10 @@ We can use the factory to construct some familiar, exported variables of type <c
 </pre>
 <p>
 The <code>newFile</code> function was not exported because it's internal. The proper,
-exported factory to use is <code>Open</code>:
+exported factory to use is <code>OpenFile</code> (we'll explain that name in a moment):
 <p>
-<pre> <!-- progs/file.go /func.Open/ /^}/ -->
-30    func Open(name string, mode int, perm uint32) (file *File, err os.Error) {
+<pre> <!-- progs/file.go /func.OpenFile/ /^}/ -->
+30    func OpenFile(name string, mode int, perm uint32) (file *File, err os.Error) {
 31        r, e := syscall.Open(name, mode, perm)
 32        if e != 0 {
 33            err = os.Errno(e)
@@ -566,7 +566,7 @@ exported factory to use is <code>Open</code>:
 36    }
 </pre>
 <p>
-There are a number of new things in these few lines.  First, <code>Open</code> returns
+There are a number of new things in these few lines.  First, <code>OpenFile</code> returns
 multiple values, a <code>File</code> and an error (more about errors in a moment).
 We declare the
 multi-value return as a parenthesized list of declarations; syntactically
@@ -585,6 +585,35 @@ consistent error handling throughout Go code.   In <code>Open</code> we use a
 conversion to translate Unix's integer <code>errno</code> value into the integer type
 <code>os.Errno</code>, which implements <code>os.Error</code>.
 <p>
+Why <code>OpenFile</code> and not <code>Open</code>? To mimic Go's <code>os</code> package, which
+our exercise is emulating. The <code>os</code> package takes the opportunity
+to make the two commonest cases - open for read and create for
+write - the simplest, just <code>Open</code> and <code>Create</code>.  <code>OpenFile</code> is the
+general case, analogous to the Unix system call <code>Open</code>.  Here is
+the implementation of our <code>Open</code> and <code>Create</code>; they're trivial
+wrappers that eliminate common errors by capturing
+the tricky standard arguments to open and, especially, to create a file:
+<p>
+<pre> <!-- progs/file.go /^const/ /^}/ -->
+38    const (
+39        O_RDONLY = syscall.O_RDONLY
+40        O_RDWR   = syscall.O_RDWR
+41        O_CREATE = syscall.O_CREAT
+42        O_TRUNC  = syscall.O_TRUNC
+43    )
+<p>
+45    func Open(name string) (file *File, err os.Error) {
+46        return OpenFile(name, O_RDONLY, 0)
+47    }
+</pre>
+<p>
+<pre> <!-- progs/file.go /func.Create/ /^}/ -->
+49    func Create(name string) (file *File, err os.Error) {
+50        return OpenFile(name, O_RDWR|O_CREATE|O_TRUNC, 0666)
+51    }
+</pre>
+<p>
+Back to our main story.
 Now that we can build <code>Files</code>, we can write methods for them. To declare
 a method of a type, we define a function to have an explicit receiver
 of that type, placed
@@ -592,43 +621,43 @@ in parentheses before the function name. Here are some methods for <code>*File</
 each of which declares a receiver variable <code>file</code>.
 <p>
 <pre> <!-- progs/file.go /Close/ END -->
-38    func (file *File) Close() os.Error {
-39        if file == nil {
-40            return os.EINVAL
-41        }
-42        e := syscall.Close(file.fd)
-43        file.fd = -1 // so it can't be closed again
-44        if e != 0 {
-45            return os.Errno(e)
-46        }
-47        return nil
-48    }
+53    func (file *File) Close() os.Error {
+54        if file == nil {
+55            return os.EINVAL
+56        }
+57        e := syscall.Close(file.fd)
+58        file.fd = -1 // so it can't be closed again
+59        if e != 0 {
+60            return os.Errno(e)
+61        }
+62        return nil
+63    }
 <p>
-50    func (file *File) Read(b []byte) (ret int, err os.Error) {
-51        if file == nil {
-52            return -1, os.EINVAL
-53        }
-54        r, e := syscall.Read(file.fd, b)
-55        if e != 0 {
-56            err = os.Errno(e)
-57        }
-58        return int(r), err
-59    }
-<p>
-61    func (file *File) Write(b []byte) (ret int, err os.Error) {
-62        if file == nil {
-63            return -1, os.EINVAL
-64        }
-65        r, e := syscall.Write(file.fd, b)
-66        if e != 0 {
-67            err = os.Errno(e)
+65    func (file *File) Read(b []byte) (ret int, err os.Error) {
+66        if file == nil {
+67            return -1, os.EINVAL
 68        }
-69        return int(r), err
-70    }
-<p>
-72    func (file *File) String() string {
-73        return file.name
+69        r, e := syscall.Read(file.fd, b)
+70        if e != 0 {
+71            err = os.Errno(e)
+72        }
+73        return int(r), err
 74    }
+<p>
+76    func (file *File) Write(b []byte) (ret int, err os.Error) {
+77        if file == nil {
+78            return -1, os.EINVAL
+79        }
+80        r, e := syscall.Write(file.fd, b)
+81        if e != 0 {
+82            err = os.Errno(e)
+83        }
+84        return int(r), err
+85    }
+<p>
+87    func (file *File) String() string {
+88        return file.name
+89    }
 </pre>
 <p>
 There is no implicit <code>this</code> and the receiver variable must be used to access
@@ -658,7 +687,7 @@ We can now use our new package:
 13    func main() {
 14        hello := []byte(&quot;hello, world\n&quot;)
 15        file.Stdout.Write(hello)
-16        f, err := file.Open(&quot;/does/not/exist&quot;,  0,  0)
+16        f, err := file.Open(&quot;/does/not/exist&quot;)
 17        if f == nil {
 18            fmt.Printf(&quot;can't open file; err=%s\n&quot;,  err.String())
 19            os.Exit(1)
@@ -712,26 +741,27 @@ Building on the <code>file</code> package, here's a simple version of the Unix u
 24            case nr &gt; 0:
 25                if nw, ew := file.Stdout.Write(buf[0:nr]); nw != nr {
 26                    fmt.Fprintf(os.Stderr, &quot;cat: error writing from %s: %s\n&quot;, f.String(), ew.String())
-27                }
-28            }
-29        }
-30    }
+27                    os.Exit(1)
+28                }
+29            }
+30        }
+31    }
 <p>
-32    func main() {
-33        flag.Parse() // Scans the arg list and sets up flags
-34        if flag.NArg() == 0 {
-35            cat(file.Stdin)
-36        }
-37        for i := 0; i &lt; flag.NArg(); i++ {
-38            f, err := file.Open(flag.Arg(i), 0, 0)
-39            if f == nil {
-40                fmt.Fprintf(os.Stderr, &quot;cat: can't open %s: error %s\n&quot;, flag.Arg(i), err)
-41                os.Exit(1)
-42            }
-43            cat(f)
-44            f.Close()
-45        }
-46    }
+33    func main() {
+34        flag.Parse() // Scans the arg list and sets up flags
+35        if flag.NArg() == 0 {
+36            cat(file.Stdin)
+37        }
+38        for i := 0; i &lt; flag.NArg(); i++ {
+39            f, err := file.Open(flag.Arg(i))
+40            if f == nil {
+41                fmt.Fprintf(os.Stderr, &quot;cat: can't open %s: error %s\n&quot;, flag.Arg(i), err)
+42                os.Exit(1)
+43            }
+44            cat(f)
+45            f.Close()
+46        }
+47    }
 </pre>
 <p>
 By now this should be easy to follow, but the <code>switch</code> statement introduces some
@@ -829,10 +859,11 @@ and use it from within a mostly unchanged <code>cat()</code> function:
 67                nw, ew := file.Stdout.Write(buf[0:nr])
 68                if nw != nr {
 69                    fmt.Fprintf(os.Stderr, &quot;cat: error writing from %s: %s\n&quot;, r.String(), ew.String())
-70                }
-71            }
-72        }
-73    }
+70                    os.Exit(1)
+71                }
+72            }
+73        }
+74    }
 </pre>
 <p>
 (We could also do the wrapping in <code>main</code> and leave <code>cat()</code> mostly alone, except
@@ -1209,7 +1240,7 @@ together:
 28    func main() {
 29        ch := make(chan int)  // Create a new channel.
 30        go generate(ch)  // Start generate() as a goroutine.
-31        for {
+31        for i := 0; i &lt; 100; i++ { // Print the first hundred primes.
 32            prime := &lt;-ch
 33            fmt.Println(prime)
 34            ch1 := make(chan int)
@@ -1289,7 +1320,7 @@ Now <code>main</code>'s interface to the prime sieve is a channel of primes:
 <pre> <!-- progs/sieve1.go /func.main/ /^}/ -->
 46    func main() {
 47        primes := sieve()
-48        for {
+48        for i := 0; i &lt; 100; i++ { // Print the first hundred primes.
 49            fmt.Println(&lt;-primes)
 50        }
 51    }

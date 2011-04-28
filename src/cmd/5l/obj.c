@@ -317,7 +317,7 @@ zaddr(Biobuf *f, Adr *a, Sym *h[])
 	a->sym = h[c];
 	a->name = Bgetc(f);
 
-	if(a->reg < 0 || a->reg > NREG) {
+	if((schar)a->reg < 0 || a->reg > NREG) {
 		print("register out of range %d\n", a->reg);
 		Bputc(f, ALAST+1);
 		return;	/*  force real diagnostic */
@@ -581,7 +581,7 @@ loop:
 			diag("multiple initialization for %s: in both %s and %s", s->name, s->file, pn);
 			errorexit();
 		}
-		savedata(s, p);
+		savedata(s, p, pn);
 		unmal(p, sizeof *p);
 		break;
 

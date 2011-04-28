@@ -567,8 +567,8 @@ func checkSize(t *testing.T, f *File, size int64) {
 	}
 }
 
-func TestTruncate(t *testing.T) {
-	f := newFile("TestTruncate", t)
+func TestFTruncate(t *testing.T) {
+	f := newFile("TestFTruncate", t)
 	defer Remove(f.Name())
 	defer f.Close()
 
@@ -580,6 +580,24 @@ func TestTruncate(t *testing.T) {
 	f.Truncate(1024)
 	checkSize(t, f, 1024)
 	f.Truncate(0)
+	checkSize(t, f, 0)
+	f.Write([]byte("surprise!"))
+	checkSize(t, f, 13+9) // wrote at offset past where hello, world was.
+}
+
+func TestTruncate(t *testing.T) {
+	f := newFile("TestTruncate", t)
+	defer Remove(f.Name())
+	defer f.Close()
+
+	checkSize(t, f, 0)
+	f.Write([]byte("hello, world\n"))
+	checkSize(t, f, 13)
+	Truncate(f.Name(), 10)
+	checkSize(t, f, 10)
+	Truncate(f.Name(), 1024)
+	checkSize(t, f, 1024)
+	Truncate(f.Name(), 0)
 	checkSize(t, f, 0)
 	f.Write([]byte("surprise!"))
 	checkSize(t, f, 13+9) // wrote at offset past where hello, world was.
@@ -885,6 +903,18 @@ func TestAppend(t *testing.T) {
 	s = writeFile(t, f, O_APPEND|O_RDWR, "|append")
 	if s != "new|append" {
 		t.Fatalf("writeFile: have %q want %q", s, "new|append")
+	}
+	s = writeFile(t, f, O_CREATE|O_APPEND|O_RDWR, "|append")
+	if s != "new|append|append" {
+		t.Fatalf("writeFile: have %q want %q", s, "new|append|append")
+	}
+	err := Remove(f)
+	if err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	s = writeFile(t, f, O_CREATE|O_APPEND|O_RDWR, "new&append")
+	if s != "new&append" {
+		t.Fatalf("writeFile: have %q want %q", s, "new&append")
 	}
 }
 

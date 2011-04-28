@@ -56,29 +56,44 @@ var googleaddrs = []string{
 }
 
 func TestLookupCNAME(t *testing.T) {
+	if testing.Short() {
+		// Don't use external network.
+		t.Logf("skipping external network test during -short")
+		return
+	}
 	cname, err := LookupCNAME("www.google.com")
-	if cname != "www.l.google.com." || err != nil {
-		t.Errorf(`LookupCNAME("www.google.com.") = %q, %v, want "www.l.google.com.", nil`, cname, err)
+	if !strings.HasSuffix(cname, ".l.google.com.") || err != nil {
+		t.Errorf(`LookupCNAME("www.google.com.") = %q, %v, want "*.l.google.com.", nil`, cname, err)
 	}
 }
 
 func TestDialGoogle(t *testing.T) {
+	if testing.Short() {
+		// Don't use external network.
+		t.Logf("skipping external network test during -short")
+		return
+	}
 	// If no ipv6 tunnel, don't try the last address.
 	if !*ipv6 {
 		googleaddrs[len(googleaddrs)-1] = ""
 	}
 
-	// Insert an actual IP address for google.com
+	// Insert an actual IPv4 address for google.com
 	// into the table.
-
 	addrs, err := LookupIP("www.google.com")
 	if err != nil {
 		t.Fatalf("lookup www.google.com: %v", err)
 	}
-	if len(addrs) == 0 {
-		t.Fatalf("no addresses for www.google.com")
+	var ip IP
+	for _, addr := range addrs {
+		if x := addr.To4(); x != nil {
+			ip = x
+			break
+		}
 	}
-	ip := addrs[0].To4()
+	if ip == nil {
+		t.Fatalf("no IPv4 addresses for www.google.com")
+	}
 
 	for i, s := range googleaddrs {
 		if strings.Contains(s, "%") {

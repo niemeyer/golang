@@ -47,6 +47,8 @@ cgen(Node *n, Node *res)
 	}
 
 	if(isfat(n->type)) {
+		if(n->type->width < 0)
+			fatal("forgot to compute width for %T", n->type);
 		sgen(n, res, n->type->width);
 		goto ret;
 	}
@@ -827,7 +829,7 @@ bgen(Node *n, int true, Prog *to)
 		}
 
 		// make simplest on right
-		if(nl->op == OLITERAL || nl->ullman < nr->ullman) {
+		if(nl->op == OLITERAL || (nl->ullman < nr->ullman && nl->ullman < UINF)) {
 			a = brrev(a);
 			r = nl;
 			nl = nr;
@@ -877,18 +879,18 @@ bgen(Node *n, int true, Prog *to)
 		}
 
 		if(nr->ullman >= UINF) {
-			regalloc(&n1, nr->type, N);
-			cgen(nr, &n1);
-
-			tempname(&tmp, nr->type);
-			gmove(&n1, &tmp);
-			regfree(&n1);
-
 			regalloc(&n1, nl->type, N);
 			cgen(nl, &n1);
 
-			regalloc(&n2, nr->type, &n2);
-			cgen(&tmp, &n2);
+			tempname(&tmp, nl->type);
+			gmove(&n1, &tmp);
+			regfree(&n1);
+
+			regalloc(&n2, nr->type, N);
+			cgen(nr, &n2);
+
+			regalloc(&n1, nl->type, N);
+			cgen(&tmp, &n1);
 
 			goto cmp;
 		}

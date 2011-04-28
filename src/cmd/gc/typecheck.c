@@ -31,6 +31,7 @@ static void	checkassign(Node*);
 static void	checkassignlist(NodeList*);
 static void stringtoarraylit(Node**);
 static Node* resolve(Node*);
+static Type*	getforwtype(Node*);
 
 /*
  * resolve ONONAME to definition, if any.
@@ -56,7 +57,7 @@ typechecklist(NodeList *l, int top)
 		typecheck(&l->n, top);
 }
 
-static char* typekind[] = {
+static char* _typekind[] = {
 	[TINT]		= "int",
 	[TUINT]		= "uint",
 	[TINT8]		= "int8",
@@ -82,7 +83,21 @@ static char* typekind[] = {
 	[TMAP]		= "map",
 	[TARRAY]	= "array",
 	[TFUNC]		= "func",
+	[TNIL]		= "nil",
+	[TIDEAL]	= "ideal number",
 };
+
+static char*
+typekind(int et)
+{
+	static char buf[50];
+	char *s;
+	
+	if(0 <= et && et < nelem(_typekind) && (s=_typekind[et]) != nil)
+		return s;
+	snprint(buf, sizeof buf, "etype=%d", et);
+	return buf;
+}
 
 /*
  * type check node *np.
@@ -96,7 +111,7 @@ typecheck(Node **np, int top)
 	Node *n, *l, *r;
 	NodeList *args;
 	int lno, ok, ntop;
-	Type *t, *tp, *missing, *have;
+	Type *t, *tp, *ft, *missing, *have;
 	Sym *sym;
 	Val v;
 	char *why;
@@ -139,6 +154,11 @@ typecheck(Node **np, int top)
 			yyerror("use of builtin %S not in function call", n->sym);
 			goto error;
 		}
+
+		// a dance to handle forward-declared recursive pointer types.
+		if(n->op == OTYPE && (ft = getforwtype(n->ntype)) != T)
+			defertypecopy(n, ft);
+
 		walkdef(n);
 		n->realtype = n->type;
 		if(n->op == ONONAME)
@@ -406,7 +426,7 @@ reswitch:
 		}
 		if(!okfor[op][et]) {
 		notokfor:
-			yyerror("invalid operation: %#N (operator %#O not defined on %s)", n, op, typekind[et]);
+			yyerror("invalid operation: %#N (operator %#O not defined on %s)", n, op, typekind(et));
 			goto error;
 		}
 		// okfor allows any array == array;
@@ -992,9 +1012,13 @@ reswitch:
 		defaultlit(&n->right, T);
 		
 		// copy([]byte, string)
-		if(isslice(n->left->type) && n->left->type->type == types[TUINT8] && n->right->type->etype == TSTRING)
-			goto ret;
-
+		if(isslice(n->left->type) && n->right->type->etype == TSTRING) {
+		        if (n->left->type->type ==types[TUINT8])
+			        goto ret;
+		        yyerror("arguments to copy have different element types: %lT and string", n->left->type);
+			goto error;
+		}
+			       
 		if(!isslice(n->left->type) || !isslice(n->right->type)) {
 			if(!isslice(n->left->type) && !isslice(n->right->type))
 				yyerror("arguments to copy must be slices; have %lT, %lT", n->left->type, n->right->type);
@@ -2451,4 +2475,25 @@ stringtoarraylit(Node **np)
 	nn->list = l;
 	typecheck(&nn, Erv);
 	*np = nn;
+}
+
+static Type*
+getforwtype(Node *n)
+{
+	Node *f1, *f2;
+
+	for(f1=f2=n; ; n=n->ntype) {
+		if((n = resolve(n)) == N || n->op != OTYPE)
+			return T;
+
+		if(n->type != T && n->type->etype == TFORW)
+			return n->type;
+
+		// Check for ntype cycle.
+		if((f2 = resolve(f2)) != N && (f1 = resolve(f2->ntype)) != N) {
+			f2 = resolve(f1->ntype);
+			if(f1 == n || f2 == n)
+				return T;
+		}
+	}
 }

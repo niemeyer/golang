@@ -315,6 +315,7 @@ struct	Pkg
 {
 	char*	name;
 	Strlit*	path;
+	Sym*	pathsym;
 	char*	prefix;
 	Pkg*	link;
 	char	exported;	// import line written in export data
@@ -581,6 +582,7 @@ struct	Io
 	Biobuf*	bin;
 	int32	ilineno;
 	int	nlsemi;
+	int	eofnl;
 	int	peekc;
 	int	peekc1;	// second peekc for ...
 	char*	cp;	// used for content when bin==nil
@@ -1170,9 +1172,12 @@ Node*	unsafenmagic(Node *n);
  */
 Node*	callnew(Type *t);
 Node*	chanfn(char *name, int n, Type *t);
+void	copytype(Node *n, Type *t);
+void	defertypecopy(Node *n, Type *t);
 Node*	mkcall(char *name, Type *t, NodeList **init, ...);
 Node*	mkcall1(Node *fn, Type *t, NodeList **init, ...);
 void	queuemethod(Node *n);
+void	resumetypecopy(void);
 int	vmatch1(Node *l, Node *r);
 void	walk(Node *fn);
 Node*	walkdef(Node *n);

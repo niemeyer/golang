@@ -1,3 +1,15 @@
+golang-weekly (2011-04-27-8) natty; urgency=high
+
+  * New weekly release.
+
+ -- Gustavo Niemeyer <niemeyer@canonical.com>  Thu, 28 Apr 2011 10:40:15 -0300
+
+golang-weekly (2011-04-27-7) maverick; urgency=high
+
+  * New weekly release.
+
+ -- Gustavo Niemeyer <niemeyer@canonical.com>  Thu, 28 Apr 2011 10:40:15 -0300
+
 golang-weekly (2011-04-13-6) natty; urgency=high
 
   * New weekly release.

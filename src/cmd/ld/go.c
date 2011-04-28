@@ -412,7 +412,7 @@ parsemethod(char **pp, char *ep, char **methp)
 static void
 loaddynimport(char *file, char *pkg, char *p, int n)
 {
-	char *pend, *next, *name, *def, *p0, *lib;
+	char *pend, *next, *name, *def, *p0, *lib, *q;
 	Sym *s;
 
 	pend = p + n;
@@ -445,6 +445,12 @@ loaddynimport(char *file, char *pkg, char *p, int n)
 		*strchr(name, ' ') = 0;
 		*strchr(def, ' ') = 0;
 		
+		if(debug['d']) {
+			fprint(2, "%s: %s: cannot use dynamic imports with -d flag\n", argv0, file);
+			nerrors++;
+			return;
+		}
+		
 		if(strcmp(name, "_") == 0 && strcmp(def, "_") == 0) {
 			// allow #pragma dynimport _ _ "foo.so"
 			// to force a link of foo.so.
@@ -453,17 +459,21 @@ loaddynimport(char *file, char *pkg, char *p, int n)
 		}
 
 		name = expandpkg(name, pkg);
+		q = strchr(def, '@');
+		if(q)
+			*q++ = '\0';
 		s = lookup(name, 0);
 		if(s->type == 0 || s->type == SXREF) {
 			s->dynimplib = lib;
 			s->dynimpname = def;
+			s->dynimpvers = q;
 			s->type = SDYNIMPORT;
 		}
 	}
 	return;
 
 err:
-	fprint(2, "%s: invalid dynimport line: %s\n", argv0, p0);
+	fprint(2, "%s: %s: invalid dynimport line: %s\n", argv0, file, p0);
 	nerrors++;
 }
 
