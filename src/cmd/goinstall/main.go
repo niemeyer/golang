@@ -61,6 +61,11 @@ func main() {
 	}
 	root += filepath.FromSlash("/src/pkg/")
 
+	if os.Getuid() != 0 && os.Getenv("GOPATH") == "" {
+		fmt.Fprintf(os.Stderr, "%s: set $GOPATH to the directory you want packages installed to\n", argv0)
+		os.Exit(1)
+	}
+
 	// special case - "unsafe" is already installed
 	visit["unsafe"] = done
 
