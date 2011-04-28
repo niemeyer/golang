@@ -4394,3 +4394,4 @@ data/src/pkg/mime/multipart/formdata_test.go.i
 data/src/pkg/http/header_test.go.i
 data/src/pkg/mime/multipart/formdata.go.i
 data/test/fixedbugs/bug336.go.i
+data/test/fixedbugs/bug337.go.i
