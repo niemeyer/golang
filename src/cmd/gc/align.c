@@ -468,7 +468,7 @@ typeinit(void)
 			okforadd[i] = 1;
 			okforarith[i] = 1;
 			okforconst[i] = 1;
-//			issimple[i] = 1;
+			issimple[i] = 1;
 		}
 	}
 
@@ -530,7 +530,7 @@ typeinit(void)
 	okfor[OCOM] = okforand;
 	okfor[OMINUS] = okforarith;
 	okfor[ONOT] = okforbool;
-	okfor[OPLUS] = okforadd;
+	okfor[OPLUS] = okforarith;
 
 	// special
 	okfor[OCAP] = okforcap;

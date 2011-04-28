@@ -16,6 +16,7 @@ import (
 	"bufio"
 	"bytes"
 	"io"
+	"io/ioutil"
 	"mime"
 	"net/textproto"
 	"os"
@@ -34,6 +35,12 @@ type Reader interface {
 	// reports errors, or on truncated or otherwise malformed
 	// input.
 	NextPart() (*Part, os.Error)
+
+	// ReadForm parses an entire multipart message whose parts have
+	// a Content-Disposition of "form-data".
+	// It stores up to maxMemory bytes of the file parts in memory
+	// and the remainder on disk in temporary files.
+	ReadForm(maxMemory int64) (*Form, os.Error)
 }
 
 // A Part represents a single part in a multipart body.
@@ -45,6 +52,8 @@ type Part struct {
 
 	buffer *bytes.Buffer
 	mr     *multiReader
+
+	dispositionParams map[string]string
 }
 
 // FormName returns the name parameter if p has a Content-Disposition
@@ -52,15 +61,19 @@ type Part struct {
 func (p *Part) FormName() string {
 	// See http://tools.ietf.org/html/rfc2183 section 2 for EBNF
 	// of Content-Disposition value format.
+	if p.dispositionParams != nil {
+		return p.dispositionParams["name"]
+	}
 	v := p.Header.Get("Content-Disposition")
 	if v == "" {
 		return ""
 	}
-	d, params := mime.ParseMediaType(v)
-	if d != "form-data" {
+	if d, params := mime.ParseMediaType(v); d != "form-data" {
 		return ""
+	} else {
+		p.dispositionParams = params
 	}
-	return params["name"]
+	return p.dispositionParams["name"]
 }
 
 // NewReader creates a new multipart Reader reading from r using the
@@ -76,14 +89,6 @@ func NewReader(reader io.Reader, boundary string) Reader {
 
 // Implementation ....
 
-type devNullWriter bool
-
-func (*devNullWriter) Write(p []byte) (n int, err os.Error) {
-	return len(p), nil
-}
-
-var devNull = devNullWriter(false)
-
 func newPart(mr *multiReader) (bp *Part, err os.Error) {
 	bp = new(Part)
 	bp.Header = make(map[string][]string)
@@ -97,10 +102,11 @@ func newPart(mr *multiReader) (bp *Part, err os.Error) {
 
 func (bp *Part) populateHeaders() os.Error {
 	for {
-		line, err := bp.mr.bufReader.ReadString('\n')
+		lineBytes, err := bp.mr.bufReader.ReadSlice('\n')
 		if err != nil {
 			return err
 		}
+		line := string(lineBytes)
 		if line == "\n" || line == "\r\n" {
 			return nil
 		}
@@ -157,7 +163,7 @@ func (bp *Part) Read(p []byte) (n int, err os.Error) {
 }
 
 func (bp *Part) Close() os.Error {
-	io.Copy(&devNull, bp)
+	io.Copy(ioutil.Discard, bp)
 	return nil
 }
 
@@ -179,11 +185,12 @@ func (mr *multiReader) eof() bool {
 }
 
 func (mr *multiReader) readLine() bool {
-	line, err := mr.bufReader.ReadString('\n')
+	lineBytes, err := mr.bufReader.ReadSlice('\n')
 	if err != nil {
 		// TODO: care about err being EOF or not?
 		return false
 	}
+	line := string(lineBytes)
 	mr.bufferedLine = &line
 	return true
 }

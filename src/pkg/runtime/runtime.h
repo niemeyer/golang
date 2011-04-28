@@ -183,6 +183,9 @@ struct	G
 	Defer*	defer;
 	Panic*	panic;
 	Gobuf	sched;
+	byte*	gcstack;		// if status==Gsyscall, gcstack = stackbase to use during gc
+	byte*	gcsp;		// if status==Gsyscall, gcsp = sched.sp to use during gc
+	byte*	gcguard;		// if status==Gsyscall, gcguard = stackguard to use during gc
 	byte*	stack0;
 	byte*	entry;		// initial function
 	G*	alllink;	// on allg
@@ -241,6 +244,7 @@ struct	M
 	void*	sehframe;
 #endif
 };
+
 struct	Stktop
 {
 	// The offsets of these fields are known to (hard-coded in) libmach.
@@ -580,7 +584,6 @@ int32	runtime·gomaxprocsfunc(int32 n);
 
 void	runtime·mapassign(Hmap*, byte*, byte*);
 void	runtime·mapaccess(Hmap*, byte*, byte*, bool*);
-struct hash_iter*	runtime·newmapiterinit(Hmap*);
 void	runtime·mapiternext(struct hash_iter*);
 bool	runtime·mapiterkey(struct hash_iter*, void*);
 void	runtime·mapiterkeyvalue(struct hash_iter*, void*, void*);
@@ -589,7 +592,6 @@ Hmap*	runtime·makemap_c(Type*, Type*, int64);
 Hchan*	runtime·makechan_c(Type*, int64);
 void	runtime·chansend(Hchan*, void*, bool*);
 void	runtime·chanrecv(Hchan*, void*, bool*, bool*);
-void	runtime·chanclose(Hchan*);
 int32	runtime·chanlen(Hchan*);
 int32	runtime·chancap(Hchan*);
 

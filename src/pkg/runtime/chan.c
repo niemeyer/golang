@@ -9,7 +9,6 @@
 
 static	int32	debug	= 0;
 
-typedef	struct	Link	Link;
 typedef	struct	WaitQ	WaitQ;
 typedef	struct	SudoG	SudoG;
 typedef	struct	Select	Select;
@@ -50,12 +49,6 @@ struct	Hchan
 // Buffer follows Hchan immediately in memory.
 // chanbuf(c, i) is pointer to the i'th slot in the buffer.
 #define chanbuf(c, i) ((byte*)((c)+1)+(uintptr)(c)->elemsize*(i))
-
-struct	Link
-{
-	Link*	link;			// asynch queue circular linked list
-	byte	elem[8];		// asynch queue data element (+ more)
-};
 
 enum
 {
@@ -121,7 +114,6 @@ runtime·makechan_c(Type *elem, int64 hint)
 	by = runtime·mal(n + hint*elem->size);
 
 	c = (Hchan*)by;
-	by += n;
 	runtime·addfinalizer(c, destroychan, 0);
 
 	c->elemsize = elem->size;
@@ -134,6 +126,15 @@ runtime·makechan_c(Type *elem, int64 hint)
 			c, (int64)elem->size, elem->alg, elem->align, c->dataqsiz);
 
 	return c;
+}
+
+// For reflect
+//	func makechan(typ *ChanType, size uint32) (chan)
+void
+reflect·makechan(ChanType *t, uint32 size, Hchan *c)
+{
+	c = runtime·makechan_c(t->elem, size);
+	FLUSH(&c);
 }
 
 static void
@@ -270,6 +271,7 @@ closed:
 	runtime·unlock(c);
 	runtime·panicstring("send on closed channel");
 }
+
 
 void
 runtime·chanrecv(Hchan* c, byte *ep, bool *selected, bool *received)
@@ -526,6 +528,71 @@ runtime·selectnbrecv2(byte *v, bool *received, Hchan *c, bool selected)
 {
 	runtime·chanrecv(c, v, &selected, received);
 }	
+
+// For reflect:
+//	func chansend(c chan, val iword, nb bool) (selected bool)
+// where an iword is the same word an interface value would use:
+// the actual data if it fits, or else a pointer to the data.
+//
+// The "uintptr selected" is really "bool selected" but saying
+// uintptr gets us the right alignment for the output parameter block.
+void
+reflect·chansend(Hchan *c, uintptr val, bool nb, uintptr selected)
+{
+	bool *sp;
+	byte *vp;
+	
+	if(c == nil)
+		runtime·panicstring("send to nil channel");
+
+	if(nb) {
+		selected = false;
+		sp = (bool*)&selected;
+	} else {
+		*(bool*)&selected = true;
+		FLUSH(&selected);
+		sp = nil;
+	}
+	if(c->elemsize <= sizeof(val))
+		vp = (byte*)&val;
+	else
+		vp = (byte*)val;
+	runtime·chansend(c, vp, sp);
+}
+
+// For reflect:
+//	func chanrecv(c chan, nb bool) (val iword, selected, received bool)
+// where an iword is the same word an interface value would use:
+// the actual data if it fits, or else a pointer to the data.
+void
+reflect·chanrecv(Hchan *c, bool nb, uintptr val, bool selected, bool received)
+{
+	byte *vp;
+	bool *sp;
+	
+	if(c == nil)
+		runtime·panicstring("receive from nil channel");
+
+	if(nb) {
+		selected = false;
+		sp = &selected;
+	} else {
+		selected = true;
+		FLUSH(&selected);
+		sp = nil;
+	}
+	received = false;
+	FLUSH(&received);
+	if(c->elemsize <= sizeof(val)) {
+		val = 0;
+		vp = (byte*)&val;
+	} else {
+		vp = runtime·mal(c->elemsize);
+		val = (uintptr)vp;
+		FLUSH(&val);
+	}
+	runtime·chanrecv(c, vp, sp, &received);
+}
 
 static void newselect(int32, Select**);
 
@@ -1044,22 +1111,36 @@ runtime·closechan(Hchan *c)
 	runtime·unlock(c);
 }
 
+// For reflect
+//	func chanclose(c chan)
 void
-runtime·chanclose(Hchan *c)
+reflect·chanclose(Hchan *c)
 {
 	runtime·closechan(c);
 }
 
-int32
-runtime·chanlen(Hchan *c)
+// For reflect
+//	func chanlen(c chan) (len int32)
+void
+reflect·chanlen(Hchan *c, int32 len)
 {
-	return c->qcount;
+	if(c == nil)
+		len = 0;
+	else
+		len = c->qcount;
+	FLUSH(&len);
 }
 
-int32
-runtime·chancap(Hchan *c)
+// For reflect
+//	func chancap(c chan) (cap int32)
+void
+reflect·chancap(Hchan *c, int32 cap)
 {
-	return c->dataqsiz;
+	if(c == nil)
+		cap = 0;
+	else
+		cap = c->dataqsiz;
+	FLUSH(&cap);
 }
 
 static SudoG*

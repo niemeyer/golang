@@ -180,9 +180,7 @@ MHeap_Grow(MHeap *h, uintptr npage)
 	// Allocate a multiple of 64kB (16 pages).
 	npage = (npage+15)&~15;
 	ask = npage<<PageShift;
-	if(ask > h->arena_end - h->arena_used)
-		return false;
-	if(ask < HeapAllocChunk && HeapAllocChunk <= h->arena_end - h->arena_used)
+	if(ask < HeapAllocChunk)
 		ask = HeapAllocChunk;
 
 	v = runtime·MHeap_SysAlloc(h, ask);
@@ -191,8 +189,10 @@ MHeap_Grow(MHeap *h, uintptr npage)
 			ask = npage<<PageShift;
 			v = runtime·MHeap_SysAlloc(h, ask);
 		}
-		if(v == nil)
+		if(v == nil) {
+			runtime·printf("runtime: out of memory: cannot allocate %D-byte block (%D in use)\n", (uint64)ask, mstats.heap_sys);
 			return false;
+		}
 	}
 	mstats.heap_sys += ask;
 

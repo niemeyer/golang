@@ -1,5 +1,5 @@
 <!-- title The Go Programming Language Specification -->
-<!-- subtitle Version of Apr 5, 2011 -->
+<!-- subtitle Version of Apr 22, 2011 -->
 
 <!--
 TODO
@@ -1155,8 +1155,9 @@ map [string] interface {}
 The number of map elements is called its length.
 For a map <code>m</code>, it can be discovered using the
 built-in function <a href="#Length_and_capacity"><code>len(m)</code></a>
-and may change during execution. Values may be added and removed
-during execution using special forms of <a href="#Assignments">assignment</a>.
+and may change during execution. Elements may be added and removed
+during execution using special forms of <a href="#Assignments">assignment</a>;
+and they may be accessed with <a href="#Indexes">index</a> expressions.
 </p>
 <p>
 A new, empty map value is made using the built-in
@@ -4541,13 +4542,14 @@ Two built-in functions assist in common slice operations.
 
 <p>
 The function <code>append</code> appends zero or more values <code>x</code>
-to a slice <code>s</code> and returns the resulting slice, with the same type
-as s. Each value must be <a href="#Assignability">assignable</a> to the slice's
-element type.
+to <code>s</code> of type <code>S</code>, which must be a slice type, and
+returns the resulting slice, also of type <code>S</code>.
+Each value <code>x</code> must be <a href="#Assignability">assignable</a> to
+the <a href="#Slice_types">element type</a> of <code>S</code>.
 </p>
 
 <pre class="grammar">
-append(s S, x ...T) S  // S is assignable to []T
+append(s S, x ...T) S  // T is the element type of S
 </pre>
 
 <p>
@@ -4562,6 +4564,9 @@ s0 := []int{0, 0}
 s1 := append(s0, 2)        // append a single element     s1 == []int{0, 0, 2}
 s2 := append(s1, 3, 5, 7)  // append multiple elements    s2 == []int{0, 0, 2, 3, 5, 7}
 s3 := append(s2, s0...)    // append a slice              s3 == []int{0, 0, 2, 3, 5, 7, 0, 0}
+
+var t []interface{}
+t = append(t, 42, 3.1415, "foo")                          t == []interface{}{42, 3.1415, "foo"}
 </pre>
 
 <p>

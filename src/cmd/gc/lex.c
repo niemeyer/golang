@@ -249,6 +249,7 @@ main(int argc, char *argv[])
 	for(l=xtop; l; l=l->next)
 		if(l->n->op == ODCL || l->n->op == OAS)
 			typecheck(&l->n, Etop);
+	resumetypecopy();
 	resumecheckwidth();
 	for(l=xtop; l; l=l->next)
 		if(l->n->op == ODCLFUNC)
@@ -1310,7 +1311,7 @@ getc(void)
 			lexlineno++;
 		return c;
 	}
-
+	
 	if(curio.bin == nil) {
 		c = *curio.cp & 0xff;
 		if(c != 0)
@@ -1325,8 +1326,11 @@ getc(void)
 			break;
 		}
 	case EOF:
-		return EOF;
-
+		// insert \n at EOF
+		if(curio.eofnl)
+			return EOF;
+		curio.eofnl = 1;
+		c = '\n';
 	case '\n':
 		if(pushedio.bin == nil)
 			lexlineno++;

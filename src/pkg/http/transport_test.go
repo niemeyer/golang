@@ -9,11 +9,14 @@ package http_test
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/rand"
 	"fmt"
 	. "http"
 	"http/httptest"
+	"io"
 	"io/ioutil"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -179,35 +182,47 @@ func TestTransportIdleCacheKeys(t *testing.T) {
 }
 
 func TestTransportMaxPerHostIdleConns(t *testing.T) {
-	ch := make(chan string)
+	resch := make(chan string)
+	gotReq := make(chan bool)
 	ts := httptest.NewServer(HandlerFunc(func(w ResponseWriter, r *Request) {
-		w.Write([]byte(<-ch))
+		gotReq <- true
+		msg := <-resch
+		_, err := w.Write([]byte(msg))
+		if err != nil {
+			t.Fatalf("Write: %v", err)
+		}
 	}))
 	defer ts.Close()
 	maxIdleConns := 2
 	tr := &Transport{DisableKeepAlives: false, MaxIdleConnsPerHost: maxIdleConns}
 	c := &Client{Transport: tr}
 
-	// Start 3 outstanding requests (will hang until we write to
-	// ch)
+	// Start 3 outstanding requests and wait for the server to get them.
+	// Their responses will hang until we we write to resch, though.
 	donech := make(chan bool)
 	doReq := func() {
 		resp, _, err := c.Get(ts.URL)
 		if err != nil {
 			t.Error(err)
 		}
-		ioutil.ReadAll(resp.Body)
+		_, err = ioutil.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatalf("ReadAll: %v", err)
+		}
 		donech <- true
 	}
 	go doReq()
+	<-gotReq
 	go doReq()
+	<-gotReq
 	go doReq()
+	<-gotReq
 
 	if e, g := 0, len(tr.IdleConnKeysForTesting()); e != g {
 		t.Fatalf("Before writes, expected %d idle conn cache keys; got %d", e, g)
 	}
 
-	ch <- "res1"
+	resch <- "res1"
 	<-donech
 	keys := tr.IdleConnKeysForTesting()
 	if e, g := 1, len(keys); e != g {
@@ -221,13 +236,13 @@ func TestTransportMaxPerHostIdleConns(t *testing.T) {
 		t.Errorf("after first response, expected %d idle conns; got %d", e, g)
 	}
 
-	ch <- "res2"
+	resch <- "res2"
 	<-donech
 	if e, g := 2, tr.IdleConnCountForTesting(cacheKey); e != g {
 		t.Errorf("after second response, expected %d idle conns; got %d", e, g)
 	}
 
-	ch <- "res3"
+	resch <- "res3"
 	<-donech
 	if e, g := maxIdleConns, tr.IdleConnCountForTesting(cacheKey); e != g {
 		t.Errorf("after third response, still expected %d idle conns; got %d", e, g)
@@ -355,32 +370,80 @@ func TestTransportNilURL(t *testing.T) {
 
 func TestTransportGzip(t *testing.T) {
 	const testString = "The test string aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	ts := httptest.NewServer(HandlerFunc(func(w ResponseWriter, r *Request) {
-		if g, e := r.Header.Get("Accept-Encoding"), "gzip"; g != e {
+	const nRandBytes = 1024 * 1024
+	ts := httptest.NewServer(HandlerFunc(func(rw ResponseWriter, req *Request) {
+		if g, e := req.Header.Get("Accept-Encoding"), "gzip"; g != e {
 			t.Errorf("Accept-Encoding = %q, want %q", g, e)
 		}
-		w.Header().Set("Content-Encoding", "gzip")
-		gz, _ := gzip.NewWriter(w)
-		defer gz.Close()
-		gz.Write([]byte(testString))
+		rw.Header().Set("Content-Encoding", "gzip")
 
+		var w io.Writer = rw
+		var buf bytes.Buffer
+		if req.FormValue("chunked") == "0" {
+			w = &buf
+			defer io.Copy(rw, &buf)
+			defer func() {
+				rw.Header().Set("Content-Length", strconv.Itoa(buf.Len()))
+			}()
+		}
+		gz, _ := gzip.NewWriter(w)
+		gz.Write([]byte(testString))
+		if req.FormValue("body") == "large" {
+			io.Copyn(gz, rand.Reader, nRandBytes)
+		}
+		gz.Close()
 	}))
 	defer ts.Close()
 
-	c := &Client{Transport: &Transport{}}
-	res, _, err := c.Get(ts.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	body, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if g, e := string(body), testString; g != e {
-		t.Fatalf("body = %q; want %q", g, e)
-	}
-	if g, e := res.Header.Get("Content-Encoding"), ""; g != e {
-		t.Fatalf("Content-Encoding = %q; want %q", g, e)
+	for _, chunked := range []string{"1", "0"} {
+		c := &Client{Transport: &Transport{}}
+
+		// First fetch something large, but only read some of it.
+		res, _, err := c.Get(ts.URL + "?body=large&chunked=" + chunked)
+		if err != nil {
+			t.Fatalf("large get: %v", err)
+		}
+		buf := make([]byte, len(testString))
+		n, err := io.ReadFull(res.Body, buf)
+		if err != nil {
+			t.Fatalf("partial read of large response: size=%d, %v", n, err)
+		}
+		if e, g := testString, string(buf); e != g {
+			t.Errorf("partial read got %q, expected %q", g, e)
+		}
+		res.Body.Close()
+		// Read on the body, even though it's closed
+		n, err = res.Body.Read(buf)
+		if n != 0 || err == nil {
+			t.Errorf("expected error post-closed large Read; got = %d, %v", n, err)
+		}
+
+		// Then something small.
+		res, _, err = c.Get(ts.URL + "?chunked=" + chunked)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if g, e := string(body), testString; g != e {
+			t.Fatalf("body = %q; want %q", g, e)
+		}
+		if g, e := res.Header.Get("Content-Encoding"), ""; g != e {
+			t.Fatalf("Content-Encoding = %q; want %q", g, e)
+		}
+
+		// Read on the body after it's been fully read:
+		n, err = res.Body.Read(buf)
+		if n != 0 || err == nil {
+			t.Errorf("expected Read error after exhausted reads; got %d, %v", n, err)
+		}
+		res.Body.Close()
+		n, err = res.Body.Read(buf)
+		if n != 0 || err == nil {
+			t.Errorf("expected Read error after Close; got %d, %v", n, err)
+		}
 	}
 }
 

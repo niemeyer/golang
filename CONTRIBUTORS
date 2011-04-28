@@ -77,12 +77,14 @@ Daniel Nadasi <dnadasi@google.com>
 Daniel Theophanes <kardianos@gmail.com>
 Dave Cheney <dave@cheney.net>
 David Anderson <danderson@google.com>
+David Crawshaw <david.crawshaw@zentus.com>
 David Forsythe <dforsythe@gmail.com>
 David G. Andersen <dave.andersen@gmail.com>
 David Symonds <dsymonds@golang.org>
 David Titarenco <david.titarenco@gmail.com>
 Dean Prichard <dean.prichard@gmail.com>
 Devon H. O'Dell <devon.odell@gmail.com>
+Dmitriy Vyukov <dvyukov@google.com>
 Dmitry Chestnykh <dchest@gmail.com>
 Eden Li <eden.li@gmail.com>
 Eoghan Sherry <ejsherry@gmail.com>
@@ -165,7 +167,9 @@ Péter Szabó <pts@google.com>
 Peter Williams <pwil3058@gmail.com>
 Phil Pennock <pdp@golang.org>
 Pieter Droogendijk <pieter@binky.org.uk>
+Quan Yong Zhai <qyzhai@gmail.com>
 Raif S. Naffah <go@naffah-raif.name>
+Raph Levien <raph@google.com>
 Risto Jaakko Saarelma <rsaarelm@gmail.com>
 Rob Pike <r@golang.org>
 Robert Griesemer <gri@golang.org>
@@ -194,6 +198,7 @@ Tom Szymanski <tgs@google.com>
 Tor Andersson <tor.andersson@gmail.com>
 Trevor Strohman <trevor.strohman@gmail.com>
 Vincent Ambo <tazjin@googlemail.com>
+Vincent Vanackere <vincent.vanackere@gmail.com>
 Vinu Rajashekhar <vinutheraj@gmail.com>
 Vish Subramanian <vish@google.com>
 Wei Guangjing <vcc.163@gmail.com>

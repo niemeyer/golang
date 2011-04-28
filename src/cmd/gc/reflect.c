@@ -137,7 +137,6 @@ methodfunc(Type *f, Type *receiver)
 static Sig*
 methods(Type *t)
 {
-	int o;
 	Type *f, *mt, *it, *this;
 	Sig *a, *b;
 	Sym *method;
@@ -157,7 +156,6 @@ methods(Type *t)
 	// make list of methods for t,
 	// generating code if necessary.
 	a = nil;
-	o = 0;
 	oldlist = nil;
 	for(f=mt->xmethod; f; f=f->down) {
 		if(f->type->etype != TFUNC)
@@ -184,6 +182,11 @@ methods(Type *t)
 		a = b;
 
 		a->name = method->name;
+		if(!exportname(method->name)) {
+			if(method->pkg == nil)
+				fatal("methods: missing package");
+			a->pkg = method->pkg;
+		}
 		a->isym = methodsym(method, it, 1);
 		a->tsym = methodsym(method, t, 0);
 		a->type = methodfunc(f->type, t);
@@ -240,14 +243,12 @@ static Sig*
 imethods(Type *t)
 {
 	Sig *a, *all, *last;
-	int o;
 	Type *f;
 	Sym *method, *isym;
 	Prog *oldlist;
 
 	all = nil;
 	last = nil;
-	o = 0;
 	oldlist = nil;
 	for(f=t->type; f; f=f->down) {
 		if(f->etype != TFIELD)
@@ -257,8 +258,11 @@ imethods(Type *t)
 		method = f->sym;
 		a = mal(sizeof(*a));
 		a->name = method->name;
-		if(!exportname(method->name))
+		if(!exportname(method->name)) {
+			if(method->pkg == nil)
+				fatal("imethods: missing package");
 			a->pkg = method->pkg;
+		}
 		a->mtype = f->type;
 		a->offset = 0;
 		a->type = methodfunc(f->type, nil);
@@ -301,6 +305,33 @@ imethods(Type *t)
 	return all;
 }
 
+static void
+dimportpath(Pkg *p)
+{
+	static Pkg *gopkg;
+	char *nam;
+	Node *n;
+	
+	if(p->pathsym != S)
+		return;
+
+	if(gopkg == nil) {
+		gopkg = mkpkg(strlit("go"));
+		gopkg->name = "go";
+	}
+	nam = smprint("importpath.%s.", p->prefix);
+
+	n = nod(ONAME, N, N);
+	n->sym = pkglookup(nam, gopkg);
+	free(nam);
+	n->class = PEXTERN;
+	n->xoffset = 0;
+	p->pathsym = n->sym;
+	
+	gdatastring(n, p->path);
+	ggloblsym(n->sym, types[TSTRING]->width, 1);
+}
+
 static int
 dgopkgpath(Sym *s, int ot, Pkg *pkg)
 {
@@ -318,30 +349,8 @@ dgopkgpath(Sym *s, int ot, Pkg *pkg)
 		return dsymptr(s, ot, ns, 0);
 	}
 
-	return dgostringptr(s, ot, pkg->name);
-}
-
-static void
-dimportpath(Pkg *p)
-{
-	static Pkg *gopkg;
-	char *nam;
-	Node *n;
-	
-	if(gopkg == nil) {
-		gopkg = mkpkg(strlit("go"));
-		gopkg->name = "go";
-	}
-	nam = smprint("importpath.%s.", p->prefix);
-
-	n = nod(ONAME, N, N);
-	n->sym = pkglookup(nam, gopkg);
-	free(nam);
-	n->class = PEXTERN;
-	n->xoffset = 0;
-	
-	gdatastring(n, p->path);
-	ggloblsym(n->sym, types[TSTRING]->width, 1);
+	dimportpath(pkg);
+	return dsymptr(s, ot, pkg->pathsym, 0);
 }
 
 /*
@@ -694,7 +703,7 @@ dtypesym(Type *t)
 	int ot, xt, n, isddd, dupok;
 	Sym *s, *s1, *s2;
 	Sig *a, *m;
-	Type *t1, *tbase;
+	Type *t1, *tbase, *t2;
 
 	if(isideal(t))
 		fatal("dtypesym %T", t);
@@ -731,15 +740,25 @@ ok:
 		break;
 
 	case TARRAY:
-		// ../../pkg/runtime/type.go:/ArrayType
-		s1 = dtypesym(t->type);
-		ot = dcommontype(s, ot, t);
-		xt = ot - 2*widthptr;
-		ot = dsymptr(s, ot, s1, 0);
-		if(t->bound < 0)
-			ot = duintptr(s, ot, -1);
-		else
+		if(t->bound >= 0) {
+			// ../../pkg/runtime/type.go:/ArrayType
+			s1 = dtypesym(t->type);
+			t2 = typ(TARRAY);
+			t2->type = t->type;
+			t2->bound = -1;  // slice
+			s2 = dtypesym(t2);
+			ot = dcommontype(s, ot, t);
+			xt = ot - 2*widthptr;
+			ot = dsymptr(s, ot, s1, 0);
+			ot = dsymptr(s, ot, s2, 0);
 			ot = duintptr(s, ot, t->bound);
+		} else {
+			// ../../pkg/runtime/type.go:/SliceType
+			s1 = dtypesym(t->type);
+			ot = dcommontype(s, ot, t);
+			xt = ot - 2*widthptr;
+			ot = dsymptr(s, ot, s1, 0);
+		}
 		break;
 
 	case TCHAN:

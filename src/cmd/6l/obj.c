@@ -356,6 +356,15 @@ zaddr(char *pn, Biobuf *f, Adr *a, Sym *h[])
 			return;
 		}
 	}
+	
+	switch(t) {
+	case D_FILE:
+	case D_FILE1:
+	case D_AUTO:
+	case D_PARAM:
+		if(s == S)
+			mangle(pn);
+	}
 
 	u = mal(sizeof(*u));
 	u->link = curauto;
@@ -380,7 +389,7 @@ ldobj1(Biobuf *f, char *pkg, int64 len, char *pn)
 	vlong ipc;
 	Prog *p;
 	int v, o, r, skip, mode;
-	Sym *h[NSYM], *s, *di;
+	Sym *h[NSYM], *s;
 	uint32 sig;
 	char *name, *x;
 	int ntext;
@@ -391,7 +400,6 @@ ldobj1(Biobuf *f, char *pkg, int64 len, char *pn)
 	lastp = nil;
 	ntext = 0;
 	eof = Boffset(f) + len;
-	di = S;
 	src[0] = 0;
 
 newloop:
@@ -559,7 +567,7 @@ loop:
 			diag("multiple initialization for %s: in both %s and %s", s->name, s->file, pn);
 			errorexit();
 		}
-		savedata(s, p);
+		savedata(s, p, pn);
 		unmal(p, sizeof *p);
 		goto loop;
 

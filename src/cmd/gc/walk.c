@@ -119,6 +119,62 @@ domethod(Node *n)
 	checkwidth(n->type);
 }
 
+typedef struct NodeTypeList NodeTypeList;
+struct NodeTypeList {
+	Node *n;
+	Type *t;
+	NodeTypeList *next;
+};
+
+static	NodeTypeList	*dntq;
+static	NodeTypeList	*dntend;
+
+void
+defertypecopy(Node *n, Type *t)
+{
+	NodeTypeList *ntl;
+
+	if(n == N || t == T)
+		return;
+
+	ntl = mal(sizeof *ntl);
+	ntl->n = n;
+	ntl->t = t;
+	ntl->next = nil;
+
+	if(dntq == nil)
+		dntq = ntl;
+	else
+		dntend->next = ntl;
+
+	dntend = ntl;
+}
+
+void
+resumetypecopy(void)
+{
+	NodeTypeList *l;
+
+	for(l=dntq; l; l=l->next)
+		copytype(l->n, l->t);
+}
+
+void
+copytype(Node *n, Type *t)
+{
+	*n->type = *t;
+
+	t = n->type;
+	t->sym = n->sym;
+	t->local = n->local;
+	t->vargen = n->vargen;
+	t->siggen = 0;
+	t->method = nil;
+	t->nod = N;
+	t->printed = 0;
+	t->deferwidth = 0;
+}
+
 static void
 walkdeftype(Node *n)
 {
@@ -141,20 +197,14 @@ walkdeftype(Node *n)
 		goto ret;
 	}
 
-	// copy new type and clear fields
-	// that don't come along
 	maplineno = n->type->maplineno;
 	embedlineno = n->type->embedlineno;
-	*n->type = *t;
-	t = n->type;
-	t->sym = n->sym;
-	t->local = n->local;
-	t->vargen = n->vargen;
-	t->siggen = 0;
-	t->method = nil;
-	t->nod = N;
-	t->printed = 0;
-	t->deferwidth = 0;
+
+	// copy new type and clear fields
+	// that don't come along.
+	// anything zeroed here must be zeroed in
+	// typedcl2 too.
+	copytype(n, t);
 
 	// double-check use of type as map key.
 	if(maplineno) {
@@ -197,7 +247,6 @@ Node*
 walkdef(Node *n)
 {
 	int lno;
-	NodeList *init;
 	Node *e;
 	Type *t;
 	NodeList *l;
@@ -236,7 +285,6 @@ walkdef(Node *n)
 	if(n->type != T || n->sym == S)	// builtin or no name
 		goto ret;
 
-	init = nil;
 	switch(n->op) {
 	default:
 		fatal("walkdef %O", n->op);
@@ -380,14 +428,13 @@ walkstmt(Node **np)
 {
 	NodeList *init;
 	NodeList *ll, *rl;
-	int cl, lno;
+	int cl;
 	Node *n, *f;
 
 	n = *np;
 	if(n == N)
 		return;
 
-	lno = lineno;
 	setlineno(n);
 
 	switch(n->op) {
@@ -1359,7 +1406,7 @@ walkexpr(Node **np, NodeList **init)
 
 	case OSTRARRAYBYTE:
 		// stringtoslicebyte(string) []byte;
-		n = mkcall("stringtoslicebyte", n->type, init, n->left);
+		n = mkcall("stringtoslicebyte", n->type, init, conv(n->left, types[TSTRING]));
 		goto ret;
 
 	case OSTRARRAYRUNE:
@@ -1788,7 +1835,7 @@ walkprint(Node *nn, NodeList **init, int defer)
 					on = syslook("printiface", 1);
 				argtype(on, n->type);		// any-1
 			}
-		} else if(isptr[et] || et == TCHAN || et == TMAP || et == TFUNC) {
+		} else if(isptr[et] || et == TCHAN || et == TMAP || et == TFUNC || et == TUNSAFEPTR) {
 			if(defer) {
 				fmtprint(&fmt, "%%p");
 			} else {
