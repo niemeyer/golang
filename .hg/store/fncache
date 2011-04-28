@@ -4390,3 +4390,7 @@ data/src/pkg/http/fcgi/child.go.i
 data/src/pkg/http/fcgi/Makefile.i
 data/src/pkg/http/fcgi/fcgi_test.go.i
 data/test/func7.go.i
+data/src/pkg/mime/multipart/formdata_test.go.i
+data/src/pkg/http/header_test.go.i
+data/src/pkg/mime/multipart/formdata.go.i
+data/test/fixedbugs/bug336.go.i
