@@ -1,9 +1,0 @@
-Mailed: True
-Description:
-	syslog: fix skipping of net tests
-	
-	Also remove some left over copy & paste
-	in the test of reflect.Copy for arrays.
-Files:
-	src/pkg/reflect/all_test.go
-	src/pkg/syslog/syslog_test.go
