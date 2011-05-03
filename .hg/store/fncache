@@ -4395,3 +4395,13 @@ data/src/pkg/http/header_test.go.i
 data/src/pkg/mime/multipart/formdata.go.i
 data/test/fixedbugs/bug336.go.i
 data/test/fixedbugs/bug337.go.i
+data/misc/cgo/test/env.go.i
+data/src/pkg/runtime/cgo/setenv.c.i
+data/src/pkg/net/sock_bsd.go.i
+data/src/pkg/go/printer/performance_test.go.i
+data/src/pkg/http/spdy/Makefile.i
+data/src/pkg/http/spdy/protocol_test.go.i
+data/src/pkg/go/printer/testdata/parser.go.i
+data/src/pkg/http/spdy/protocol.go.i
+data/src/pkg/net/sock_linux.go.i
+data/src/pkg/net/sock_windows.go.i
