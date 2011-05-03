@@ -1,7 +1,0 @@
-Mailed: True
-Description:
-	Make.cmd: create TARGDIR if necessary
-	
-	Fixes issue 1771.
-Files:
-	src/Make.cmd
