@@ -182,9 +182,7 @@ var valueTests = []pair{
 	}),
 		"struct { c chan *int32; d float32 }{chan *int32, 0}",
 	},
-	{new(struct {
-		c func(chan *integer, *int8)
-	}),
+	{new(struct{ c func(chan *integer, *int8) }),
 		"struct { c func(chan *reflect_test.integer, *int8) }{func(chan *reflect_test.integer, *int8)(0)}",
 	},
 	{new(struct {
@@ -581,13 +579,7 @@ func TestCopyArray(t *testing.T) {
 	}
 	for i := len(a); i < len(b); i++ {
 		if b[i] != c[i] {
-			if i < len(a) {
-				t.Errorf("(ii) a[%d]=%d, b[%d]=%d, c[%d]=%d",
-					i, a[i], i, b[i], i, c[i])
-			} else {
-				t.Errorf("(iii) b[%d]=%d, c[%d]=%d",
-					i, b[i], i, c[i])
-			}
+			t.Errorf("(ii) b[%d]=%d, c[%d]=%d", i, b[i], i, c[i])
 		} else {
 			t.Logf("elem %d is okay\n", i)
 		}
