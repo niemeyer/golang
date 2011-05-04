@@ -27,7 +27,7 @@ binary-arch: clean
 	dh_installdirs
 	mkdir -p $(PKGDIR)/usr/lib/go/src
 	
-	cp -r src/pkg src/cmd $(PKGDIR)/usr/lib/go/src
+	cp -r src/pkg src/cmd misc doc $(PKGDIR)/usr/lib/go/src
 	find src/ -maxdepth 1 -type f -exec cp {} $(PKGDIR)/usr/lib/go/src/ \;
 	
 	/bin/bash -c "cd src && ./all.bash"
