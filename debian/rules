@@ -13,7 +13,7 @@ export GOROOT=$(CURDIR)
 export GOROOT_FINAL=/usr/lib/go
 export DISABLE_NET_TESTS=1
 
-PKGDIR=debian/golang-weekly
+PKGDIR=debian/golang
 
 clean:
 	dh_clean
