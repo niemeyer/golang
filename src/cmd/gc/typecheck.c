@@ -894,20 +894,12 @@ reswitch:
 		// might be constant
 		switch(t->etype) {
 		case TSTRING:
-			if(isconst(l, CTSTR)) {
-				r = nod(OXXX, N, N);
-				nodconst(r, types[TINT], l->val.u.sval->len);
-				r->orig = n;
-				n = r;
-			}
+			if(isconst(l, CTSTR))
+				nodconst(n, types[TINT], l->val.u.sval->len);
 			break;
 		case TARRAY:
-			if(t->bound >= 0 && l->op == ONAME) {
-				r = nod(OXXX, N, N);
-				nodconst(r, types[TINT], t->bound);
-				r->orig = n;
-				n = r;
-			}
+			if(t->bound >= 0 && l->op == ONAME)
+				nodconst(n, types[TINT], t->bound);
 			break;
 		}
 		n->type = types[TINT];
@@ -1365,10 +1357,7 @@ ret:
 		goto error;
 	}
 	if((top & Etop) && !(top & (Ecall|Erv|Etype)) && !(ok & Etop)) {
-		if(n->diag == 0) {
-			yyerror("%#N not used", n);
-			n->diag = 1;
-		}
+		yyerror("%#N not used", n);
 		goto error;
 	}
 

@@ -1,5 +1,5 @@
 <!-- title The Go Programming Language Specification -->
-<!-- subtitle Version of May 2, 2011 -->
+<!-- subtitle Version of Apr 22, 2011 -->
 
 <!--
 TODO
@@ -2808,18 +2808,15 @@ s += " and good bye"
 String addition creates a new string by concatenating the operands.
 </p>
 <p>
-For two integer values <code>x</code> and <code>y</code>, the integer quotient
-<code>q = x / y</code> and remainder <code>r = x % y</code> satisfy the following
-relationships:
+For integer values, <code>/</code> and <code>%</code> satisfy the following relationship:
 </p>
 
 <pre>
-x = q*y + r  and  |r| &lt; |y|
+(a / b) * b + a % b == a
 </pre>
 
 <p>
-with <code>x / y</code> truncated towards zero
-(<a href="http://en.wikipedia.org/wiki/Modulo_operation">"truncated division"</a>).
+with <code>(a / b)</code> truncated towards zero.
 </p>
 
 <pre>
@@ -2828,20 +2825,6 @@ with <code>x / y</code> truncated towards zero
 -5     3      -1        -2
  5    -3      -1         2
 -5    -3       1        -2
-</pre>
-
-<p>
-As an exception to this rule, if the dividend <code>x</code> is the most
-negative value for the int type of <code>x</code>, the quotient
-<code>q = x / -1</code> is equal to <code>x</code> (and <code>r = 0</code>).
-</p>
-
-<pre>
-			 x, q
-int8                     -128
-int16                  -32768
-int32             -2147483648
-int64    -9223372036854775808
 </pre>
 
 <p>
@@ -3539,8 +3522,9 @@ Error: log.Panic("error encountered")
 
 <p>
 Function calls, method calls, and receive operations
-can appear in statement context. Such statements may be parenthesized.
+can appear in statement context.
 </p>
+
 
 <pre class="ebnf">
 ExpressionStmt = Expression .
@@ -3550,7 +3534,6 @@ ExpressionStmt = Expression .
 h(x+y)
 f.Close()
 &lt;-ch
-(&lt;-ch)
 </pre>
 
 
@@ -3621,15 +3604,15 @@ assign_op = [ add_op | mul_op ] "=" .
 
 <p>
 Each left-hand side operand must be <a href="#Address_operators">addressable</a>,
-a map index expression, or the <a href="#Blank_identifier">blank identifier</a>.
-Operands may be parenthesized.
+a map index expression,
+or the <a href="#Blank_identifier">blank identifier</a>.
 </p>
 
 <pre>
 x = 1
 *p = f()
 a[i] = 23
-(k) = &lt;-ch  // same as: k = &lt;-ch
+k = &lt;-ch
 </pre>
 
 <p>
@@ -4148,7 +4131,7 @@ case i1 = &lt;-c1:
 	print("received ", i1, " from c1\n")
 case c2 &lt;- i2:
 	print("sent ", i2, " to c2\n")
-case i3, ok := (&lt;-c3):  // same as: i3, ok := &lt;-c3
+case i3, ok := &lt;-c3:
 	if ok {
 		print("received ", i3, " from c3\n")
 	} else {

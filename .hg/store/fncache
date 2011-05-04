@@ -4405,3 +4405,5 @@ data/src/pkg/go/printer/testdata/parser.go.i
 data/src/pkg/http/spdy/protocol.go.i
 data/src/pkg/net/sock_linux.go.i
 data/src/pkg/net/sock_windows.go.i
+data/doc/devel/weekly.html.i
+data/src/pkg/net/dnsmsg_test.go.i

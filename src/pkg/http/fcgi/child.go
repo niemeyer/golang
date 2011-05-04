@@ -9,10 +9,11 @@ package fcgi
 import (
 	"fmt"
 	"http"
-	"http/cgi"
 	"io"
 	"net"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -35,6 +36,68 @@ func newRequest(reqId uint16, flags uint8) *request {
 	}
 	r.rawParams = r.buf[:0]
 	return r
+}
+
+// TODO(eds): copied from http/cgi
+var skipHeader = map[string]bool{
+	"HTTP_HOST":       true,
+	"HTTP_REFERER":    true,
+	"HTTP_USER_AGENT": true,
+}
+
+// httpRequest converts r to an http.Request.
+// TODO(eds): this is very similar to http/cgi's requestFromEnvironment
+func (r *request) httpRequest(body io.ReadCloser) (*http.Request, os.Error) {
+	req := &http.Request{
+		Method:  r.params["REQUEST_METHOD"],
+		RawURL:  r.params["REQUEST_URI"],
+		Body:    body,
+		Header:  http.Header{},
+		Trailer: http.Header{},
+		Proto:   r.params["SERVER_PROTOCOL"],
+	}
+
+	var ok bool
+	req.ProtoMajor, req.ProtoMinor, ok = http.ParseHTTPVersion(req.Proto)
+	if !ok {
+		return nil, os.NewError("fcgi: invalid HTTP version")
+	}
+
+	req.Host = r.params["HTTP_HOST"]
+	req.Referer = r.params["HTTP_REFERER"]
+	req.UserAgent = r.params["HTTP_USER_AGENT"]
+
+	if lenstr := r.params["CONTENT_LENGTH"]; lenstr != "" {
+		clen, err := strconv.Atoi64(r.params["CONTENT_LENGTH"])
+		if err != nil {
+			return nil, os.NewError("fcgi: bad CONTENT_LENGTH parameter: " + lenstr)
+		}
+		req.ContentLength = clen
+	}
+
+	if req.Host != "" {
+		req.RawURL = "http://" + req.Host + r.params["REQUEST_URI"]
+		url, err := http.ParseURL(req.RawURL)
+		if err != nil {
+			return nil, os.NewError("fcgi: failed to parse host and REQUEST_URI into a URL: " + req.RawURL)
+		}
+		req.URL = url
+	}
+	if req.URL == nil {
+		req.RawURL = r.params["REQUEST_URI"]
+		url, err := http.ParseURL(req.RawURL)
+		if err != nil {
+			return nil, os.NewError("fcgi: failed to parse REQUEST_URI into a URL: " + req.RawURL)
+		}
+		req.URL = url
+	}
+
+	for key, val := range r.params {
+		if strings.HasPrefix(key, "HTTP_") && !skipHeader[key] {
+			req.Header.Add(strings.Replace(key[5:], "_", "-", -1), val)
+		}
+	}
+	return req, nil
 }
 
 // parseParams reads an encoded []byte into Params.
@@ -106,7 +169,15 @@ func (r *response) WriteHeader(code int) {
 	}
 
 	fmt.Fprintf(r.w, "Status: %d %s\r\n", code, http.StatusText(code))
-	r.header.Write(r.w)
+	// TODO(eds): this is duplicated in http and http/cgi
+	for k, vv := range r.header {
+		for _, v := range vv {
+			v = strings.Replace(v, "\n", "", -1)
+			v = strings.Replace(v, "\r", "", -1)
+			v = strings.TrimSpace(v)
+			fmt.Fprintf(r.w, "%s: %s\r\n", k, v)
+		}
+	}
 	r.w.WriteString("\r\n")
 }
 
@@ -210,13 +281,12 @@ func (c *child) serve() {
 
 func (c *child) serveRequest(req *request, body io.ReadCloser) {
 	r := newResponse(c, req)
-	httpReq, err := cgi.RequestFromMap(req.params)
+	httpReq, err := req.httpRequest(body)
 	if err != nil {
 		// there was an error reading the request
 		r.WriteHeader(http.StatusInternalServerError)
 		c.conn.writeRecord(typeStderr, req.reqId, []byte(err.String()))
 	} else {
-		httpReq.Body = body
 		c.handler.ServeHTTP(r, httpReq)
 	}
 	if body != nil {

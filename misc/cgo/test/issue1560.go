@@ -35,7 +35,7 @@ func BackgroundSleep(n int) {
 	}()
 }
 
-func testParallelSleep(t *testing.T) {
+func TestParallelSleep(t *testing.T) {
 	dt := -time.Nanoseconds()
 	parallelSleep(1)
 	dt += time.Nanoseconds()

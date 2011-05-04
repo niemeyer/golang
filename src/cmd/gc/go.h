@@ -225,7 +225,6 @@ struct	Node
 	Type*	realtype;	// as determined by typecheck
 	NodeList*	list;
 	NodeList*	rlist;
-	Node*	orig;		// original form, for printing
 
 	// for-body
 	NodeList*	ninit;

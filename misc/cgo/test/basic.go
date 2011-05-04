@@ -90,31 +90,31 @@ func Atol(s string) int {
 	return int(n)
 }
 
-func testConst(t *testing.T) {
+func TestConst(t *testing.T) {
 	C.myConstFunc(nil, 0, nil)
 }
 
-func testEnum(t *testing.T) {
+func TestEnum(t *testing.T) {
 	if C.Enum1 != 1 || C.Enum2 != 2 {
 		t.Error("bad enum", C.Enum1, C.Enum2)
 	}
 }
 
-func testAtol(t *testing.T) {
+func TestAtol(t *testing.T) {
 	l := Atol("123")
 	if l != 123 {
 		t.Error("Atol 123: ", l)
 	}
 }
 
-func testErrno(t *testing.T) {
+func TestErrno(t *testing.T) {
 	n, err := Strtol("asdf", 123)
 	if n != 0 || err != os.EINVAL {
 		t.Error("Strtol: ", n, err)
 	}
 }
 
-func testMultipleAssign(t *testing.T) {
+func TestMultipleAssign(t *testing.T) {
 	p := C.CString("234")
 	n, m := C.strtol(p, nil, 345), C.strtol(p, nil, 10)
 	if n != 0 || m != 234 {

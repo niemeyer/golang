@@ -1454,8 +1454,6 @@ Nconv(Fmt *fp)
 	}
 
 	if(fp->flags & FmtSharp) {
-		if(n->orig != N)
-			n = n->orig;
 		exprfmt(fp, n, 0);
 		goto out;
 	}

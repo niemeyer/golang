@@ -35,19 +35,7 @@ func startServer(done chan<- string) {
 	go runSyslog(c, done)
 }
 
-func skipNetTest(t *testing.T) bool {
-	if testing.Short() {
-		// Depends on syslog daemon running, and sometimes it's not.
-		t.Logf("skipping syslog test during -short")
-		return true
-	}
-	return false
-}
-
 func TestNew(t *testing.T) {
-	if skipNetTest(t) {
-		return
-	}
 	s, err := New(LOG_INFO, "")
 	if err != nil {
 		t.Fatalf("New() failed: %s", err)
@@ -57,9 +45,6 @@ func TestNew(t *testing.T) {
 }
 
 func TestNewLogger(t *testing.T) {
-	if skipNetTest(t) {
-		return
-	}
 	f := NewLogger(LOG_INFO, 0)
 	if f == nil {
 		t.Error("NewLogger() failed")
@@ -67,8 +52,9 @@ func TestNewLogger(t *testing.T) {
 }
 
 func TestDial(t *testing.T) {
-	if skipNetTest(t) {
-		return
+	if testing.Short() {
+		// Depends on syslog daemon running, and sometimes it's not.
+		t.Logf("skipping syslog test during -short")
 	}
 	l, err := Dial("", "", LOG_ERR, "syslog_test")
 	if err != nil {

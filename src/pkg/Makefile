@@ -103,7 +103,6 @@ DIRS=\
 	http/fcgi\
 	http/pprof\
 	http/httptest\
-	http/spdy\
 	image\
 	image/jpeg\
 	image/png\

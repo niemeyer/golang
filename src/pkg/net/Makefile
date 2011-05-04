@@ -29,7 +29,6 @@ GOFILES_freebsd=\
 	dnsconfig.go\
 	dnsclient.go\
 	port.go\
-	sock_bsd.go\
 
 CGOFILES_freebsd=\
 	cgo_bsd.go\
@@ -42,7 +41,6 @@ GOFILES_darwin=\
 	dnsconfig.go\
 	dnsclient.go\
 	port.go\
-	sock_bsd.go\
 
 CGOFILES_darwin=\
 	cgo_bsd.go\
@@ -55,7 +53,6 @@ GOFILES_linux=\
 	dnsconfig.go\
 	dnsclient.go\
 	port.go\
-	sock_linux.go\
 
 ifeq ($(GOARCH),arm)
 # ARM has no cgo, so use the stubs.
@@ -70,7 +67,6 @@ GOFILES_windows=\
 	cgo_stub.go\
 	resolv_windows.go\
 	file_windows.go\
-	sock_windows.go\
 
 GOFILES+=$(GOFILES_$(GOOS))
 ifneq ($(CGOFILES_$(GOOS)),)

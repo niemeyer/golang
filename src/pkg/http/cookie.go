@@ -15,9 +15,9 @@ import (
 	"time"
 )
 
-// This implementation is done according to RFC 6265:
+// This implementation is done according to IETF draft-ietf-httpstate-cookie-23, found at
 //
-//    http://tools.ietf.org/html/rfc6265
+//    http://tools.ietf.org/html/draft-ietf-httpstate-cookie-23
 
 // A Cookie represents an HTTP cookie as sent in the Set-Cookie header of an
 // HTTP response or the Cookie header of an HTTP request.

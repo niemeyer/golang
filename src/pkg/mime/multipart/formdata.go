@@ -30,18 +30,21 @@ func (r *multiReader) ReadForm(maxMemory int64) (f *Form, err os.Error) {
 	maxValueBytes := int64(10 << 20) // 10 MB is a lot of text.
 	for {
 		p, err := r.NextPart()
-		if err == os.EOF {
-			break
-		}
 		if err != nil {
 			return nil, err
+		}
+		if p == nil {
+			break
 		}
 
 		name := p.FormName()
 		if name == "" {
 			continue
 		}
-		filename := p.FileName()
+		var filename string
+		if p.dispositionParams != nil {
+			filename = p.dispositionParams["filename"]
+		}
 
 		var b bytes.Buffer
 
