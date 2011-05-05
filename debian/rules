@@ -21,6 +21,7 @@ clean:
 	cd src && ./clean.bash
 	cd debian/gorun && make clean
 	rm -rf bin/ pkg/
+	find src/pkg -maxdepth 1 -type d -name '[a-z]*.*' -exec rm -rf {} \;
 
 binary-arch: clean
 	dh_prep
