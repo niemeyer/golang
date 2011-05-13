@@ -1,0 +1,4 @@
+Mailed: False
+Description:
+	template: support string, int and float literals
+Files:
