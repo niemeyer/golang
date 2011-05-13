@@ -504,7 +504,7 @@ the body ends in <code>break</code>, <code>continue</code>,
 </p>
 
 <pre>
-f, err := os.Open(name, os.O_RDONLY, 0)
+f, err := os.Open(name)
 if err != nil {
     return err
 }
@@ -520,7 +520,7 @@ statements, the resulting code needs no <code>else</code> statements.
 </p>
 
 <pre>
-f, err := os.Open(name, os.O_RDONLY, 0)
+f, err := os.Open(name)
 if err != nil {
     return err
 }
@@ -813,7 +813,7 @@ canonical examples are unlocking a mutex or closing a file.
 <pre>
 // Contents returns the file's contents as a string.
 func Contents(filename string) (string, os.Error) {
-    f, err := os.Open(filename, os.O_RDONLY, 0)
+    f, err := os.Open(filename)
     if err != nil {
         return "", err
     }
@@ -1488,6 +1488,12 @@ to print in the format
 <pre>
 7/-2.35/"abc\tdef"
 </pre>
+<p>
+(If you need to print <em>values</em> of type <code>T</code> as well as pointers to <code>T</code>,
+the receiver for <code>String</code> must be of value type; this example used a pointer because
+that's more efficient and idiomatic for struct types.
+See the section below on <a href="#pointers_vs_values">pointers vs. value receivers</a> for more information.)
+</p>
 <p>
 Our <code>String()</code> method is able to call <code>Sprintf</code> because the
 print routines are fully reentrant and can be used recursively.
@@ -2675,7 +2681,7 @@ field for recoverable failures.
 
 <pre>
 for try := 0; try &lt; 2; try++ {
-    file, err = os.Open(filename, os.O_RDONLY, 0)
+    file, err = os.Open(filename)
     if err == nil {
         return
     }

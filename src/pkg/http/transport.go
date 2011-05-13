@@ -12,6 +12,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -248,18 +249,22 @@ func (t *Transport) getConn(cm *connectMethod) (*persistConn, os.Error) {
 			}
 		}
 	case cm.targetScheme == "https":
-		fmt.Fprintf(conn, "CONNECT %s HTTP/1.1\r\n", cm.targetAddr)
-		fmt.Fprintf(conn, "Host: %s\r\n", cm.targetAddr)
-		if pa != "" {
-			fmt.Fprintf(conn, "Proxy-Authorization: %s\r\n", pa)
+		connectReq := &Request{
+			Method: "CONNECT",
+			RawURL: cm.targetAddr,
+			Host:   cm.targetAddr,
+			Header: make(Header),
 		}
-		fmt.Fprintf(conn, "\r\n")
+		if pa != "" {
+			connectReq.Header.Set("Proxy-Authorization", pa)
+		}
+		connectReq.Write(conn)
 
 		// Read response.
 		// Okay to use and discard buffered reader here, because
 		// TLS server will not speak until spoken to.
 		br := bufio.NewReader(conn)
-		resp, err := ReadResponse(br, "CONNECT")
+		resp, err := ReadResponse(br, connectReq)
 		if err != nil {
 			conn.Close()
 			return nil, err
@@ -285,7 +290,6 @@ func (t *Transport) getConn(cm *connectMethod) (*persistConn, os.Error) {
 
 	pconn.br = bufio.NewReader(pconn.conn)
 	pconn.cc = newClientConnFunc(conn, pconn.br)
-	pconn.cc.readRes = readResponseWithEOFSignal
 	go pconn.readLoop()
 	return pconn, nil
 }
@@ -447,7 +451,25 @@ func (pc *persistConn) readLoop() {
 		}
 
 		rc := <-pc.reqch
-		resp, err := pc.cc.Read(rc.req)
+		resp, err := pc.cc.readUsing(rc.req, func(buf *bufio.Reader, forReq *Request) (*Response, os.Error) {
+			resp, err := ReadResponse(buf, forReq)
+			if err != nil || resp.ContentLength == 0 {
+				return resp, err
+			}
+			if rc.addedGzip && resp.Header.Get("Content-Encoding") == "gzip" {
+				resp.Header.Del("Content-Encoding")
+				resp.Header.Del("Content-Length")
+				resp.ContentLength = -1
+				gzReader, err := gzip.NewReader(resp.Body)
+				if err != nil {
+					pc.close()
+					return nil, err
+				}
+				resp.Body = &readFirstCloseBoth{&discardOnCloseReadCloser{gzReader}, resp.Body}
+			}
+			resp.Body = &bodyEOFSignal{body: resp.Body}
+			return resp, err
+		})
 
 		if err == ErrPersistEOF {
 			// Succeeded, but we can't send any more
@@ -469,6 +491,17 @@ func (pc *persistConn) readLoop() {
 					waitForBodyRead <- true
 				}
 			} else {
+				// When there's no response body, we immediately
+				// reuse the TCP connection (putIdleConn), but
+				// we need to prevent ClientConn.Read from
+				// closing the Response.Body on the next
+				// loop, otherwise it might close the body
+				// before the client code has had a chance to
+				// read it (even though it'll just be 0, EOF).
+				pc.cc.lk.Lock()
+				pc.cc.lastbody = nil
+				pc.cc.lk.Unlock()
+
 				pc.t.putIdleConn(pc)
 			}
 		}
@@ -491,6 +524,11 @@ type responseAndError struct {
 type requestAndChan struct {
 	req *Request
 	ch  chan responseAndError
+
+	// did the Transport (as opposed to the client code) add an
+	// Accept-Encoding gzip header? only if it we set it do
+	// we transparently decode the gzip.
+	addedGzip bool
 }
 
 func (pc *persistConn) roundTrip(req *Request) (resp *Response, err os.Error) {
@@ -522,24 +560,11 @@ func (pc *persistConn) roundTrip(req *Request) (resp *Response, err os.Error) {
 	}
 
 	ch := make(chan responseAndError, 1)
-	pc.reqch <- requestAndChan{req, ch}
+	pc.reqch <- requestAndChan{req, ch, requestedGzip}
 	re := <-ch
 	pc.lk.Lock()
 	pc.numExpectedResponses--
 	pc.lk.Unlock()
-
-	if re.err == nil && requestedGzip && re.res.Header.Get("Content-Encoding") == "gzip" {
-		re.res.Header.Del("Content-Encoding")
-		re.res.Header.Del("Content-Length")
-		re.res.ContentLength = -1
-		esb := re.res.Body.(*bodyEOFSignal)
-		gzReader, err := gzip.NewReader(esb.body)
-		if err != nil {
-			pc.close()
-			return nil, err
-		}
-		esb.body = &readFirstCloseBoth{gzReader, esb.body}
-	}
 
 	return re.res, re.err
 }
@@ -572,16 +597,6 @@ func responseIsKeepAlive(res *Response) bool {
 	return false
 }
 
-// readResponseWithEOFSignal is a wrapper around ReadResponse that replaces
-// the response body with a bodyEOFSignal-wrapped version.
-func readResponseWithEOFSignal(r *bufio.Reader, requestMethod string) (resp *Response, err os.Error) {
-	resp, err = ReadResponse(r, requestMethod)
-	if err == nil && resp.ContentLength != 0 {
-		resp.Body = &bodyEOFSignal{body: resp.Body}
-	}
-	return
-}
-
 // bodyEOFSignal wraps a ReadCloser but runs fn (if non-nil) at most
 // once, right before the final Read() or Close() call returns, but after
 // EOF has been seen.
@@ -604,6 +619,9 @@ func (es *bodyEOFSignal) Read(p []byte) (n int, err os.Error) {
 }
 
 func (es *bodyEOFSignal) Close() (err os.Error) {
+	if es.isClosed {
+		return nil
+	}
 	es.isClosed = true
 	err = es.body.Close()
 	if err == nil && es.fn != nil {
@@ -627,4 +645,14 @@ func (r *readFirstCloseBoth) Close() os.Error {
 		return err
 	}
 	return nil
+}
+
+// discardOnCloseReadCloser consumes all its input on Close.
+type discardOnCloseReadCloser struct {
+	io.ReadCloser
+}
+
+func (d *discardOnCloseReadCloser) Close() os.Error {
+	io.Copy(ioutil.Discard, d.ReadCloser) // ignore errors; likely invalid or already closed
+	return d.ReadCloser.Close()
 }

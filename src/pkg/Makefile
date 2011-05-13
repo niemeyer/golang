@@ -59,6 +59,7 @@ DIRS=\
 	crypto/tls\
 	crypto/twofish\
 	crypto/x509\
+	crypto/x509/crl\
 	crypto/xtea\
 	debug/dwarf\
 	debug/macho\
@@ -105,8 +106,11 @@ DIRS=\
 	http/httptest\
 	http/spdy\
 	image\
+	image/bmp\
+	image/gif\
 	image/jpeg\
 	image/png\
+	image/tiff\
 	image/ycbcr\
 	index/suffixarray\
 	io\
@@ -186,6 +190,8 @@ NOTEST+=\
 	hash\
 	http/pprof\
 	http/httptest\
+	image/bmp\
+	image/gif\
 	net/dict\
 	rand\
 	runtime/cgo\
