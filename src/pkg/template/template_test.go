@@ -94,10 +94,15 @@ func multiword(w io.Writer, format string, value ...interface{}) {
 	}
 }
 
+func printf(w io.Writer, format string, v ...interface{}) {
+	io.WriteString(w, fmt.Sprintf(v[0].(string), v[1:]...))
+}
+
 var formatters = FormatterMap{
 	"uppercase": writer(uppercase),
 	"+1":        writer(plus1),
 	"multiword": multiword,
+	"printf":    printf,
 }
 
 var tests = []*Test{
@@ -136,6 +141,18 @@ var tests = []*Test{
 		in: "nil pointer: {*NilPtr}={*Integer}\n",
 
 		out: "nil pointer: <nil>=77\n",
+	},
+
+	&Test{
+		in: `{"Literals" ":"} {""} {"\t\\"} {1} {1.1}`,
+
+		out: "Literals:  \t\\ 1 1.1",
+	},
+
+	&Test{
+		in: `Literal with delim: {"\"}{\\"}`,
+
+		out: "Literal with delim: \"}{\\",
 	},
 
 	// Method at top level
@@ -722,6 +739,10 @@ var formatterTests = []Test{
 	{
 		in:  "{Integer|||||}", // empty string is a valid formatter
 		out: "77",
+	},
+	{
+		in:  `{"%.02f 0x%02X" 1.1 10|printf}`,
+		out: "1.10 0x0A",
 	},
 }
 

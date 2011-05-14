@@ -76,6 +76,10 @@
 	executed sequentially, with each formatter receiving the bytes
 	emitted by the one to its left.
 
+	Literals may also be used in place of field names to customize
+	the behavior of formatters.  Quoted strings, int, and float
+	literals are supported.
+
 	The delimiter strings get their default value, "{" and "}", from
 	JSON-template.  They may be set to any non-empty, space-free
 	string using the SetDelims method.  Their value can be printed
@@ -91,6 +95,7 @@ import (
 	"io/ioutil"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"unicode"
 	"utf8"
@@ -282,6 +287,17 @@ func (t *Template) nextItem() []byte {
 			if t.buf[i] == '\n' {
 				break
 			}
+			if t.buf[i] == '"' {
+				// Skip quoted string which may contain delimiters.
+				for i++; i < len(t.buf); i++ {
+					if t.buf[i] == '\\' && i+1 < len(t.buf) {
+						i++
+					} else if t.buf[i] == '"' {
+						i++
+						break
+					}
+				}
+			}
 			if equal(t.buf, i, t.rdelim) {
 				i += len(t.rdelim)
 				right = i
@@ -336,20 +352,39 @@ func (t *Template) nextItem() []byte {
 // Turn a byte array into a white-space-split array of strings.
 func words(buf []byte) []string {
 	s := make([]string, 0, 5)
-	p := 0 // position in buf
-	// one word per loop
-	for i := 0; ; i++ {
-		// skip white space
-		for ; p < len(buf) && white(buf[p]); p++ {
+	quoted := false
+	escaped := false
+	unquoted := false
+	start := 0
+	for i, c := range buf {
+		switch {
+		case escaped:
+			escaped = false
+
+		case quoted && c == '\\':
+			escaped = true
+		case quoted && c == '"':
+			s = append(s, string(buf[start:i+1]))
+			quoted = false
+		case quoted:
+			continue
+
+		case unquoted && white(c):
+			s = append(s, string(buf[start:i]))
+			unquoted = false
+		case unquoted || white(c):
+			continue
+
+		case c == '"':
+			quoted = true
+			start = i
+		default:
+			unquoted = true
+			start = i
 		}
-		// grab word
-		start := p
-		for ; p < len(buf) && !white(buf[p]); p++ {
-		}
-		if start == p { // no text left
-			break
-		}
-		s = append(s, string(buf[start:p]))
+	}
+	if quoted || unquoted {
+		s = append(s, string(buf[start:]))
 	}
 	return s
 }
@@ -764,7 +799,15 @@ func (t *Template) writeVariable(v *variableElement, st *state) {
 	// Turn the words of the invocation into values.
 	val := make([]interface{}, len(v.word))
 	for i, word := range v.word {
-		val[i] = t.varValue(word, st).Interface()
+		if v, err := strconv.Unquote(word); err == nil {
+			val[i] = v
+		} else if v, err := strconv.Atoi(word); err == nil {
+			val[i] = v
+		} else if v, err := strconv.Atof64(word); err == nil {
+			val[i] = v
+		} else {
+			val[i] = t.varValue(word, st).Interface()
+		}
 	}
 
 	for i, fmt := range v.fmts[:len(v.fmts)-1] {
