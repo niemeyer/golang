@@ -156,9 +156,15 @@ var tests = []*Test{
 	},
 
 	&Test{
-		in: "Integers: {1} {-2} {+42} {0777} {0x0a} {'a'} {'\\u0123'} {' '}",
+		in: "Characters: {'a'} {'\\u0123'} {' '} {'}'} {'{'}",
 
-		out: "Integers: 1 -2 42 511 10 97 291 32",
+		out: "Characters: 97 291 32 125 123",
+	},
+
+	&Test{
+		in: "Integers: {1} {-2} {+42} {0777} {0x0a}",
+
+		out: "Integers: 1 -2 42 511 10",
 	},
 
 	&Test{

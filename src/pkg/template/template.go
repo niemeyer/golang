@@ -253,6 +253,11 @@ func equal(s []byte, n int, t []byte) bool {
 	return true
 }
 
+// Returns true if c is a string quoting character.
+func isQuote(c byte) bool {
+	return c == '"' || c == '`' || c == '\''
+}
+
 // endQuote returns the end quote index for the quoted string that
 // starts at n, or -1 if no matching end quote is found before the end
 // of the line.
@@ -261,7 +266,7 @@ func endQuote(s []byte, n int) int {
 	for n++; n < len(s); n++ {
 		switch s[n] {
 		case '\\':
-			if quote == '"' {
+			if quote == '"' || quote == '\'' {
 				n++
 			}
 		case '\n':
@@ -310,7 +315,7 @@ func (t *Template) nextItem() []byte {
 			if t.buf[i] == '\n' {
 				break
 			}
-			if t.buf[i] == '"' || t.buf[i] == '`' {
+			if isQuote(t.buf[i]) {
 				i = endQuote(t.buf, i)
 				if i == -1 {
 					t.parseError("unmatched quote")
@@ -373,39 +378,29 @@ func (t *Template) nextItem() []byte {
 // taking into account quoted strings.
 func words(buf []byte) []string {
 	s := make([]string, 0, 5)
-	unquoted := false
-	escaped := false
-	quote := byte(0)
-	start := 0
-	for i, c := range buf {
-		switch {
-		case escaped:
-			escaped = false
-
-		case c == '\\' && (quote == '"' || quote == '\''):
-			escaped = true
-		case c == quote && quote != 0:
-			s = append(s, string(buf[start:i+1]))
-			quote = 0
-		case quote != 0:
-			continue
-
-		case unquoted && white(c):
-			s = append(s, string(buf[start:i]))
-			unquoted = false
-		case unquoted || white(c):
-			continue
-
-		case c == '"' || c == '`' || c == '\'':
-			quote = c
-			start = i
-		default:
-			unquoted = true
-			start = i
+	for i := 0; i < len(buf); {
+		// One word per loop
+		for i < len(buf) && white(buf[i]) {
+			i++
 		}
-	}
-	if quote != 0 || unquoted {
-		s = append(s, string(buf[start:]))
+		if i == len(buf) {
+			break
+		}
+		// Got a word
+		start := i
+		if isQuote(buf[i]) {
+			i = endQuote(buf, i)
+			if i < 0 {
+				i = len(buf)
+			} else {
+				i++
+			}
+		} else {
+			for i < len(buf) && !white(buf[i]) {
+				i++
+			}
+		}
+		s = append(s, string(buf[start:i]))
 	}
 	return s
 }
