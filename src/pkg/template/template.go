@@ -530,7 +530,7 @@ func (t *Template) newVariable(words []string) *variableElement {
 			args[i] = fieldName(word)
 		}
 		if lerr != nil {
-			t.parseError("invalid literal: %s: %s", word, lerr)
+			t.parseError("invalid literal: %q: %s", word, lerr)
 		}
 	}
 
