@@ -76,9 +76,9 @@
 	executed sequentially, with each formatter receiving the bytes
 	emitted by the one to its left.
 
-	Literals may also be used in place of field names to customize
-	the behavior of formatters.  Quoted strings, int, and float
-	literals are supported.
+	As well as field names, one may use literals with Go syntax.
+	Integer, floating-point, and string literals are supported.
+	Raw strings may not span newlines.
 
 	The delimiter strings get their default value, "{" and "}", from
 	JSON-template.  They may be set to any non-empty, space-free
@@ -156,9 +156,12 @@ type literalElement struct {
 // A variable invocation to be evaluated
 type variableElement struct {
 	linenum int
-	word    []string // The fields in the invocation.
-	fmts    []string // Names of formatters to apply. len(fmts) > 0
+	args    []interface{} // The fields and literals in the invocation.
+	fmts    []string      // Names of formatters to apply. len(fmts) > 0
 }
+
+// A variableElement arg to be evaluated as a field name
+type fieldName string
 
 // A .section block, possibly with a .or
 type sectionElement struct {
@@ -250,6 +253,26 @@ func equal(s []byte, n int, t []byte) bool {
 	return true
 }
 
+// endQuote returns the end quote index for the quoted string that
+// starts at n, or -1 if no matching end quote is found before the end
+// of the line.
+func endQuote(s []byte, n int) int {
+	quote := s[n]
+	for n++; n < len(s); n++ {
+		switch s[n] {
+		case '\\':
+			if quote == '"' {
+				n++
+			}
+		case '\n':
+			return -1
+		case quote:
+			return n
+		}
+	}
+	return -1
+}
+
 // nextItem returns the next item from the input buffer.  If the returned
 // item is empty, we are at EOF.  The item will be either a
 // delimited string or a non-empty string between delimited
@@ -287,16 +310,13 @@ func (t *Template) nextItem() []byte {
 			if t.buf[i] == '\n' {
 				break
 			}
-			if t.buf[i] == '"' {
-				// Skip quoted string which may contain delimiters.
-				for i++; i < len(t.buf); i++ {
-					if t.buf[i] == '\\' && i+1 < len(t.buf) {
-						i++
-					} else if t.buf[i] == '"' {
-						i++
-						break
-					}
+			if t.buf[i] == '"' || t.buf[i] == '`' {
+				i = endQuote(t.buf, i)
+				if i == -1 {
+					t.parseError("unmatched quote")
+					return nil
 				}
+				continue
 			}
 			if equal(t.buf, i, t.rdelim) {
 				i += len(t.rdelim)
@@ -349,24 +369,25 @@ func (t *Template) nextItem() []byte {
 	return item
 }
 
-// Turn a byte array into a white-space-split array of strings.
+// Turn a byte array into a white-space-split array of strings,
+// taking into account quoted strings.
 func words(buf []byte) []string {
 	s := make([]string, 0, 5)
-	quoted := false
-	escaped := false
 	unquoted := false
+	escaped := false
+	quote := byte(0)
 	start := 0
 	for i, c := range buf {
 		switch {
 		case escaped:
 			escaped = false
 
-		case quoted && c == '\\':
+		case c == '\\' && (quote == '"' || quote == '\''):
 			escaped = true
-		case quoted && c == '"':
+		case c == quote && quote != 0:
 			s = append(s, string(buf[start:i+1]))
-			quoted = false
-		case quoted:
+			quote = 0
+		case quote != 0:
 			continue
 
 		case unquoted && white(c):
@@ -375,15 +396,15 @@ func words(buf []byte) []string {
 		case unquoted || white(c):
 			continue
 
-		case c == '"':
-			quoted = true
+		case c == '"' || c == '`' || c == '\'':
+			quote = c
 			start = i
 		default:
 			unquoted = true
 			start = i
 		}
 	}
-	if quoted || unquoted {
+	if quote != 0 || unquoted {
 		s = append(s, string(buf[start:]))
 	}
 	return s
@@ -482,6 +503,37 @@ func (t *Template) newVariable(words []string) *variableElement {
 		formatters = strings.Split(lastWord[bar+1:], "|", -1)
 	}
 
+	args := make([]interface{}, len(words))
+
+	// Build argument list, processing any literals
+	for i, word := range words {
+		var lerr os.Error
+		switch word[0] {
+		case '"', '`', '\'':
+			v, err := strconv.Unquote(word)
+			if err == nil && word[0] == '\'' {
+				args[i] = []int(v)[0]
+			} else {
+				args[i], lerr = v, err
+			}
+
+		case '+', '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+			v, err := strconv.Btoi64(word, 0)
+			if err == nil {
+				args[i] = v
+			} else {
+				v, err := strconv.Atof64(word)
+				args[i], lerr = v, err
+			}
+
+		default:
+			args[i] = fieldName(word)
+		}
+		if lerr != nil {
+			t.parseError("invalid literal: %s: %s", word, lerr)
+		}
+	}
+
 	// We could remember the function address here and avoid the lookup later,
 	// but it's more dynamic to let the user change the map contents underfoot.
 	// We do require the name to be present, though.
@@ -492,7 +544,8 @@ func (t *Template) newVariable(words []string) *variableElement {
 			t.parseError("unknown formatter: %q", f)
 		}
 	}
-	return &variableElement{t.linenum, words, formatters}
+
+	return &variableElement{t.linenum, args, formatters}
 }
 
 // Grab the next item.  If it's simple, just append it to the template.
@@ -788,7 +841,7 @@ func (t *Template) varValue(name string, st *state) reflect.Value {
 func (t *Template) format(wr io.Writer, fmt string, val []interface{}, v *variableElement, st *state) {
 	fn := t.formatter(fmt)
 	if fn == nil {
-		t.execError(st, v.linenum, "missing formatter %s for variable %s", fmt, v.word[0])
+		t.execError(st, v.linenum, "missing formatter %s for variable", fmt)
 	}
 	fn(wr, fmt, val...)
 }
@@ -796,20 +849,15 @@ func (t *Template) format(wr io.Writer, fmt string, val []interface{}, v *variab
 // Evaluate a variable, looking up through the parent if necessary.
 // If it has a formatter attached ({var|formatter}) run that too.
 func (t *Template) writeVariable(v *variableElement, st *state) {
-	// Turn the words of the invocation into values.
-	val := make([]interface{}, len(v.word))
-	for i, word := range v.word {
-		if v, err := strconv.Unquote(word); err == nil {
-			val[i] = v
-		} else if v, err := strconv.Atoi(word); err == nil {
-			val[i] = v
-		} else if v, err := strconv.Atof64(word); err == nil {
-			val[i] = v
+	// Resolve field names
+	val := make([]interface{}, len(v.args))
+	for i, arg := range v.args {
+		if name, ok := arg.(fieldName); ok {
+			val[i] = t.varValue(string(name), st).Interface()
 		} else {
-			val[i] = t.varValue(word, st).Interface()
+			val[i] = arg
 		}
 	}
-
 	for i, fmt := range v.fmts[:len(v.fmts)-1] {
 		b := &st.buf[i&1]
 		b.Reset()

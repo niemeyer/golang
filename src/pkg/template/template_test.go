@@ -144,15 +144,27 @@ var tests = []*Test{
 	},
 
 	&Test{
-		in: `{"Literals" ":"} {""} {"\t\\"} {1} {1.1}`,
+		in: `{"Strings" ":"} {""} {"\t\u0123 \x23\\"} {"\"}{\\"}`,
 
-		out: "Literals:  \t\\ 1 1.1",
+		out: "Strings:  \t\u0123 \x23\\ \"}{\\",
 	},
 
 	&Test{
-		in: `Literal with delim: {"\"}{\\"}`,
+		in: "{`Raw strings` `:`} {``} {`\\t\\u0123 \\x23\\`} {`}{\\`}",
 
-		out: "Literal with delim: \"}{\\",
+		out: "Raw strings:  \\t\\u0123 \\x23\\ }{\\",
+	},
+
+	&Test{
+		in: "Integers: {1} {-2} {+42} {0777} {0x0a} {'a'} {'\\u0123'} {' '}",
+
+		out: "Integers: 1 -2 42 511 10 97 291 32",
+	},
+
+	&Test{
+		in: "Floats: {1.1} {-42.1} {1e10} {1.2e-3} {1.2e3} {-1.2e3}",
+
+		out: "Floats: 1.1 -42.1 1e+10 0.0012 1200 -1200",
 	},
 
 	// Method at top level
