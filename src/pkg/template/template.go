@@ -253,7 +253,7 @@ func equal(s []byte, n int, t []byte) bool {
 	return true
 }
 
-// Returns true if c is a string quoting character.
+// isQuote returns true if c is a string- or character-delimiting quote character.
 func isQuote(c byte) bool {
 	return c == '"' || c == '`' || c == '\''
 }
@@ -432,11 +432,12 @@ func (t *Template) analyze(item []byte) (tok int, w []string) {
 		t.parseError("empty directive")
 		return
 	}
-	if len(w) > 0 && w[0][0] != '.' {
+	w0 := w[0]
+	if w0[0] != '.' || len(w0) > 1 && w0[1] >= '0' && w0[1] <= '9' {
 		tok = tokVariable
 		return
 	}
-	switch w[0] {
+	switch w0 {
 	case ".meta-left", ".meta-right", ".space", ".tab":
 		tok = tokLiteral
 		return
@@ -512,7 +513,7 @@ func (t *Template) newVariable(words []string) *variableElement {
 				args[i], lerr = v, err
 			}
 
-		case '+', '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+		case '.', '+', '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
 			v, err := strconv.Btoi64(word, 0)
 			if err == nil {
 				args[i] = v
