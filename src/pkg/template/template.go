@@ -432,12 +432,17 @@ func (t *Template) analyze(item []byte) (tok int, w []string) {
 		t.parseError("empty directive")
 		return
 	}
-	w0 := w[0]
-	if w0[0] != '.' || len(w0) > 1 && w0[1] >= '0' && w0[1] <= '9' {
+	first := w[0]
+	if first[0] != '.' {
 		tok = tokVariable
 		return
 	}
-	switch w0 {
+	if len(first) > 1 && first[1] >= '0' && first[1] <= '9' {
+		// Must be a float.
+		tok = tokVariable
+		return
+	}
+	switch first {
 	case ".meta-left", ".meta-right", ".space", ".tab":
 		tok = tokLiteral
 		return
