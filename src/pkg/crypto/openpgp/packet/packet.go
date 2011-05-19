@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package packet implements parsing and serialisation of OpenPGP packets, as
+// Package packet implements parsing and serialization of OpenPGP packets, as
 // specified in RFC 4880.
 package packet
 
@@ -383,6 +383,14 @@ func readMPI(r io.Reader) (mpi []byte, bitLength uint16, err os.Error) {
 	numBytes := (int(bitLength) + 7) / 8
 	mpi = make([]byte, numBytes)
 	_, err = readFull(r, mpi)
+	return
+}
+
+// mpiLength returns the length of the given *big.Int when serialized as an
+// MPI.
+func mpiLength(n *big.Int) (mpiLengthInBytes int) {
+	mpiLengthInBytes = 2 /* MPI length */
+	mpiLengthInBytes += (n.BitLen() + 7) / 8
 	return
 }
 

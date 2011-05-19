@@ -173,6 +173,14 @@ func TestRedirect(t *testing.T) {
 	}
 }
 
+func TestSetBasicAuth(t *testing.T) {
+	r, _ := NewRequest("GET", "http://example.com/", nil)
+	r.SetBasicAuth("Aladdin", "open sesame")
+	if g, e := r.Header.Get("Authorization"), "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ=="; g != e {
+		t.Errorf("got header %q, want %q", g, e)
+	}
+}
+
 func TestMultipartRequest(t *testing.T) {
 	// Test that we can read the values and files of a 
 	// multipart request with FormValue and FormFile,
@@ -214,13 +222,13 @@ func TestEmptyMultipartRequest(t *testing.T) {
 func testMissingFile(t *testing.T, req *Request) {
 	f, fh, err := req.FormFile("missing")
 	if f != nil {
-		t.Errorf("FormFile file = %q, want nil", f, nil)
+		t.Errorf("FormFile file = %q, want nil", f)
 	}
 	if fh != nil {
-		t.Errorf("FormFile file header = %q, want nil", fh, nil)
+		t.Errorf("FormFile file header = %q, want nil", fh)
 	}
 	if err != ErrMissingFile {
-		t.Errorf("FormFile err = %q, want nil", err, ErrMissingFile)
+		t.Errorf("FormFile err = %q, want ErrMissingFile", err)
 	}
 }
 
@@ -228,7 +236,7 @@ func newTestMultipartRequest(t *testing.T) *Request {
 	b := bytes.NewBufferString(strings.Replace(message, "\n", "\r\n", -1))
 	req, err := NewRequest("POST", "/", b)
 	if err != nil {
-		t.Fatalf("NewRequest:", err)
+		t.Fatal("NewRequest:", err)
 	}
 	ctype := fmt.Sprintf(`multipart/form-data; boundary="%s"`, boundary)
 	req.Header.Set("Content-type", ctype)
@@ -268,7 +276,7 @@ func validateTestMultipartContents(t *testing.T, req *Request, allMem bool) {
 func testMultipartFile(t *testing.T, req *Request, key, expectFilename, expectContent string) multipart.File {
 	f, fh, err := req.FormFile(key)
 	if err != nil {
-		t.Fatalf("FormFile(%q):", key, err)
+		t.Fatalf("FormFile(%q): %q", key, err)
 	}
 	if fh.Filename != expectFilename {
 		t.Errorf("filename = %q, want %q", fh.Filename, expectFilename)

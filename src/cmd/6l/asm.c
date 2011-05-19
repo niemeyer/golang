@@ -108,6 +108,9 @@ needlib(char *name)
 	char *p;
 	Sym *s;
 
+	if(*name == '\0')
+		return 0;
+
 	/* reuse hash code in symbol table */
 	p = smprint(".elfload.%s", name);
 	s = lookup(p, 0);
@@ -826,6 +829,7 @@ asmb(void)
 			}
 			break;
 		case Hwindows:
+			seek(cout, symo, 0);
 			if(debug['v'])
 			       Bprint(&bso, "%5.2f dwarf\n", cputime());
 

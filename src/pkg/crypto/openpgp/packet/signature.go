@@ -393,7 +393,7 @@ func (sig *Signature) buildHashSuffix() (err os.Error) {
 	sig.HashSuffix[3], ok = s2k.HashToHashId(sig.Hash)
 	if !ok {
 		sig.HashSuffix = nil
-		return error.InvalidArgumentError("hash cannot be repesented in OpenPGP: " + strconv.Itoa(int(sig.Hash)))
+		return error.InvalidArgumentError("hash cannot be represented in OpenPGP: " + strconv.Itoa(int(sig.Hash)))
 	}
 	sig.HashSuffix[4] = byte(hashedSubpacketsLen >> 8)
 	sig.HashSuffix[5] = byte(hashedSubpacketsLen)
@@ -455,10 +455,8 @@ func (sig *Signature) Serialize(w io.Writer) (err os.Error) {
 	case PubKeyAlgoRSA, PubKeyAlgoRSASignOnly:
 		sigLength = len(sig.RSASignature)
 	case PubKeyAlgoDSA:
-		sigLength = 2 /* MPI length */
-		sigLength += (sig.DSASigR.BitLen() + 7) / 8
-		sigLength += 2 /* MPI length */
-		sigLength += (sig.DSASigS.BitLen() + 7) / 8
+		sigLength = mpiLength(sig.DSASigR)
+		sigLength += mpiLength(sig.DSASigS)
 	default:
 		panic("impossible")
 	}

@@ -84,7 +84,7 @@ func (z *Rat) Num() *Int {
 }
 
 
-// Demom returns the denominator of z; it is always > 0.
+// Denom returns the denominator of z; it is always > 0.
 // The result is a reference to z's denominator; it
 // may change if a new value is assigned to z.
 func (z *Rat) Denom() *Int {
@@ -270,7 +270,7 @@ func (z *Rat) SetString(s string) (*Rat, bool) {
 
 // String returns a string representation of z in the form "a/b" (even if b == 1).
 func (z *Rat) String() string {
-	return z.a.String() + "/" + z.b.string(10)
+	return z.a.String() + "/" + z.b.decimalString()
 }
 
 
@@ -311,13 +311,13 @@ func (z *Rat) FloatString(prec int) string {
 		}
 	}
 
-	s := q.string(10)
+	s := q.decimalString()
 	if z.a.neg {
 		s = "-" + s
 	}
 
 	if prec > 0 {
-		rs := r.string(10)
+		rs := r.decimalString()
 		leadingZeros := prec - len(rs)
 		s += "." + strings.Repeat("0", leadingZeros) + rs
 	}

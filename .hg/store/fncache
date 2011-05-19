@@ -4427,3 +4427,17 @@ data/src/pkg/image/png/testdata/pngsuite/basn3p08-trns.png.i
 data/src/pkg/image/tiff/buffer.go.i
 data/src/pkg/crypto/x509/crl/Makefile.i
 data/src/pkg/image/gif/Makefile.i
+data/src/pkg/go/types/check_test.go.i
+data/src/pkg/go/types/check.go.i
+data/src/pkg/go/types/testdata/test0.src.i
+data/src/pkg/crypto/rand/util.go.i
+data/src/pkg/image/testdata/video-005.gray.jpeg.i
+data/src/pkg/image/testdata/video-001.interlaced.gif.i
+data/doc/video-005.jpg.i
+data/src/pkg/image/testdata/video-005.gray.png.i
+data/src/pkg/image/testdata/video-001.5bpp.gif.i
+data/doc/talks/io2011/Real_World_Go.pdf.i
+data/doc/talks/io2011/Real_World_Go.pdf.d
+data/doc/talks/io2011/Writing_Web_Apps_in_Go.pdf.i
+data/doc/talks/io2011/Writing_Web_Apps_in_Go.pdf.d
+data/test/fixedbugs/bug341.go.i
