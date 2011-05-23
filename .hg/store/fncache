@@ -4441,3 +4441,6 @@ data/doc/talks/io2011/Real_World_Go.pdf.d
 data/doc/talks/io2011/Writing_Web_Apps_in_Go.pdf.i
 data/doc/talks/io2011/Writing_Web_Apps_in_Go.pdf.d
 data/test/fixedbugs/bug341.go.i
+data/src/pkg/mime/multipart/writer_test.go.i
+data/src/pkg/mime/multipart/writer.go.i
+data/misc/IntelliJIDEA/Go.xml.i

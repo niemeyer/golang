@@ -102,6 +102,11 @@ func getSysProcAddr(m uint32, pname string) uintptr {
 // Implemented in ../runtime/windows/syscall.cgo
 func NewCallback(fn interface{}) uintptr
 
+// TODO
+func Sendfile(outfd int, infd int, offset *int64, count int) (written int, errno int) {
+	return -1, ENOSYS
+}
+
 // windows api calls
 
 //sys	GetLastError() (lasterrno int)
@@ -531,8 +536,9 @@ func (sa *SockaddrInet4) sockaddr() (uintptr, int32, int) {
 }
 
 type SockaddrInet6 struct {
-	Port int
-	Addr [16]byte
+	Port   int
+	ZoneId uint32
+	Addr   [16]byte
 }
 
 func (sa *SockaddrInet6) sockaddr() (uintptr, int32, int) {
