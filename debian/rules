@@ -13,7 +13,7 @@ export GOROOT=$(CURDIR)
 export GOROOT_FINAL=/usr/lib/go
 export DISABLE_NET_TESTS=1
 
-PKGDIR=debian/golang-weekly
+PKGDIR=debian/golang
 
 clean:
 	dh_clean
@@ -21,23 +21,25 @@ clean:
 	cd src && ./clean.bash
 	cd debian/gorun && make clean
 	rm -rf bin/ pkg/
+	find src/pkg -maxdepth 1 -type d -name '[a-z]*.*' -exec rm -rf {} \;
 
 binary-arch: clean
 	dh_prep
 	dh_installdirs
 	mkdir -p $(PKGDIR)/usr/lib/go/src
 	
-	cp -r src/pkg src/cmd $(PKGDIR)/usr/lib/go/src
+	cp -r src/pkg src/cmd misc doc $(PKGDIR)/usr/lib/go/src
+	cp -r misc doc $(PKGDIR)/usr/lib/go
 	find src/ -maxdepth 1 -type f -exec cp {} $(PKGDIR)/usr/lib/go/src/ \;
 	
 	/bin/bash -c "cd src && ./all.bash"
-
+	
 	PATH=$(GOROOT)/bin:$(PATH) /bin/bash -c "cd debian/gorun && make install"
 	test -f bin/gorun
-
+	
 	cp -r pkg lib $(PKGDIR)/usr/lib/go
 	cp -r bin $(PKGDIR)/usr
-
+	
 	sed -i 's/GOROOT=.*/GOROOT=\/usr\/lib\/go/' $(PKGDIR)/usr/bin/gomake
 	
 	dh_compress

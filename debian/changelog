@@ -1,65 +1,11 @@
-golang-weekly (2011-04-27-7) maverick; urgency=high
+golang (57.1-5) maverick; urgency=high
 
-  * New weekly release.
+  * Fixed misc and doc location.
 
- -- Gustavo Niemeyer <niemeyer@canonical.com>  Thu, 28 Apr 2011 10:40:15 -0300
+ -- Gustavo Niemeyer <niemeyer@canonical.com>  Mon, 23 May 2011 11:21:52 -0300
 
-golang-weekly (2011-04-13-5) maverick; urgency=high
+golang (57.1-3) maverick; urgency=high
 
-  * New weekly release.
+  * New release: r57.1
 
- -- Gustavo Niemeyer <niemeyer@canonical.com>  Fri, 15 Apr 2011 22:48:39 -0300
-
-golang-weekly (2011-04-04-1) maverick; urgency=low
-
-  * New weekly release.
-
- -- Gustavo Niemeyer <niemeyer@canonical.com>  Wed, 06 Apr 2011 16:44:16 -0300
-
-golang-weekly (2011-03-15-3) maverick; urgency=low
-
-  * Fixed content.
-
- -- Gustavo Niemeyer <niemeyer@canonical.com>  Wed, 16 Mar 2011 10:21:32 -0300
-
-golang-weekly (2011-03-15-2) maverick; urgency=low
-
-  * First weekly release.
-
- -- Gustavo Niemeyer <niemeyer@canonical.com>  Wed, 16 Mar 2011 10:21:32 -0300
-
-golang (r56-1) maverick; urgency=low
-
-  * New release versioning/naming convention.
-
- -- Gustavo Niemeyer <niemeyer@canonical.com>  Wed, 16 Mar 2011 10:21:32 -0300
-
-golang (0~2011.03.07.1-6) maverick; urgency=low
-
-  * Included gorun.
-
- -- Gustavo Niemeyer <niemeyer@canonical.com>  Fri, 11 Mar 2011 19:15:19 -0300
-
-golang (0~2011.03.07.1-1) maverick; urgency=low
-
-  * New release.
-
- -- Gustavo Niemeyer <niemeyer@canonical.com>  Mon, 07 Mar 2011 02:03:08 -0300
-
-golang (0~2011.02.24-2) maverick; urgency=low
-
-  * Bump release to force rebuild including ARM.
-
- -- Gustavo Niemeyer <niemeyer@canonical.com>  Wed, 02 Mar 2011 17:47:31 +0200
-
-golang (0~2011.02.24-1) maverick; urgency=low
-
-  * New release.
-
- -- Gustavo Niemeyer <niemeyer@canonical.com>  Fri, 25 Feb 2011 23:30:50 -0300
-
-golang (0~2011.02.01.1-1) maverick; urgency=low
-
-  * Initial Release.
-
- -- Gustavo Niemeyer <niemeyer@canonical.com>  Wed, 02 Feb 2011 11:38:38 -0200
+ -- Gustavo Niemeyer <niemeyer@canonical.com>  Wed, 04 May 2011 12:32:32 -0300
