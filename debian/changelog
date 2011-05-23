@@ -1,5 +1,6 @@
-golang-weekly (2011-05-22-1) maverick; urgency=low
+golang-weekly (2011-05-22-3) maverick; urgency=low
 
   * New weekly release: 2011-05-22
+  * Updated gorun.
 
  -- Gustavo Niemeyer <niemeyer@canonical.com>  Mon, 23 May 2011 12:25:02 -0300
