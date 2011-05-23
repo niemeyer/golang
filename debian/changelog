@@ -1,5 +1,6 @@
-golang (57.1-5) natty; urgency=low
+golang (57.1-8) natty; urgency=low
 
   * Fixed misc and doc location.
+  * Updated gorun.
 
  -- Gustavo Niemeyer <niemeyer@canonical.com>  Mon, 23 May 2011 11:21:52 -0300
