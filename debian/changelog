@@ -1,5 +1,5 @@
-golang (57.1-4) natty; urgency=high
+golang (57.1-5) natty; urgency=low
 
-  * New release: r57.1
+  * Fixed misc and doc location.
 
- -- Gustavo Niemeyer <niemeyer@canonical.com>  Wed, 04 May 2011 12:32:32 -0300
+ -- Gustavo Niemeyer <niemeyer@canonical.com>  Mon, 23 May 2011 11:21:52 -0300
