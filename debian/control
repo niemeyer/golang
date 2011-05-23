@@ -1,4 +1,4 @@
-Source: golang
+Source: golang-weekly
 Section: devel
 Priority: extra
 Maintainer: Gustavo Niemeyer <niemeyer@canonical.com>
@@ -6,10 +6,10 @@ Build-Depends: debhelper (>= 7.0.50~), ed, bison
 Standards-Version: 3.8.4
 Homepage: http://golang.org
 
-Package: golang
+Package: golang-weekly
 Architecture: any
 Depends: ${misc:Depends}
-Conflicts: golang-weekly
+Conflicts: golang
 Description: Go language compiler and tools (gc)
  The Go programming language is an open source project to make
  programmers more productive. Go is expressive, concise, clean,
