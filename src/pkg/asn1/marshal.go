@@ -5,6 +5,7 @@
 package asn1
 
 import (
+	"big"
 	"bytes"
 	"fmt"
 	"io"
@@ -122,6 +123,43 @@ func int64Length(i int64) (numBytes int) {
 		i >>= 8
 	}
 
+	return
+}
+
+func marshalBigInt(out *forkableWriter, n *big.Int) (err os.Error) {
+	if n.Sign() < 0 {
+		// A negative number has to be converted to two's-complement
+		// form. So we'll subtract 1 and invert. If the
+		// most-significant-bit isn't set then we'll need to pad the
+		// beginning with 0xff in order to keep the number negative.
+		nMinus1 := new(big.Int).Neg(n)
+		nMinus1.Sub(nMinus1, bigOne)
+		bytes := nMinus1.Bytes()
+		for i := range bytes {
+			bytes[i] ^= 0xff
+		}
+		if len(bytes) == 0 || bytes[0]&0x80 == 0 {
+			err = out.WriteByte(0xff)
+			if err != nil {
+				return
+			}
+		}
+		_, err = out.Write(bytes)
+	} else if n.Sign() == 0 {
+		// Zero is written as a single 0 zero rather than no bytes.
+		err = out.WriteByte(0x00)
+	} else {
+		bytes := n.Bytes()
+		if len(bytes) > 0 && bytes[0]&0x80 != 0 {
+			// We'll have to pad this with 0x00 in order to stop it
+			// looking like a negative number.
+			err = out.WriteByte(0)
+			if err != nil {
+				return
+			}
+		}
+		_, err = out.Write(bytes)
+	}
 	return
 }
 
@@ -334,6 +372,8 @@ func marshalBody(out *forkableWriter, value reflect.Value, params fieldParameter
 		return marshalBitString(out, value.Interface().(BitString))
 	case objectIdentifierType:
 		return marshalObjectIdentifier(out, value.Interface().(ObjectIdentifier))
+	case bigIntType:
+		return marshalBigInt(out, value.Interface().(*big.Int))
 	}
 
 	switch v := value; v.Kind() {
@@ -351,7 +391,7 @@ func marshalBody(out *forkableWriter, value reflect.Value, params fieldParameter
 		startingField := 0
 
 		// If the first element of the structure is a non-empty
-		// RawContents, then we don't bother serialising the rest.
+		// RawContents, then we don't bother serializing the rest.
 		if t.NumField() > 0 && t.Field(0).Type == rawContentsType {
 			s := v.Field(0)
 			if s.Len() > 0 {
@@ -361,7 +401,7 @@ func marshalBody(out *forkableWriter, value reflect.Value, params fieldParameter
 				}
 				/* The RawContents will contain the tag and
 				 * length fields but we'll also be writing
-				 * those outselves, so we strip them out of
+				 * those ourselves, so we strip them out of
 				 * bytes */
 				_, err = out.Write(stripTagAndLength(bytes))
 				return
@@ -420,6 +460,9 @@ func marshalField(out *forkableWriter, v reflect.Value, params fieldParameters) 
 
 	if v.Type() == rawValueType {
 		rv := v.Interface().(RawValue)
+		if rv.Class == 0 && rv.Tag == 0 && len(rv.Bytes) == 0 && params.optional {
+			return
+		}
 		err = marshalTagAndLength(out, tagAndLength{rv.Class, rv.Tag, len(rv.Bytes), rv.IsCompound})
 		if err != nil {
 			return

@@ -43,7 +43,7 @@ func TestTransportKeepAlives(t *testing.T) {
 		c := &Client{Transport: tr}
 
 		fetch := func(n int) string {
-			res, _, err := c.Get(ts.URL)
+			res, err := c.Get(ts.URL)
 			if err != nil {
 				t.Fatalf("error in disableKeepAlive=%v, req #%d, GET: %v", disableKeepAlive, n, err)
 			}
@@ -160,7 +160,7 @@ func TestTransportIdleCacheKeys(t *testing.T) {
 		t.Errorf("After CloseIdleConnections expected %d idle conn cache keys; got %d", e, g)
 	}
 
-	resp, _, err := c.Get(ts.URL)
+	resp, err := c.Get(ts.URL)
 	if err != nil {
 		t.Error(err)
 	}
@@ -201,7 +201,7 @@ func TestTransportMaxPerHostIdleConns(t *testing.T) {
 	// Their responses will hang until we we write to resch, though.
 	donech := make(chan bool)
 	doReq := func() {
-		resp, _, err := c.Get(ts.URL)
+		resp, err := c.Get(ts.URL)
 		if err != nil {
 			t.Error(err)
 		}
@@ -256,26 +256,44 @@ func TestTransportServerClosingUnexpectedly(t *testing.T) {
 	tr := &Transport{}
 	c := &Client{Transport: tr}
 
-	fetch := func(n int) string {
-		res, _, err := c.Get(ts.URL)
-		if err != nil {
-			t.Fatalf("error in req #%d, GET: %v", n, err)
+	fetch := func(n, retries int) string {
+		condFatalf := func(format string, arg ...interface{}) {
+			if retries <= 0 {
+				t.Fatalf(format, arg...)
+			}
+			t.Logf("retrying shortly after expected error: "+format, arg...)
+			time.Sleep(1e9 / int64(retries))
 		}
-		body, err := ioutil.ReadAll(res.Body)
-		if err != nil {
-			t.Fatalf("error in req #%d, ReadAll: %v", n, err)
+		for retries >= 0 {
+			retries--
+			res, err := c.Get(ts.URL)
+			if err != nil {
+				condFatalf("error in req #%d, GET: %v", n, err)
+				continue
+			}
+			body, err := ioutil.ReadAll(res.Body)
+			if err != nil {
+				condFatalf("error in req #%d, ReadAll: %v", n, err)
+				continue
+			}
+			res.Body.Close()
+			return string(body)
 		}
-		res.Body.Close()
-		return string(body)
+		panic("unreachable")
 	}
 
-	body1 := fetch(1)
-	body2 := fetch(2)
+	body1 := fetch(1, 0)
+	body2 := fetch(2, 0)
 
 	ts.CloseClientConnections() // surprise!
-	time.Sleep(25e6)            // idle for a bit (test is inherently racey, but expectedly)
 
-	body3 := fetch(3)
+	// This test has an expected race. Sleeping for 25 ms prevents
+	// it on most fast machines, causing the next fetch() call to
+	// succeed quickly.  But if we do get errors, fetch() will retry 5
+	// times with some delays between.
+	time.Sleep(25e6)
+
+	body3 := fetch(3, 5)
 
 	if body1 != body2 {
 		t.Errorf("expected body1 and body2 to be equal")
@@ -376,6 +394,9 @@ func TestTransportGzip(t *testing.T) {
 			t.Errorf("Accept-Encoding = %q, want %q", g, e)
 		}
 		rw.Header().Set("Content-Encoding", "gzip")
+		if req.Method == "HEAD" {
+			return
+		}
 
 		var w io.Writer = rw
 		var buf bytes.Buffer
@@ -399,7 +420,7 @@ func TestTransportGzip(t *testing.T) {
 		c := &Client{Transport: &Transport{}}
 
 		// First fetch something large, but only read some of it.
-		res, _, err := c.Get(ts.URL + "?body=large&chunked=" + chunked)
+		res, err := c.Get(ts.URL + "?body=large&chunked=" + chunked)
 		if err != nil {
 			t.Fatalf("large get: %v", err)
 		}
@@ -419,7 +440,7 @@ func TestTransportGzip(t *testing.T) {
 		}
 
 		// Then something small.
-		res, _, err = c.Get(ts.URL + "?chunked=" + chunked)
+		res, err = c.Get(ts.URL + "?chunked=" + chunked)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -445,6 +466,40 @@ func TestTransportGzip(t *testing.T) {
 			t.Errorf("expected Read error after Close; got %d, %v", n, err)
 		}
 	}
+
+	// And a HEAD request too, because they're always weird.
+	c := &Client{Transport: &Transport{}}
+	res, err := c.Head(ts.URL)
+	if err != nil {
+		t.Fatalf("Head: %v", err)
+	}
+	if res.StatusCode != 200 {
+		t.Errorf("Head status=%d; want=200", res.StatusCode)
+	}
+}
+
+func TestTransportProxy(t *testing.T) {
+	ch := make(chan string, 1)
+	ts := httptest.NewServer(HandlerFunc(func(w ResponseWriter, r *Request) {
+		ch <- "real server"
+	}))
+	defer ts.Close()
+	proxy := httptest.NewServer(HandlerFunc(func(w ResponseWriter, r *Request) {
+		ch <- "proxy for " + r.URL.String()
+	}))
+	defer proxy.Close()
+
+	pu, err := ParseURL(proxy.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &Client{Transport: &Transport{Proxy: ProxyURL(pu)}}
+	c.Head(ts.URL)
+	got := <-ch
+	want := "proxy for " + ts.URL + "/"
+	if got != want {
+		t.Errorf("want %q, got %q", want, got)
+	}
 }
 
 // TestTransportGzipRecursive sends a gzip quine and checks that the
@@ -459,7 +514,7 @@ func TestTransportGzipRecursive(t *testing.T) {
 	defer ts.Close()
 
 	c := &Client{Transport: &Transport{}}
-	res, _, err := c.Get(ts.URL)
+	res, err := c.Get(ts.URL)
 	if err != nil {
 		t.Fatal(err)
 	}

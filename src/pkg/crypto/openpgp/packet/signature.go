@@ -393,7 +393,7 @@ func (sig *Signature) buildHashSuffix() (err os.Error) {
 	sig.HashSuffix[3], ok = s2k.HashToHashId(sig.Hash)
 	if !ok {
 		sig.HashSuffix = nil
-		return error.InvalidArgumentError("hash cannot be repesented in OpenPGP: " + strconv.Itoa(int(sig.Hash)))
+		return error.InvalidArgumentError("hash cannot be represented in OpenPGP: " + strconv.Itoa(int(sig.Hash)))
 	}
 	sig.HashSuffix[4] = byte(hashedSubpacketsLen >> 8)
 	sig.HashSuffix[5] = byte(hashedSubpacketsLen)
@@ -420,28 +420,46 @@ func (sig *Signature) signPrepareHash(h hash.Hash) (digest []byte, err os.Error)
 	return
 }
 
-// SignRSA signs a message with an RSA private key. The hash, h, must contain
+// Sign signs a message with a private key. The hash, h, must contain
 // the hash of the message to be signed and will be mutated by this function.
 // On success, the signature is stored in sig. Call Serialize to write it out.
-func (sig *Signature) SignRSA(h hash.Hash, priv *rsa.PrivateKey) (err os.Error) {
+func (sig *Signature) Sign(h hash.Hash, priv *PrivateKey) (err os.Error) {
 	digest, err := sig.signPrepareHash(h)
 	if err != nil {
 		return
 	}
-	sig.RSASignature, err = rsa.SignPKCS1v15(rand.Reader, priv, sig.Hash, digest)
+
+	switch priv.PubKeyAlgo {
+	case PubKeyAlgoRSA, PubKeyAlgoRSASignOnly:
+		sig.RSASignature, err = rsa.SignPKCS1v15(rand.Reader, priv.PrivateKey.(*rsa.PrivateKey), sig.Hash, digest)
+	case PubKeyAlgoDSA:
+		sig.DSASigR, sig.DSASigS, err = dsa.Sign(rand.Reader, priv.PrivateKey.(*dsa.PrivateKey), digest)
+	default:
+		err = error.UnsupportedError("public key algorithm: " + strconv.Itoa(int(sig.PubKeyAlgo)))
+	}
+
 	return
 }
 
-// SignDSA signs a message with a DSA private key. The hash, h, must contain
-// the hash of the message to be signed and will be mutated by this function.
-// On success, the signature is stored in sig. Call Serialize to write it out.
-func (sig *Signature) SignDSA(h hash.Hash, priv *dsa.PrivateKey) (err os.Error) {
-	digest, err := sig.signPrepareHash(h)
+// SignUserId computes a signature from priv, asserting that pub is a valid
+// key for the identity id.  On success, the signature is stored in sig. Call
+// Serialize to write it out.
+func (sig *Signature) SignUserId(id string, pub *PublicKey, priv *PrivateKey) os.Error {
+	h, err := userIdSignatureHash(id, pub, sig)
 	if err != nil {
-		return
+		return nil
 	}
-	sig.DSASigR, sig.DSASigS, err = dsa.Sign(rand.Reader, priv, digest)
-	return
+	return sig.Sign(h, priv)
+}
+
+// SignKey computes a signature from priv, asserting that pub is a subkey.  On
+// success, the signature is stored in sig. Call Serialize to write it out.
+func (sig *Signature) SignKey(pub *PublicKey, priv *PrivateKey) os.Error {
+	h, err := keySignatureHash(&priv.PublicKey, pub, sig)
+	if err != nil {
+		return err
+	}
+	return sig.Sign(h, priv)
 }
 
 // Serialize marshals sig to w. SignRSA or SignDSA must have been called first.
@@ -455,10 +473,8 @@ func (sig *Signature) Serialize(w io.Writer) (err os.Error) {
 	case PubKeyAlgoRSA, PubKeyAlgoRSASignOnly:
 		sigLength = len(sig.RSASignature)
 	case PubKeyAlgoDSA:
-		sigLength = 2 /* MPI length */
-		sigLength += (sig.DSASigR.BitLen() + 7) / 8
-		sigLength += 2 /* MPI length */
-		sigLength += (sig.DSASigS.BitLen() + 7) / 8
+		sigLength = mpiLength(sig.DSASigR)
+		sigLength += mpiLength(sig.DSASigS)
 	default:
 		panic("impossible")
 	}

@@ -572,6 +572,20 @@ func (doc *docReader) newDoc(importpath string, filenames []string) *PackageDoc 
 type Filter func(string) bool
 
 
+func matchFields(fields *ast.FieldList, f Filter) bool {
+	if fields != nil {
+		for _, field := range fields.List {
+			for _, name := range field.Names {
+				if f(name.Name) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+
 func matchDecl(d *ast.GenDecl, f Filter) bool {
 	for _, d := range d.Specs {
 		switch v := d.(type) {
@@ -584,6 +598,16 @@ func matchDecl(d *ast.GenDecl, f Filter) bool {
 		case *ast.TypeSpec:
 			if f(v.Name.Name) {
 				return true
+			}
+			switch t := v.Type.(type) {
+			case *ast.StructType:
+				if matchFields(t.Fields, f) {
+					return true
+				}
+			case *ast.InterfaceType:
+				if matchFields(t.Methods, f) {
+					return true
+				}
 			}
 		}
 	}

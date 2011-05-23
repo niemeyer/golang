@@ -100,12 +100,50 @@ var tokenTests = []tokenTest{
 		"<p \t\n iD=\"a&quot;B\"  foo=\"bar\"><EM>te&lt;&amp;;xt</em></p>",
 		`<p id="a&quot;B" foo="bar">$<em>$te&lt;&amp;;xt$</em>$</p>`,
 	},
-	// A non-existant entity. Tokenizing and converting back to a string should
+	// A nonexistent entity. Tokenizing and converting back to a string should
 	// escape the "&" to become "&amp;".
 	{
 		"noSuchEntity",
 		`<a b="c&noSuchEntity;d">&lt;&alsoDoesntExist;&`,
 		`<a b="c&amp;noSuchEntity;d">$&lt;&amp;alsoDoesntExist;&amp;`,
+	},
+
+	// Attribute tests:
+	// http://dev.w3.org/html5/spec/Overview.html#attributes-0
+	{
+		"Empty attribute",
+		`<input disabled FOO>`,
+		`<input disabled="" foo="">`,
+	},
+	{
+		"Empty attribute, whitespace",
+		`<input disabled FOO >`,
+		`<input disabled="" foo="">`,
+	},
+	{
+		"Unquoted attribute value",
+		`<input value=yes FOO=BAR>`,
+		`<input value="yes" foo="BAR">`,
+	},
+	{
+		"Unquoted attribute value, trailing space",
+		`<input value=yes FOO=BAR >`,
+		`<input value="yes" foo="BAR">`,
+	},
+	{
+		"Single-quoted attribute value",
+		`<input value='yes' FOO='BAR'>`,
+		`<input value="yes" foo="BAR">`,
+	},
+	{
+		"Single-quoted attribute value, trailing space",
+		`<input value='yes' FOO='BAR' >`,
+		`<input value="yes" foo="BAR">`,
+	},
+	{
+		"Double-quoted attribute value",
+		`<input value="I'm an attribute" FOO="BAR">`,
+		`<input value="I&apos;m an attribute" foo="BAR">`,
 	},
 }
 

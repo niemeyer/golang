@@ -20,6 +20,7 @@ package big
 
 import "rand"
 
+
 // An unsigned integer x of the form
 //
 //   x = x[n-1]*_B^(n-1) + x[n-2]*_B^(n-2) + ... + x[1]*_B + x[0]
@@ -668,16 +669,24 @@ func (z nat) scan(s string, base int) (nat, int, int) {
 }
 
 
-// string converts x to a string for a given base, with 2 <= base <= 16.
-// TODO(gri) in the style of the other routines, perhaps this should take
-//           a []byte buffer and return it
-func (x nat) string(base int) string {
-	if base < 2 || 16 < base {
-		panic("illegal base")
-	}
+// Character sets for string conversion.
+const (
+	lowercaseDigits = "0123456789abcdefghijklmnopqrstuvwxyz"
+	uppercaseDigits = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+)
 
-	if len(x) == 0 {
-		return "0"
+// string converts x to a string using digits from a charset; a digit with
+// value d is represented by charset[d]. The conversion base is determined
+// by len(charset), which must be >= 2.
+func (x nat) string(charset string) string {
+	base := len(charset)
+
+	// special cases
+	switch {
+	case base < 2:
+		panic("illegal base")
+	case len(x) == 0:
+		return string(charset[0])
 	}
 
 	// allocate buffer for conversion
@@ -692,10 +701,17 @@ func (x nat) string(base int) string {
 		i--
 		var r Word
 		q, r = q.divW(q, Word(base))
-		s[i] = "0123456789abcdef"[r]
+		s[i] = charset[r]
 	}
 
 	return string(s[i:])
+}
+
+
+// decimalString returns a decimal representation of x.
+// It calls x.string with the charset "0123456789".
+func (x nat) decimalString() string {
+	return x.string(lowercaseDigits[0:10])
 }
 
 
@@ -721,7 +737,7 @@ var deBruijn64Lookup = []byte{
 func trailingZeroBits(x Word) int {
 	// x & -x leaves only the right-most bit set in the word. Let k be the
 	// index of that bit. Since only a single bit is set, the value is two
-	// to the power of k. Multipling by a power of two is equivalent to
+	// to the power of k. Multiplying by a power of two is equivalent to
 	// left shifting, in this case by k bits.  The de Bruijn constant is
 	// such that all six bit, consecutive substrings are distinct.
 	// Therefore, if we have a left shifted version of this constant we can
@@ -770,6 +786,43 @@ func (z nat) shr(x nat, s uint) nat {
 	shrVW(z, x[m-n:], Word(s%_W))
 
 	return z.norm()
+}
+
+
+func (z nat) setBit(x nat, i uint, b uint) nat {
+	j := int(i / _W)
+	m := Word(1) << (i % _W)
+	n := len(x)
+	switch b {
+	case 0:
+		z = z.make(n)
+		copy(z, x)
+		if j >= n {
+			// no need to grow
+			return z
+		}
+		z[j] &^= m
+		return z.norm()
+	case 1:
+		if j >= n {
+			n = j + 1
+		}
+		z = z.make(n)
+		copy(z, x)
+		z[j] |= m
+		// no need to normalize
+		return z
+	}
+	panic("set bit is not 0 or 1")
+}
+
+
+func (z nat) bit(i uint) uint {
+	j := int(i / _W)
+	if j >= len(z) {
+		return 0
+	}
+	return uint(z[j] >> (i % _W) & 1)
 }
 
 

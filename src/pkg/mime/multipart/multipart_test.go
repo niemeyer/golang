@@ -56,24 +56,25 @@ func expectEq(t *testing.T, expected, actual, what string) {
 		what, escapeString(actual), len(actual), escapeString(expected), len(expected))
 }
 
-func TestFormName(t *testing.T) {
-	p := new(Part)
-	p.Header = make(map[string][]string)
-	tests := [...][2]string{
-		{`form-data; name="foo"`, "foo"},
-		{` form-data ; name=foo`, "foo"},
-		{`FORM-DATA;name="foo"`, "foo"},
-		{` FORM-DATA ; name="foo"`, "foo"},
-		{` FORM-DATA ; name="foo"`, "foo"},
-		{` FORM-DATA ; name=foo`, "foo"},
-		{` FORM-DATA ; filename="foo.txt"; name=foo; baz=quux`, "foo"},
+func TestNameAccessors(t *testing.T) {
+	tests := [...][3]string{
+		{`form-data; name="foo"`, "foo", ""},
+		{` form-data ; name=foo`, "foo", ""},
+		{`FORM-DATA;name="foo"`, "foo", ""},
+		{` FORM-DATA ; name="foo"`, "foo", ""},
+		{` FORM-DATA ; name="foo"`, "foo", ""},
+		{` FORM-DATA ; name=foo`, "foo", ""},
+		{` FORM-DATA ; filename="foo.txt"; name=foo; baz=quux`, "foo", "foo.txt"},
+		{` not-form-data ; filename="bar.txt"; name=foo; baz=quux`, "", "bar.txt"},
 	}
-	for _, test := range tests {
+	for i, test := range tests {
+		p := &Part{Header: make(map[string][]string)}
 		p.Header.Set("Content-Disposition", test[0])
-		expected := test[1]
-		actual := p.FormName()
-		if actual != expected {
-			t.Errorf("expected \"%s\"; got: \"%s\"", expected, actual)
+		if g, e := p.FormName(), test[1]; g != e {
+			t.Errorf("test %d: FormName() = %q; want %q", i, g, e)
+		}
+		if g, e := p.FileName(), test[2]; g != e {
+			t.Errorf("test %d: FileName() = %q; want %q", i, g, e)
 		}
 	}
 }
@@ -201,8 +202,8 @@ func testMultipart(t *testing.T, r io.Reader) {
 	if part != nil {
 		t.Error("Didn't expect a fifth part.")
 	}
-	if err != nil {
-		t.Errorf("Unexpected error getting fifth part: %v", err)
+	if err != os.EOF {
+		t.Errorf("On  fifth part expected os.EOF; got %v", err)
 	}
 }
 
@@ -246,8 +247,8 @@ func TestVariousTextLineEndings(t *testing.T) {
 		if part != nil {
 			t.Errorf("Unexpected part in test %d", testNum)
 		}
-		if err != nil {
-			t.Errorf("Unexpected error in test %d: %v", testNum, err)
+		if err != os.EOF {
+			t.Errorf("On test %d expected os.EOF; got %v", testNum, err)
 		}
 
 	}
@@ -303,6 +304,29 @@ Oh no, premature EOF!
 	_, err = io.Copy(ioutil.Discard, part)
 	if err != io.ErrUnexpectedEOF {
 		t.Fatalf("expected error io.ErrUnexpectedEOF; got %v", err)
+	}
+}
+
+func TestZeroLengthBody(t *testing.T) {
+	testBody := strings.Replace(`
+This is a multi-part message.  This line is ignored.
+--MyBoundary
+foo: bar
+
+
+--MyBoundary--
+`, "\n", "\r\n", -1)
+	r := NewReader(strings.NewReader(testBody), "MyBoundary")
+	part, err := r.NextPart()
+	if err != nil {
+		t.Fatalf("didn't get a part")
+	}
+	n, err := io.Copy(ioutil.Discard, part)
+	if err != nil {
+		t.Errorf("error reading part: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("read %d bytes; expected 0", n)
 	}
 }
 

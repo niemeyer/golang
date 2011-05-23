@@ -87,7 +87,7 @@ const (
 	certTypeRSASign    = 1 // A certificate containing an RSA key
 	certTypeDSSSign    = 2 // A certificate containing a DSA key
 	certTypeRSAFixedDH = 3 // A certificate containing a static DH key
-	certTypeDSSFixedDH = 4 // A certficiate containing a static DH key
+	certTypeDSSFixedDH = 4 // A certificate containing a static DH key
 	// Rest of these are reserved by the TLS spec
 )
 
@@ -100,6 +100,8 @@ type ConnectionState struct {
 
 	// the certificate chain that was presented by the other side
 	PeerCertificates []*x509.Certificate
+	// the verified certificate chains built from PeerCertificates.
+	VerifiedChains [][]*x509.Certificate
 }
 
 // A Config structure is used to configure a TLS client or server. After one

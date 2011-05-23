@@ -73,6 +73,8 @@ enum {
 	ElfStrGosymcounts,
 	ElfStrGosymtab,
 	ElfStrGopclntab,
+	ElfStrSymtab,
+	ElfStrStrtab,
 	ElfStrShstrtab,
 	ElfStrRelPlt,
 	ElfStrPlt,
@@ -86,6 +88,9 @@ needlib(char *name)
 {
 	char *p;
 	Sym *s;
+
+	if(*name == '\0')
+		return 0;
 
 	/* reuse hash code in symbol table */
 	p = smprint(".dynlib.%s", name);
@@ -163,6 +168,8 @@ doelf(void)
 		elfstr[ElfStrGosymcounts] = addstring(shstrtab, ".gosymcounts");
 		elfstr[ElfStrGosymtab] = addstring(shstrtab, ".gosymtab");
 		elfstr[ElfStrGopclntab] = addstring(shstrtab, ".gopclntab");
+		elfstr[ElfStrSymtab] = addstring(shstrtab, ".symtab");
+		elfstr[ElfStrStrtab] = addstring(shstrtab, ".strtab");
 	}
 	elfstr[ElfStrShstrtab] = addstring(shstrtab, ".shstrtab");
 
@@ -288,18 +295,19 @@ asmb(void)
 {
 	int32 t;
 	int a, dynsym;
-	uint32 va, fo, w, startva;
-	int strtabsize;
+	uint32 fo, symo, startva, elfsymo, elfstro, elfsymsize;
 	ElfEhdr *eh;
 	ElfPhdr *ph, *pph;
 	ElfShdr *sh;
 	Section *sect;
 
-	strtabsize = 0;
-
 	if(debug['v'])
 		Bprint(&bso, "%5.2f asmb\n", cputime());
 	Bflush(&bso);
+
+	elfsymsize = 0;
+	elfstro = 0;
+	elfsymo = 0;
 
 	sect = segtext.sect;
 	seek(cout, sect->vaddr - segtext.vaddr + segtext.fileoff, 0);
@@ -322,15 +330,30 @@ asmb(void)
 	seek(cout, sect->vaddr - segtext.vaddr + segtext.fileoff, 0);
 	datblk(sect->vaddr, sect->len);
 
+	if(iself) {
+		/* index of elf text section; needed by asmelfsym, double-checked below */
+		/* !debug['d'] causes extra sections before the .text section */
+		elftextsh = 1;
+		if(!debug['d']) {
+			elftextsh += 10;
+			if(elfverneed)
+				elftextsh += 2;
+		}
+	}
+
 	/* output symbol table */
 	symsize = 0;
 	lcsize = 0;
+	symo = 0;
 	if(!debug['s']) {
 		// TODO: rationalize
 		if(debug['v'])
 			Bprint(&bso, "%5.2f sym\n", cputime());
 		Bflush(&bso);
 		switch(HEADTYPE) {
+		default:
+			if(iself)
+				goto ElfSym;
 		case Hnoheader:
 		case Hrisc:
 		case Hixp1200:
@@ -345,14 +368,29 @@ asmb(void)
 			OFFSET += rnd(segdata.filelen, 4096);
 			seek(cout, OFFSET, 0);
 			break;
-		case Hlinux:
-			OFFSET += segdata.filelen;
-			seek(cout, rnd(OFFSET, INITRND), 0);
+		ElfSym:
+			symo = rnd(HEADR+segtext.filelen, INITRND)+segdata.filelen;
+			symo = rnd(symo, INITRND);
 			break;
 		}
-		if(!debug['s'])
-			asmthumbmap();
+		if(iself) {
+			if(debug['v'])
+			       Bprint(&bso, "%5.2f elfsym\n", cputime());
+			elfsymo = symo+8+symsize+lcsize;
+			seek(cout, elfsymo, 0);
+			asmelfsym32();
+			cflush();
+			elfstro = seek(cout, 0, 1);
+			elfsymsize = elfstro - elfsymo;
+			ewrite(cout, elfstrdat, elfstrsize);
+
+			// if(debug['v'])
+			// 	Bprint(&bso, "%5.2f dwarf\n", cputime());
+			// dwarfemitdebugsections();
+		}
+		asmthumbmap();
 		cflush();
+		
 	}
 
 	cursym = nil;
@@ -426,9 +464,7 @@ asmb(void)
 		/* elf arm */
 		eh = getElfEhdr();
 		fo = HEADR;
-		va = INITTEXT;
 		startva = INITTEXT - fo;	/* va of byte 0 of file */
-		w = textsize;
 		
 		/* This null SHdr must appear before all others */
 		sh = newElfShdr(elfstr[ElfStrEmpty]);
@@ -541,6 +577,8 @@ asmb(void)
 		ph->flags = PF_W+PF_R;
 		ph->align = 4;
 
+		if(elftextsh != eh->shnum)
+			diag("elftextsh = %d, want %d", elftextsh, eh->shnum);
 		for(sect=segtext.sect; sect!=nil; sect=sect->next)
 			elfshbits(sect);
 		for(sect=segdata.sect; sect!=nil; sect=sect->next)
@@ -558,6 +596,22 @@ asmb(void)
 			sh->flags = SHF_ALLOC;
 			sh->addralign = 1;
 			shsym(sh, lookup("pclntab", 0));
+
+			sh = newElfShdr(elfstr[ElfStrSymtab]);
+			sh->type = SHT_SYMTAB;
+			sh->off = elfsymo;
+			sh->size = elfsymsize;
+			sh->addralign = 4;
+			sh->entsize = 16;
+			sh->link = eh->shnum;	// link to strtab
+
+			sh = newElfShdr(elfstr[ElfStrStrtab]);
+			sh->type = SHT_STRTAB;
+			sh->off = elfstro;
+			sh->size = elfstrsize;
+			sh->addralign = 1;
+
+			// dwarfaddelfheaders();
 		}
 
 		sh = newElfShstrtab(elfstr[ElfStrShstrtab]);
@@ -990,40 +1044,6 @@ if(debug['G']) print("%ux: %s: arm %d %d %d\n", (uint32)(p->pc), p->from.sym->na
 			o1 |= 1<<22;
 		break;
 
-	case 22:	/* movb/movh/movhu O(R),R -> lr,shl,shr */
-		aclass(&p->from);
-		r = p->from.reg;
-		if(r == NREG)
-			r = o->param;
-		o1 = olr(instoffset, r, p->to.reg, p->scond);
-
-		o2 = oprrr(ASLL, p->scond);
-		o3 = oprrr(ASRA, p->scond);
-		r = p->to.reg;
-		if(p->as == AMOVB) {
-			o2 |= (24<<7)|(r)|(r<<12);
-			o3 |= (24<<7)|(r)|(r<<12);
-		} else {
-			o2 |= (16<<7)|(r)|(r<<12);
-			if(p->as == AMOVHU)
-				o3 = oprrr(ASRL, p->scond);
-			o3 |= (16<<7)|(r)|(r<<12);
-		}
-		break;
-
-	case 23:	/* movh/movhu R,O(R) -> sb,sb */
-		aclass(&p->to);
-		r = p->to.reg;
-		if(r == NREG)
-			r = o->param;
-		o1 = osr(AMOVH, p->from.reg, instoffset, r, p->scond);
-
-		o2 = oprrr(ASRL, p->scond);
-		o2 |= (8<<7)|(p->from.reg)|(REGTMP<<12);
-
-		o3 = osr(AMOVH, REGTMP, instoffset+1, r, p->scond);
-		break;
-
 	case 30:	/* mov/movb/movbu R,L(R) */
 		o1 = omvl(p, &p->to, REGTMP);
 		if(!o1)
@@ -1037,7 +1057,6 @@ if(debug['G']) print("%ux: %s: arm %d %d %d\n", (uint32)(p->pc), p->from.sym->na
 		break;
 
 	case 31:	/* mov/movbu L(R),R -> lr[b] */
-	case 32:	/* movh/movb L(R),R -> lr[b] */
 		o1 = omvl(p, &p->from, REGTMP);
 		if(!o1)
 			break;
@@ -1047,53 +1066,6 @@ if(debug['G']) print("%ux: %s: arm %d %d %d\n", (uint32)(p->pc), p->from.sym->na
 		o2 = olrr(REGTMP,r, p->to.reg, p->scond);
 		if(p->as == AMOVBU || p->as == AMOVB)
 			o2 |= 1<<22;
-		if(o->type == 31)
-			break;
-
-		o3 = oprrr(ASLL, p->scond);
-
-		if(p->as == AMOVBU || p->as == AMOVHU)
-			o4 = oprrr(ASRL, p->scond);
-		else
-			o4 = oprrr(ASRA, p->scond);
-
-		r = p->to.reg;
-		o3 |= (r)|(r<<12);
-		o4 |= (r)|(r<<12);
-		if(p->as == AMOVB || p->as == AMOVBU) {
-			o3 |= (24<<7);
-			o4 |= (24<<7);
-		} else {
-			o3 |= (16<<7);
-			o4 |= (16<<7);
-		}
-		break;
-
-	case 33:	/* movh/movhu R,L(R) -> sb, sb */
-		o1 = omvl(p, &p->to, REGTMP);
-		if(!o1)
-			break;
-		r = p->to.reg;
-		if(r == NREG)
-			r = o->param;
-		o2 = osrr(p->from.reg, REGTMP, r, p->scond);
-		o2 |= (1<<22) ;
-
-		o3 = oprrr(ASRL, p->scond);
-		o3 |= (8<<7)|(p->from.reg)|(p->from.reg<<12);
-		o3 |= (1<<6);	/* ROR 8 */
-
-		o4 = oprrr(AADD, p->scond);
-		o4 |= (REGTMP << 12) | (REGTMP << 16);
-		o4 |= immrot(1);
-
-		o5 = osrr(p->from.reg, REGTMP,r,p->scond);
-		o5 |= (1<<22);
-
-		o6 = oprrr(ASRL, p->scond);
-		o6 |= (24<<7)|(p->from.reg)|(p->from.reg<<12);
-		o6 |= (1<<6);	/* ROL 8 */
-
 		break;
 
 	case 34:	/* mov $lacon,R */
@@ -1304,54 +1276,12 @@ if(debug['G']) print("%ux: %s: arm %d %d %d\n", (uint32)(p->pc), p->from.sym->na
 		break;
 
 	case 65:	/* mov/movbu addr,R */
-	case 66:	/* movh/movhu/movb addr,R */
 		o1 = omvl(p, &p->from, REGTMP);
 		if(!o1)
 			break;
 		o2 = olr(0, REGTMP, p->to.reg, p->scond);
 		if(p->as == AMOVBU || p->as == AMOVB)
 			o2 |= 1<<22;
-		if(o->type == 65)
-			break;
-
-		o3 = oprrr(ASLL, p->scond);
-
-		if(p->as == AMOVBU || p->as == AMOVHU)
-			o4 = oprrr(ASRL, p->scond);
-		else
-			o4 = oprrr(ASRA, p->scond);
-
-		r = p->to.reg;
-		o3 |= (r)|(r<<12);
-		o4 |= (r)|(r<<12);
-		if(p->as == AMOVB || p->as == AMOVBU) {
-			o3 |= (24<<7);
-			o4 |= (24<<7);
-		} else {
-			o3 |= (16<<7);
-			o4 |= (16<<7);
-		}
-		break;
-
-	case 67:	/* movh/movhu R,addr -> sb, sb */
-		o1 = omvl(p, &p->to, REGTMP);
-		if(!o1)
-			break;
-		o2 = osr(p->as, p->from.reg, 0, REGTMP, p->scond);
-
-		o3 = oprrr(ASRL, p->scond);
-		o3 |= (8<<7)|(p->from.reg)|(p->from.reg<<12);
-		o3 |= (1<<6);	/* ROR 8 */
-
-		o4 = oprrr(AADD, p->scond);
-		o4 |= (REGTMP << 12) | (REGTMP << 16);
-		o4 |= immrot(1);
-
-		o5 = osr(p->as, p->from.reg, 0, REGTMP, p->scond);
-
-		o6 = oprrr(ASRL, p->scond);
-		o6 |= (24<<7)|(p->from.reg)|(p->from.reg<<12);
-		o6 |= (1<<6);	/* ROL 8 */
 		break;
 
 	case 68:	/* floating point store -> ADDR */
@@ -1571,6 +1501,22 @@ if(debug['G']) print("%ux: %s: arm %d %d %d\n", (uint32)(p->pc), p->from.sym->na
 		o1 |= p->reg << 0;
 		o1 |= p->to.reg << 12;
 		o1 |= (p->scond & C_SCOND) << 28;
+		break;
+	case 93:	/* movb/movh/movhu addr,R -> ldrsb/ldrsh/ldrh */
+		o1 = omvl(p, &p->from, REGTMP);
+		if(!o1)
+			break;
+		o2 = olhr(0, REGTMP, p->to.reg, p->scond);
+		if(p->as == AMOVB)
+			o2 ^= (1<<5)|(1<<6);
+		else if(p->as == AMOVH)
+			o2 ^= (1<<6);
+		break;
+	case 94:	/* movh/movhu R,addr -> strh */
+		o1 = omvl(p, &p->to, REGTMP);
+		if(!o1)
+			break;
+		o2 = oshr(p->from.reg, 0, REGTMP, p->scond);
 		break;
 	}
 	

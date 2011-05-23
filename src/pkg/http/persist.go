@@ -111,7 +111,7 @@ func (sc *ServerConn) Read() (req *Request, err os.Error) {
 	// Make sure body is fully consumed, even if user does not call body.Close
 	if lastbody != nil {
 		// body.Close is assumed to be idempotent and multiple calls to
-		// it should return the error that its first invokation
+		// it should return the error that its first invocation
 		// returned.
 		err = lastbody.Close()
 		if err != nil {
@@ -222,7 +222,6 @@ type ClientConn struct {
 
 	pipe     textproto.Pipeline
 	writeReq func(*Request, io.Writer) os.Error
-	readRes  func(buf *bufio.Reader, method string) (*Response, os.Error)
 }
 
 // NewClientConn returns a new ClientConn reading and writing c.  If r is not
@@ -236,7 +235,6 @@ func NewClientConn(c net.Conn, r *bufio.Reader) *ClientConn {
 		r:        r,
 		pipereq:  make(map[*Request]uint),
 		writeReq: (*Request).Write,
-		readRes:  ReadResponse,
 	}
 }
 
@@ -339,8 +337,13 @@ func (cc *ClientConn) Pending() int {
 // returned together with an ErrPersistEOF, which means that the remote
 // requested that this be the last request serviced. Read can be called
 // concurrently with Write, but not with another Read.
-func (cc *ClientConn) Read(req *Request) (resp *Response, err os.Error) {
+func (cc *ClientConn) Read(req *Request) (*Response, os.Error) {
+	return cc.readUsing(req, ReadResponse)
+}
 
+// readUsing is the implementation of Read with a replaceable
+// ReadResponse-like function, used by the Transport.
+func (cc *ClientConn) readUsing(req *Request, readRes func(*bufio.Reader, *Request) (*Response, os.Error)) (resp *Response, err os.Error) {
 	// Retrieve the pipeline ID of this request/response pair
 	cc.lk.Lock()
 	id, ok := cc.pipereq[req]
@@ -383,7 +386,7 @@ func (cc *ClientConn) Read(req *Request) (resp *Response, err os.Error) {
 		}
 	}
 
-	resp, err = cc.readRes(r, req.Method)
+	resp, err = readRes(r, req)
 	cc.lk.Lock()
 	defer cc.lk.Unlock()
 	if err != nil {

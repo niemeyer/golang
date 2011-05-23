@@ -42,7 +42,7 @@ func TestLookup(t *testing.T) {
 	}
 	fi, err := os.Stat(u.HomeDir)
 	if err != nil || !fi.IsDirectory() {
-		t.Errorf("expected a valid HomeDir; stat(%q): err=%v, IsDirectory=%v", err, fi.IsDirectory())
+		t.Errorf("expected a valid HomeDir; stat(%q): err=%v, IsDirectory=%v", u.HomeDir, err, fi.IsDirectory())
 	}
 	if u.Username == "" {
 		t.Fatalf("didn't get a username")
@@ -56,6 +56,6 @@ func TestLookup(t *testing.T) {
 	if !reflect.DeepEqual(u, un) {
 		t.Errorf("Lookup by userid vs. name didn't match\n"+
 			"LookupId(%d): %#v\n"+
-			"Lookup(%q): %#v\n",uid, u, u.Username, un)
+			"Lookup(%q): %#v\n", uid, u, u.Username, un)
 	}
 }

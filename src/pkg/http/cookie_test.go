@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"json"
+	"os"
 	"reflect"
 	"testing"
 )
@@ -43,13 +44,54 @@ func TestWriteSetCookies(t *testing.T) {
 	}
 }
 
+type headerOnlyResponseWriter Header
+
+func (ho headerOnlyResponseWriter) Header() Header {
+	return Header(ho)
+}
+
+func (ho headerOnlyResponseWriter) Write([]byte) (int, os.Error) {
+	panic("NOIMPL")
+}
+
+func (ho headerOnlyResponseWriter) WriteHeader(int) {
+	panic("NOIMPL")
+}
+
+func TestSetCookie(t *testing.T) {
+	m := make(Header)
+	SetCookie(headerOnlyResponseWriter(m), &Cookie{Name: "cookie-1", Value: "one", Path: "/restricted/"})
+	SetCookie(headerOnlyResponseWriter(m), &Cookie{Name: "cookie-2", Value: "two", MaxAge: 3600})
+	if l := len(m["Set-Cookie"]); l != 2 {
+		t.Fatalf("expected %d cookies, got %d", 2, l)
+	}
+	if g, e := m["Set-Cookie"][0], "cookie-1=one; Path=/restricted/"; g != e {
+		t.Errorf("cookie #1: want %q, got %q", e, g)
+	}
+	if g, e := m["Set-Cookie"][1], "cookie-2=two; Max-Age=3600"; g != e {
+		t.Errorf("cookie #2: want %q, got %q", e, g)
+	}
+}
+
 var writeCookiesTests = []struct {
 	Cookies []*Cookie
 	Raw     string
 }{
 	{
+		[]*Cookie{},
+		"",
+	},
+	{
 		[]*Cookie{&Cookie{Name: "cookie-1", Value: "v$1"}},
 		"Cookie: cookie-1=v$1\r\n",
+	},
+	{
+		[]*Cookie{
+			&Cookie{Name: "cookie-1", Value: "v$1"},
+			&Cookie{Name: "cookie-2", Value: "v$2"},
+			&Cookie{Name: "cookie-3", Value: "v$3"},
+		},
+		"Cookie: cookie-1=v$1; cookie-2=v$2; cookie-3=v$3\r\n",
 	},
 }
 

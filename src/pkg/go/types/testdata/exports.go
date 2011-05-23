@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// This file is used to generate a .6 object file which
+// This file is used to generate an object file which
 // serves as test file for gcimporter_test.go.
 
 package exports
@@ -14,13 +14,13 @@ import (
 
 const (
 	C0 int = 0
-	C1 = 3.14159265
-	C2 = 2.718281828i
-	C3 = -123.456e-789
-	C4 = +123.456E+789
-	C5 = 1234i
-	C6 = "foo\n"
-	C7 = `bar\n`
+	C1     = 3.14159265
+	C2     = 2.718281828i
+	C3     = -123.456e-789
+	C4     = +123.456E+789
+	C5     = 1234i
+	C6     = "foo\n"
+	C7     = `bar\n`
 )
 
 

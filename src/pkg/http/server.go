@@ -309,7 +309,7 @@ func (w *response) WriteHeader(code int) {
 		text = "status code " + codestring
 	}
 	io.WriteString(w.conn.buf, proto+" "+codestring+" "+text+"\r\n")
-	writeSortedHeader(w.conn.buf, w.header, nil)
+	w.header.Write(w.conn.buf)
 	io.WriteString(w.conn.buf, "\r\n")
 }
 
@@ -581,12 +581,18 @@ func Redirect(w ResponseWriter, r *Request, url string, code int) {
 				url = olddir + url
 			}
 
+			var query string
+			if i := strings.Index(url, "?"); i != -1 {
+				url, query = url[:i], url[i:]
+			}
+
 			// clean up but preserve trailing slash
 			trailing := url[len(url)-1] == '/'
 			url = path.Clean(url)
 			if trailing && url[len(url)-1] != '/' {
 				url += "/"
 			}
+			url += query
 		}
 	}
 

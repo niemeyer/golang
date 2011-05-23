@@ -8,11 +8,9 @@ package http
 
 import (
 	"bufio"
-	"fmt"
 	"io"
 	"net/textproto"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 )
@@ -31,10 +29,6 @@ type Response struct {
 	Proto      string // e.g. "HTTP/1.0"
 	ProtoMajor int    // e.g. 1
 	ProtoMinor int    // e.g. 0
-
-	// RequestMethod records the method used in the HTTP request.
-	// Header fields such as Content-Length have method-specific meaning.
-	RequestMethod string // e.g. "HEAD", "CONNECT", "GET", etc.
 
 	// Header maps header keys to values.  If the response had multiple
 	// headers with the same key, they will be concatenated, with comma
@@ -70,19 +64,26 @@ type Response struct {
 	// Trailer maps trailer keys to values, in the same
 	// format as the header.
 	Trailer Header
+
+	// The Request that was sent to obtain this Response.
+	// Request's Body is nil (having already been consumed).
+	// This is only populated for Client requests.
+	Request *Request
 }
 
-// ReadResponse reads and returns an HTTP response from r.  The RequestMethod
-// parameter specifies the method used in the corresponding request (e.g.,
-// "GET", "HEAD").  Clients must call resp.Body.Close when finished reading
-// resp.Body.  After that call, clients can inspect resp.Trailer to find
-// key/value pairs included in the response trailer.
-func ReadResponse(r *bufio.Reader, requestMethod string) (resp *Response, err os.Error) {
+// ReadResponse reads and returns an HTTP response from r.  The
+// req parameter specifies the Request that corresponds to
+// this Response.  Clients must call resp.Body.Close when finished
+// reading resp.Body.  After that call, clients can inspect
+// resp.Trailer to find key/value pairs included in the response
+// trailer.
+func ReadResponse(r *bufio.Reader, req *Request) (resp *Response, err os.Error) {
 
 	tp := textproto.NewReader(r)
 	resp = new(Response)
 
-	resp.RequestMethod = strings.ToUpper(requestMethod)
+	resp.Request = req
+	resp.Request.Method = strings.ToUpper(resp.Request.Method)
 
 	// Parse the first line of the response.
 	line, err := tp.ReadLine()
@@ -166,7 +167,9 @@ func (r *Response) ProtoAtLeast(major, minor int) bool {
 func (resp *Response) Write(w io.Writer) os.Error {
 
 	// RequestMethod should be upper-case
-	resp.RequestMethod = strings.ToUpper(resp.RequestMethod)
+	if resp.Request != nil {
+		resp.Request.Method = strings.ToUpper(resp.Request.Method)
+	}
 
 	// Status line
 	text := resp.Status
@@ -192,7 +195,7 @@ func (resp *Response) Write(w io.Writer) os.Error {
 	}
 
 	// Rest of header
-	err = writeSortedHeader(w, resp.Header, respExcludeHeader)
+	err = resp.Header.WriteSubset(w, respExcludeHeader)
 	if err != nil {
 		return err
 	}
@@ -211,29 +214,5 @@ func (resp *Response) Write(w io.Writer) os.Error {
 	}
 
 	// Success
-	return nil
-}
-
-func writeSortedHeader(w io.Writer, h Header, exclude map[string]bool) os.Error {
-	keys := make([]string, 0, len(h))
-	for k := range h {
-		if exclude == nil || !exclude[k] {
-			keys = append(keys, k)
-		}
-	}
-	sort.SortStrings(keys)
-	for _, k := range keys {
-		for _, v := range h[k] {
-			v = strings.Replace(v, "\n", " ", -1)
-			v = strings.Replace(v, "\r", " ", -1)
-			v = strings.TrimSpace(v)
-			if v == "" {
-				continue
-			}
-			if _, err := fmt.Fprintf(w, "%s: %s\r\n", k, v); err != nil {
-				return err
-			}
-		}
-	}
 	return nil
 }

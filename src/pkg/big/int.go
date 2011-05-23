@@ -309,42 +309,68 @@ func (x *Int) Cmp(y *Int) (r int) {
 
 
 func (x *Int) String() string {
-	s := ""
-	if x.neg {
-		s = "-"
+	switch {
+	case x == nil:
+		return "<nil>"
+	case x.neg:
+		return "-" + x.abs.decimalString()
 	}
-	return s + x.abs.string(10)
+	return x.abs.decimalString()
 }
 
 
-func fmtbase(ch int) int {
+func charset(ch int) string {
 	switch ch {
 	case 'b':
-		return 2
+		return lowercaseDigits[0:2]
 	case 'o':
-		return 8
-	case 'd':
-		return 10
+		return lowercaseDigits[0:8]
+	case 'd', 'v':
+		return lowercaseDigits[0:10]
 	case 'x':
-		return 16
+		return lowercaseDigits[0:16]
+	case 'X':
+		return uppercaseDigits[0:16]
 	}
-	return 10
+	return "" // unknown format
 }
 
 
 // Format is a support routine for fmt.Formatter. It accepts
-// the formats 'b' (binary), 'o' (octal), 'd' (decimal) and
-// 'x' (hexadecimal).
+// the formats 'b' (binary), 'o' (octal), 'd' (decimal), 'x'
+// (lowercase hexadecimal), and 'X' (uppercase hexadecimal).
 //
 func (x *Int) Format(s fmt.State, ch int) {
-	if x == nil {
+	cs := charset(ch)
+
+	// special cases
+	switch {
+	case cs == "":
+		// unknown format
+		fmt.Fprintf(s, "%%!%c(big.Int=%s)", ch, x.String())
+		return
+	case x == nil:
 		fmt.Fprint(s, "<nil>")
 		return
 	}
-	if x.neg {
-		fmt.Fprint(s, "-")
+
+	// determine format
+	format := "%s"
+	if s.Flag('#') {
+		switch ch {
+		case 'o':
+			format = "0%s"
+		case 'x':
+			format = "0x%s"
+		case 'X':
+			format = "0X%s"
+		}
 	}
-	fmt.Fprint(s, x.abs.string(fmtbase(ch)))
+	if x.neg {
+		format = "-" + format
+	}
+
+	fmt.Fprintf(s, format, x.abs.string(cs))
 }
 
 
@@ -555,6 +581,42 @@ func (z *Int) Rsh(x *Int, n uint) *Int {
 	}
 
 	z.abs = z.abs.shr(x.abs, n)
+	z.neg = false
+	return z
+}
+
+
+// Bit returns the value of the i'th bit of z. That is, it
+// returns (z>>i)&1. The bit index i must be >= 0.
+func (z *Int) Bit(i int) uint {
+	if i < 0 {
+		panic("negative bit index")
+	}
+	if z.neg {
+		t := nat{}.sub(z.abs, natOne)
+		return t.bit(uint(i)) ^ 1
+	}
+
+	return z.abs.bit(uint(i))
+}
+
+
+// SetBit sets the i'th bit of z to bit and returns z.
+// That is, if bit is 1 SetBit sets z = x | (1 << i);
+// if bit is 0 it sets z = x &^ (1 << i). If bit is not 0 or 1,
+// SetBit will panic.
+func (z *Int) SetBit(x *Int, i int, b uint) *Int {
+	if i < 0 {
+		panic("negative bit index")
+	}
+	if x.neg {
+		t := z.abs.sub(x.abs, natOne)
+		t = t.setBit(t, uint(i), b^1)
+		z.abs = t.add(t, natOne)
+		z.neg = len(z.abs) > 0
+		return z
+	}
+	z.abs = z.abs.setBit(x.abs, uint(i), b)
 	z.neg = false
 	return z
 }
