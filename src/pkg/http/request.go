@@ -12,6 +12,7 @@ import (
 	"bufio"
 	"crypto/tls"
 	"container/vector"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -275,9 +276,7 @@ func (req *Request) write(w io.Writer, usingProxy bool) os.Error {
 	fmt.Fprintf(w, "%s %s HTTP/1.1\r\n", valueOrDefault(req.Method, "GET"), uri)
 
 	// Header lines
-	if !usingProxy {
-		fmt.Fprintf(w, "Host: %s\r\n", host)
-	}
+	fmt.Fprintf(w, "Host: %s\r\n", host)
 	fmt.Fprintf(w, "User-Agent: %s\r\n", valueOrDefault(req.UserAgent, defaultUserAgent))
 	if req.Referer != "" {
 		fmt.Fprintf(w, "Referer: %s\r\n", req.Referer)
@@ -300,7 +299,7 @@ func (req *Request) write(w io.Writer, usingProxy bool) os.Error {
 	// from Request, and introduce Request methods along the lines of
 	// Response.{GetHeader,AddHeader} and string constants for "Host",
 	// "User-Agent" and "Referer".
-	err = writeSortedHeader(w, req.Header, reqExcludeHeader)
+	err = req.Header.WriteSubset(w, reqExcludeHeader)
 	if err != nil {
 		return err
 	}
@@ -477,6 +476,18 @@ func NewRequest(method, url string, body io.Reader) (*Request, os.Error) {
 		Host:       u.Host,
 	}
 	return req, nil
+}
+
+// SetBasicAuth sets the request's Authorization header to use HTTP
+// Basic Authentication with the provided username and password.
+//
+// With HTTP Basic Authentication the provided username and password
+// are not encrypted.
+func (r *Request) SetBasicAuth(username, password string) {
+	s := username + ":" + password
+	buf := make([]byte, base64.StdEncoding.EncodedLen(len(s)))
+	base64.StdEncoding.Encode(buf, []byte(s))
+	r.Header.Set("Authorization", "Basic "+string(buf))
 }
 
 // ReadRequest reads and parses a request from b.
@@ -715,9 +726,11 @@ func (r *Request) FormFile(key string) (multipart.File, *multipart.FileHeader, o
 			return nil, nil, err
 		}
 	}
-	if fhs := r.MultipartForm.File[key]; len(fhs) > 0 {
-		f, err := fhs[0].Open()
-		return f, fhs[0], err
+	if r.MultipartForm != nil && r.MultipartForm.File != nil {
+		if fhs := r.MultipartForm.File[key]; len(fhs) > 0 {
+			f, err := fhs[0].Open()
+			return f, fhs[0], err
+		}
 	}
 	return nil, nil, ErrMissingFile
 }

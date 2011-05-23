@@ -221,8 +221,7 @@ type encoder struct {
 	// buf is a scratch buffer.
 	buf [16]byte
 	// bits and nBits are accumulated bits to write to w.
-	bits  uint32
-	nBits uint8
+	bits, nBits uint32
 	// quant is the scaled quantization tables.
 	quant [nQuantIndex][blockSize]byte
 }
@@ -250,7 +249,7 @@ func (e *encoder) writeByte(b byte) {
 
 // emit emits the least significant nBits bits of bits to the bitstream.
 // The precondition is bits < 1<<nBits && nBits <= 16.
-func (e *encoder) emit(bits uint32, nBits uint8) {
+func (e *encoder) emit(bits, nBits uint32) {
 	nBits += e.nBits
 	bits <<= 32 - nBits
 	bits |= e.bits
@@ -269,7 +268,7 @@ func (e *encoder) emit(bits uint32, nBits uint8) {
 // emitHuff emits the given value with the given Huffman encoder.
 func (e *encoder) emitHuff(h huffIndex, value int) {
 	x := theHuffmanLUT[h][value]
-	e.emit(x&(1<<24-1), uint8(x>>24))
+	e.emit(x&(1<<24-1), x>>24)
 }
 
 // emitHuffRLE emits a run of runLength copies of value encoded with the given
@@ -279,11 +278,11 @@ func (e *encoder) emitHuffRLE(h huffIndex, runLength, value int) {
 	if a < 0 {
 		a, b = -value, value-1
 	}
-	var nBits uint8
+	var nBits uint32
 	if a < 0x100 {
-		nBits = bitCount[a]
+		nBits = uint32(bitCount[a])
 	} else {
-		nBits = 8 + bitCount[a>>8]
+		nBits = 8 + uint32(bitCount[a>>8])
 	}
 	e.emitHuff(h, runLength<<4|int(nBits))
 	if nBits > 0 {
@@ -302,34 +301,31 @@ func (e *encoder) writeMarkerHeader(marker uint8, markerlen int) {
 
 // writeDQT writes the Define Quantization Table marker.
 func (e *encoder) writeDQT() {
-	markerlen := 2
-	for _, q := range e.quant {
-		markerlen += 1 + len(q)
-	}
+	markerlen := 2 + int(nQuantIndex)*(1+blockSize)
 	e.writeMarkerHeader(dqtMarker, markerlen)
-	for i, q := range e.quant {
+	for i := range e.quant {
 		e.writeByte(uint8(i))
-		e.write(q[:])
+		e.write(e.quant[i][:])
 	}
 }
 
 // writeSOF0 writes the Start Of Frame (Baseline) marker.
 func (e *encoder) writeSOF0(size image.Point) {
-	markerlen := 8 + 3*nComponent
+	markerlen := 8 + 3*nColorComponent
 	e.writeMarkerHeader(sof0Marker, markerlen)
 	e.buf[0] = 8 // 8-bit color.
 	e.buf[1] = uint8(size.Y >> 8)
 	e.buf[2] = uint8(size.Y & 0xff)
 	e.buf[3] = uint8(size.X >> 8)
 	e.buf[4] = uint8(size.X & 0xff)
-	e.buf[5] = nComponent
-	for i := 0; i < nComponent; i++ {
+	e.buf[5] = nColorComponent
+	for i := 0; i < nColorComponent; i++ {
 		e.buf[3*i+6] = uint8(i + 1)
 		// We use 4:2:0 chroma subsampling.
 		e.buf[3*i+7] = "\x22\x11\x11"[i]
 		e.buf[3*i+8] = "\x00\x01\x01"[i]
 	}
-	e.write(e.buf[:3*(nComponent-1)+9])
+	e.write(e.buf[:3*(nColorComponent-1)+9])
 }
 
 // writeDHT writes the Define Huffman Table marker.
@@ -391,6 +387,31 @@ func toYCbCr(m image.Image, p image.Point, yBlock, cbBlock, crBlock *block) {
 	}
 }
 
+// rgbaToYCbCr is a specialized version of toYCbCr for image.RGBA images.
+func rgbaToYCbCr(m *image.RGBA, p image.Point, yBlock, cbBlock, crBlock *block) {
+	b := m.Bounds()
+	xmax := b.Max.X - 1
+	ymax := b.Max.Y - 1
+	for j := 0; j < 8; j++ {
+		sj := p.Y + j
+		if sj > ymax {
+			sj = ymax
+		}
+		yoff := sj * m.Stride
+		for i := 0; i < 8; i++ {
+			sx := p.X + i
+			if sx > xmax {
+				sx = xmax
+			}
+			col := &m.Pix[yoff+sx]
+			yy, cb, cr := ycbcr.RGBToYCbCr(col.R, col.G, col.B)
+			yBlock[8*j+i] = int(yy)
+			cbBlock[8*j+i] = int(cb)
+			crBlock[8*j+i] = int(cr)
+		}
+	}
+}
+
 // scale scales the 16x16 region represented by the 4 src blocks to the 8x8
 // dst block.
 func scale(dst *block, src *[4]block) {
@@ -431,13 +452,18 @@ func (e *encoder) writeSOS(m image.Image) {
 		prevDCY, prevDCCb, prevDCCr int
 	)
 	bounds := m.Bounds()
+	rgba, _ := m.(*image.RGBA)
 	for y := bounds.Min.Y; y < bounds.Max.Y; y += 16 {
 		for x := bounds.Min.X; x < bounds.Max.X; x += 16 {
 			for i := 0; i < 4; i++ {
 				xOff := (i & 1) * 8
 				yOff := (i & 2) * 4
 				p := image.Point{x + xOff, y + yOff}
-				toYCbCr(m, p, &yBlock, &cbBlock[i], &crBlock[i])
+				if rgba != nil {
+					rgbaToYCbCr(rgba, p, &yBlock, &cbBlock[i], &crBlock[i])
+				} else {
+					toYCbCr(m, p, &yBlock, &cbBlock[i], &crBlock[i])
+				}
 				prevDCY = e.writeBlock(&yBlock, 0, prevDCY)
 			}
 			scale(&cBlock, &cbBlock)

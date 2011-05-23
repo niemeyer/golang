@@ -108,6 +108,9 @@ needlib(char *name)
 	char *p;
 	Sym *s;
 
+	if(*name == '\0')
+		return 0;
+
 	/* reuse hash code in symbol table */
 	p = smprint(".elfload.%s", name);
 	s = lookup(p, 0);
@@ -787,40 +790,51 @@ asmb(void)
 			symo = rnd(symo, PEFILEALIGN);
 			break;
 		}
-		/*
-		 * the symbol information is stored as
-		 *	32-bit symbol table size
-		 *	32-bit line number table size
-		 *	symbol table
-		 *	line number table
-		 */
-		seek(cout, symo+8, 0);
-		if(debug['v'])
-			Bprint(&bso, "%5.2f sp\n", cputime());
-		Bflush(&bso);
-		if(debug['v'])
-			Bprint(&bso, "%5.2f pc\n", cputime());
-		Bflush(&bso);
-		if(!debug['s'])
-			strnput("", INITRND-(8+symsize+lcsize)%INITRND);
-		cflush();
-		seek(cout, symo, 0);
-		lputl(symsize);
-		lputl(lcsize);
-		cflush();
-		if(HEADTYPE != Hwindows && !debug['s']) {
-			elfsymo = symo+8+symsize+lcsize;
-			seek(cout, elfsymo, 0);
-			asmelfsym64();
-			cflush();
-			elfstro = seek(cout, 0, 1);
-			elfsymsize = elfstro - elfsymo;
-			ewrite(cout, elfstrdat, elfstrsize);
+		switch(HEADTYPE) {
+		default:
+			if(iself) {
+				/*
+				 * the symbol information is stored as
+				 *	32-bit symbol table size
+				 *	32-bit line number table size
+				 *	symbol table
+				 *	line number table
+				 */
+				seek(cout, symo+8, 0);
+				if(debug['v'])
+					Bprint(&bso, "%5.2f sp\n", cputime());
+				Bflush(&bso);
+				if(debug['v'])
+					Bprint(&bso, "%5.2f pc\n", cputime());
+				Bflush(&bso);
+				if(!debug['s'])
+					strnput("", INITRND-(8+symsize+lcsize)%INITRND);
+				cflush();
+				seek(cout, symo, 0);
+				lputl(symsize);
+				lputl(lcsize);
+				cflush();
+				elfsymo = symo+8+symsize+lcsize;
+				seek(cout, elfsymo, 0);
+				asmelfsym64();
+				cflush();
+				elfstro = seek(cout, 0, 1);
+				elfsymsize = elfstro - elfsymo;
+				ewrite(cout, elfstrdat, elfstrsize);
 
+				if(debug['v'])
+				       Bprint(&bso, "%5.2f dwarf\n", cputime());
+
+				dwarfemitdebugsections();
+			}
+			break;
+		case Hwindows:
+			seek(cout, symo, 0);
 			if(debug['v'])
 			       Bprint(&bso, "%5.2f dwarf\n", cputime());
 
 			dwarfemitdebugsections();
+			break;
 		}
 	}
 

@@ -219,7 +219,7 @@ main(int argc, char *argv[])
 		elfinit();
 		HEADR = ELFRESERVE;
 		if(INITTEXT == -1)
-			INITTEXT = 0x8000 + HEADR;
+			INITTEXT = 0x10000 + HEADR;
 		if(INITDAT == -1)
 			INITDAT = 0;
 		if(INITRND == -1)
@@ -412,7 +412,7 @@ ldobj1(Biobuf *f, char *pkg, int64 len, char *pn)
 {
 	int32 ipc;
 	Prog *p;
-	Sym *h[NSYM], *s, *di;
+	Sym *h[NSYM], *s;
 	int v, o, r, skip;
 	uint32 sig;
 	char *name;
@@ -424,7 +424,6 @@ ldobj1(Biobuf *f, char *pkg, int64 len, char *pn)
 	lastp = nil;
 	ntext = 0;
 	eof = Boffset(f) + len;
-	di = S;
 	src[0] = 0;
 
 newloop:

@@ -15,9 +15,9 @@ import (
 	"time"
 )
 
-// This implementation is done according to IETF draft-ietf-httpstate-cookie-23, found at
+// This implementation is done according to RFC 6265:
 //
-//    http://tools.ietf.org/html/draft-ietf-httpstate-cookie-23
+//    http://tools.ietf.org/html/rfc6265
 
 // A Cookie represents an HTTP cookie as sent in the Set-Cookie header of an
 // HTTP response or the Cookie header of an HTTP request.
@@ -130,6 +130,37 @@ func readSetCookies(h Header) []*Cookie {
 	return cookies
 }
 
+// SetCookie adds a Set-Cookie header to the provided ResponseWriter's headers.
+func SetCookie(w ResponseWriter, cookie *Cookie) {
+	var b bytes.Buffer
+	writeSetCookieToBuffer(&b, cookie)
+	w.Header().Add("Set-Cookie", b.String())
+}
+
+func writeSetCookieToBuffer(buf *bytes.Buffer, c *Cookie) {
+	fmt.Fprintf(buf, "%s=%s", sanitizeName(c.Name), sanitizeValue(c.Value))
+	if len(c.Path) > 0 {
+		fmt.Fprintf(buf, "; Path=%s", sanitizeValue(c.Path))
+	}
+	if len(c.Domain) > 0 {
+		fmt.Fprintf(buf, "; Domain=%s", sanitizeValue(c.Domain))
+	}
+	if len(c.Expires.Zone) > 0 {
+		fmt.Fprintf(buf, "; Expires=%s", c.Expires.Format(time.RFC1123))
+	}
+	if c.MaxAge > 0 {
+		fmt.Fprintf(buf, "; Max-Age=%d", c.MaxAge)
+	} else if c.MaxAge < 0 {
+		fmt.Fprintf(buf, "; Max-Age=0")
+	}
+	if c.HttpOnly {
+		fmt.Fprintf(buf, "; HttpOnly")
+	}
+	if c.Secure {
+		fmt.Fprintf(buf, "; Secure")
+	}
+}
+
 // writeSetCookies writes the wire representation of the set-cookies
 // to w. Each cookie is written on a separate "Set-Cookie: " line.
 // This choice is made because HTTP parsers tend to have a limit on
@@ -142,27 +173,7 @@ func writeSetCookies(w io.Writer, kk []*Cookie) os.Error {
 	var b bytes.Buffer
 	for _, c := range kk {
 		b.Reset()
-		fmt.Fprintf(&b, "%s=%s", sanitizeName(c.Name), sanitizeValue(c.Value))
-		if len(c.Path) > 0 {
-			fmt.Fprintf(&b, "; Path=%s", sanitizeValue(c.Path))
-		}
-		if len(c.Domain) > 0 {
-			fmt.Fprintf(&b, "; Domain=%s", sanitizeValue(c.Domain))
-		}
-		if len(c.Expires.Zone) > 0 {
-			fmt.Fprintf(&b, "; Expires=%s", c.Expires.Format(time.RFC1123))
-		}
-		if c.MaxAge > 0 {
-			fmt.Fprintf(&b, "; Max-Age=%d", c.MaxAge)
-		} else if c.MaxAge < 0 {
-			fmt.Fprintf(&b, "; Max-Age=0")
-		}
-		if c.HttpOnly {
-			fmt.Fprintf(&b, "; HttpOnly")
-		}
-		if c.Secure {
-			fmt.Fprintf(&b, "; Secure")
-		}
+		writeSetCookieToBuffer(&b, c)
 		lines = append(lines, "Set-Cookie: "+b.String()+"\r\n")
 	}
 	sort.SortStrings(lines)
@@ -218,22 +229,26 @@ func readCookies(h Header) []*Cookie {
 	return cookies
 }
 
-// writeCookies writes the wire representation of the cookies
-// to w. Each cookie is written on a separate "Cookie: " line.
-// This choice is made because HTTP parsers tend to have a limit on
-// line-length, so it seems safer to place cookies on separate lines.
+// writeCookies writes the wire representation of the cookies to
+// w. According to RFC 6265 section 5.4, writeCookies does not
+// attach more than one Cookie header field.  That means all
+// cookies, if any, are written into the same line, separated by
+// semicolon.
 func writeCookies(w io.Writer, kk []*Cookie) os.Error {
-	lines := make([]string, 0, len(kk))
-	for _, c := range kk {
-		lines = append(lines, fmt.Sprintf("Cookie: %s=%s\r\n", sanitizeName(c.Name), sanitizeValue(c.Value)))
+	if len(kk) == 0 {
+		return nil
 	}
-	sort.SortStrings(lines)
-	for _, l := range lines {
-		if _, err := io.WriteString(w, l); err != nil {
-			return err
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "Cookie: ")
+	for i, c := range kk {
+		if i > 0 {
+			fmt.Fprintf(&buf, "; ")
 		}
+		fmt.Fprintf(&buf, "%s=%s", sanitizeName(c.Name), sanitizeValue(c.Value))
 	}
-	return nil
+	fmt.Fprintf(&buf, "\r\n")
+	_, err := w.Write(buf.Bytes())
+	return err
 }
 
 func sanitizeName(n string) string {

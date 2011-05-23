@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// ASN.1 objects have metadata preceeding them:
+// ASN.1 objects have metadata preceding them:
 //   the tag: the type of the object
 //   a flag denoting if this object is compound or not
 //   the class type: the namespace of the tag
@@ -132,6 +132,8 @@ func getUniversalType(t reflect.Type) (tagNumber int, isCompound, ok bool) {
 		return tagUTCTime, false, true
 	case enumeratedType:
 		return tagEnum, false, true
+	case bigIntType:
+		return tagInteger, false, true
 	}
 	switch t.Kind() {
 	case reflect.Bool:

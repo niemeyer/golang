@@ -121,15 +121,19 @@ func answer(name, server string, dns *dnsMsg, qtype uint16) (cname string, addrs
 Cname:
 	for cnameloop := 0; cnameloop < 10; cnameloop++ {
 		addrs = addrs[0:0]
-		for i := 0; i < len(dns.answer); i++ {
-			rr := dns.answer[i]
+		for _, rr := range dns.answer {
+			if _, justHeader := rr.(*dnsRR_Header); justHeader {
+				// Corrupt record: we only have a
+				// header. That header might say it's
+				// of type qtype, but we don't
+				// actually have it. Skip.
+				continue
+			}
 			h := rr.Header()
 			if h.Class == dnsClassINET && h.Name == name {
 				switch h.Rrtype {
 				case qtype:
-					n := len(addrs)
-					addrs = addrs[0 : n+1]
-					addrs[n] = rr
+					addrs = append(addrs, rr)
 				case dnsTypeCNAME:
 					// redirect to cname
 					name = rr.(*dnsRR_CNAME).Cname
@@ -181,8 +185,7 @@ func tryOneName(cfg *dnsConfig, name string, qtype uint16) (cname string, addrs 
 
 func convertRR_A(records []dnsRR) []IP {
 	addrs := make([]IP, len(records))
-	for i := 0; i < len(records); i++ {
-		rr := records[i]
+	for i, rr := range records {
 		a := rr.(*dnsRR_A).A
 		addrs[i] = IPv4(byte(a>>24), byte(a>>16), byte(a>>8), byte(a))
 	}
@@ -191,8 +194,7 @@ func convertRR_A(records []dnsRR) []IP {
 
 func convertRR_AAAA(records []dnsRR) []IP {
 	addrs := make([]IP, len(records))
-	for i := 0; i < len(records); i++ {
-		rr := records[i]
+	for i, rr := range records {
 		a := make(IP, 16)
 		copy(a, rr.(*dnsRR_AAAA).AAAA[:])
 		addrs[i] = a
@@ -384,9 +386,7 @@ func goLookupCNAME(name string) (cname string, err os.Error) {
 	if err != nil {
 		return
 	}
-	if len(rr) >= 0 {
-		cname = rr[0].(*dnsRR_CNAME).Cname
-	}
+	cname = rr[0].(*dnsRR_CNAME).Cname
 	return
 }
 
@@ -398,10 +398,49 @@ type SRV struct {
 	Weight   uint16
 }
 
+// byPriorityWeight sorts SRV records by ascending priority and weight.
+type byPriorityWeight []*SRV
+
+func (s byPriorityWeight) Len() int { return len(s) }
+
+func (s byPriorityWeight) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+
+func (s byPriorityWeight) Less(i, j int) bool {
+	return s[i].Priority < s[j].Priority ||
+		(s[i].Priority == s[j].Priority && s[i].Weight < s[j].Weight)
+}
+
+// shuffleSRVByWeight shuffles SRV records by weight using the algorithm
+// described in RFC 2782.  
+func shuffleSRVByWeight(addrs []*SRV) {
+	sum := 0
+	for _, addr := range addrs {
+		sum += int(addr.Weight)
+	}
+	for sum > 0 && len(addrs) > 1 {
+		s := 0
+		n := rand.Intn(sum + 1)
+		for i := range addrs {
+			s += int(addrs[i].Weight)
+			if s >= n {
+				if i > 0 {
+					t := addrs[i]
+					copy(addrs[1:i+1], addrs[0:i])
+					addrs[0] = t
+				}
+				break
+			}
+		}
+		sum -= int(addrs[0].Weight)
+		addrs = addrs[1:]
+	}
+}
+
 // LookupSRV tries to resolve an SRV query of the given service,
 // protocol, and domain name, as specified in RFC 2782. In most cases
 // the proto argument can be the same as the corresponding
-// Addr.Network().
+// Addr.Network(). The returned records are sorted by priority 
+// and randomized by weight within a priority.
 func LookupSRV(service, proto, name string) (cname string, addrs []*SRV, err os.Error) {
 	target := "_" + service + "._" + proto + "." + name
 	var records []dnsRR
@@ -410,10 +449,19 @@ func LookupSRV(service, proto, name string) (cname string, addrs []*SRV, err os.
 		return
 	}
 	addrs = make([]*SRV, len(records))
-	for i := 0; i < len(records); i++ {
-		r := records[i].(*dnsRR_SRV)
+	for i, rr := range records {
+		r := rr.(*dnsRR_SRV)
 		addrs[i] = &SRV{r.Target, r.Port, r.Priority, r.Weight}
 	}
+	sort.Sort(byPriorityWeight(addrs))
+	i := 0
+	for j := 1; j < len(addrs); j++ {
+		if addrs[i].Priority != addrs[j].Priority {
+			shuffleSRVByWeight(addrs[i:j])
+			i = j
+		}
+	}
+	shuffleSRVByWeight(addrs[i:len(addrs)])
 	return
 }
 

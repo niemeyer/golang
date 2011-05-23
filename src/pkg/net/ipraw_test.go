@@ -60,7 +60,8 @@ func parsePingReply(p []byte) (id, seq int) {
 }
 
 var srchost = flag.String("srchost", "", "Source of the ICMP ECHO request")
-var dsthost = flag.String("dsthost", "localhost", "Destination for the ICMP ECHO request")
+// 127.0.0.1 because this is an IPv4-specific test.
+var dsthost = flag.String("dsthost", "127.0.0.1", "Destination for the ICMP ECHO request")
 
 // test (raw) IP socket using ICMP
 func TestICMP(t *testing.T) {
@@ -74,15 +75,15 @@ func TestICMP(t *testing.T) {
 		err   os.Error
 	)
 	if *srchost != "" {
-		laddr, err = ResolveIPAddr(*srchost)
+		laddr, err = ResolveIPAddr("ip4", *srchost)
 		if err != nil {
-			t.Fatalf(`net.ResolveIPAddr("%v") = %v, %v`, *srchost, laddr, err)
+			t.Fatalf(`net.ResolveIPAddr("ip4", %v") = %v, %v`, *srchost, laddr, err)
 		}
 	}
 
-	raddr, err := ResolveIPAddr(*dsthost)
+	raddr, err := ResolveIPAddr("ip4", *dsthost)
 	if err != nil {
-		t.Fatalf(`net.ResolveIPAddr("%v") = %v, %v`, *dsthost, raddr, err)
+		t.Fatalf(`net.ResolveIPAddr("ip4", %v") = %v, %v`, *dsthost, raddr, err)
 	}
 
 	c, err := ListenIP("ip4:icmp", laddr)

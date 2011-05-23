@@ -52,7 +52,7 @@ var (
 	xFlag bool
 )
 
-// elapsed returns  time elapsed since gotest started.
+// elapsed returns the number of seconds since gotest started.
 func elapsed() float64 {
 	return float64(time.Nanoseconds()-start) / 1e9
 }
@@ -182,7 +182,7 @@ func getTestFileNames() {
 	}
 }
 
-// parseFiles parses the files and remembers the packages we find. 
+// parseFiles parses the files and remembers the packages we find.
 func parseFiles() {
 	fileSet := token.NewFileSet()
 	for _, f := range files {
@@ -285,6 +285,7 @@ func doRun(argv []string, returnStdout bool) string {
 			}
 			cmd += `"` + v + `"`
 		}
+		command = "sh"
 		argv = []string{"sh", "-c", cmd}
 	}
 	var err os.Error

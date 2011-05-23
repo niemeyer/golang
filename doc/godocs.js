@@ -28,6 +28,10 @@ function godocs_onload() {
 
 function godocs_bindSearchEvents() {
   var search = document.getElementById('search');
+  if (!search) {
+    // no search box (index disabled)
+    return;
+  }
   function clearInactive() {
     if (search.className == "inactive") {
       search.value = "";
@@ -100,7 +104,7 @@ function godocs_generateTOC() {
     }
   }
 
-  if (!toc_items.length) { return; }
+  if (toc_items.length <= 1) { return; }
 
   var dl1 = document.createElement('dl');
   var dl2 = document.createElement('dl');

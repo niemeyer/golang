@@ -6,12 +6,12 @@ package http
 
 import (
 	"bufio"
-	"bytes"
 	"compress/gzip"
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -24,7 +24,7 @@ import (
 // each call to Do and uses HTTP proxies as directed by the
 // $HTTP_PROXY and $NO_PROXY (or $http_proxy and $no_proxy)
 // environment variables.
-var DefaultTransport RoundTripper = &Transport{}
+var DefaultTransport RoundTripper = &Transport{Proxy: ProxyFromEnvironment}
 
 // DefaultMaxIdleConnsPerHost is the default value of Transport's
 // MaxIdleConnsPerHost.
@@ -41,7 +41,12 @@ type Transport struct {
 	// TODO: tunable on timeout on cached connections
 	// TODO: optional pipelining
 
-	IgnoreEnvironment  bool // don't look at environment variables for proxy configuration
+	// Proxy optionally specifies a function to return a proxy for
+	// a given Request. If the function returns a non-nil error,
+	// the request is aborted with the provided error. If Proxy is
+	// nil or returns a nil *URL, no proxy is used.
+	Proxy func(*Request) (*URL, os.Error)
+
 	DisableKeepAlives  bool
 	DisableCompression bool
 
@@ -49,6 +54,39 @@ type Transport struct {
 	// (keep-alive) to keep to keep per-host.  If zero,
 	// DefaultMaxIdleConnsPerHost is used.
 	MaxIdleConnsPerHost int
+}
+
+// ProxyFromEnvironment returns the URL of the proxy to use for a
+// given request, as indicated by the environment variables
+// $HTTP_PROXY and $NO_PROXY (or $http_proxy and $no_proxy).
+// Either URL or an error is returned.
+func ProxyFromEnvironment(req *Request) (*URL, os.Error) {
+	proxy := getenvEitherCase("HTTP_PROXY")
+	if proxy == "" {
+		return nil, nil
+	}
+	if !useProxy(canonicalAddr(req.URL)) {
+		return nil, nil
+	}
+	proxyURL, err := ParseRequestURL(proxy)
+	if err != nil {
+		return nil, os.ErrorString("invalid proxy address")
+	}
+	if proxyURL.Host == "" {
+		proxyURL, err = ParseRequestURL("http://" + proxy)
+		if err != nil {
+			return nil, os.ErrorString("invalid proxy address")
+		}
+	}
+	return proxyURL, nil
+}
+
+// ProxyURL returns a proxy function (for use in a Transport)
+// that always returns the same URL.
+func ProxyURL(url *URL) func(*Request) (*URL, os.Error) {
+	return func(*Request) (*URL, os.Error) {
+		return url, nil
+	}
 }
 
 // RoundTrip implements the RoundTripper interface.
@@ -101,21 +139,11 @@ func (t *Transport) CloseIdleConnections() {
 // Private implementation past this point.
 //
 
-func (t *Transport) getenvEitherCase(k string) string {
-	if t.IgnoreEnvironment {
-		return ""
-	}
-	if v := t.getenv(strings.ToUpper(k)); v != "" {
+func getenvEitherCase(k string) string {
+	if v := os.Getenv(strings.ToUpper(k)); v != "" {
 		return v
 	}
-	return t.getenv(strings.ToLower(k))
-}
-
-func (t *Transport) getenv(k string) string {
-	if t.IgnoreEnvironment {
-		return ""
-	}
-	return os.Getenv(k)
+	return os.Getenv(strings.ToLower(k))
 }
 
 func (t *Transport) connectMethodForRequest(req *Request) (*connectMethod, os.Error) {
@@ -123,20 +151,12 @@ func (t *Transport) connectMethodForRequest(req *Request) (*connectMethod, os.Er
 		targetScheme: req.URL.Scheme,
 		targetAddr:   canonicalAddr(req.URL),
 	}
-
-	proxy := t.getenvEitherCase("HTTP_PROXY")
-	if proxy != "" && t.useProxy(cm.targetAddr) {
-		proxyURL, err := ParseRequestURL(proxy)
+	if t.Proxy != nil {
+		var err os.Error
+		cm.proxyURL, err = t.Proxy(req)
 		if err != nil {
-			return nil, os.ErrorString("invalid proxy address")
+			return nil, err
 		}
-		if proxyURL.Host == "" {
-			proxyURL, err = ParseRequestURL("http://" + proxy)
-			if err != nil {
-				return nil, os.ErrorString("invalid proxy address")
-			}
-		}
-		cm.proxyURL = proxyURL
 	}
 	return cm, nil
 }
@@ -248,18 +268,22 @@ func (t *Transport) getConn(cm *connectMethod) (*persistConn, os.Error) {
 			}
 		}
 	case cm.targetScheme == "https":
-		fmt.Fprintf(conn, "CONNECT %s HTTP/1.1\r\n", cm.targetAddr)
-		fmt.Fprintf(conn, "Host: %s\r\n", cm.targetAddr)
-		if pa != "" {
-			fmt.Fprintf(conn, "Proxy-Authorization: %s\r\n", pa)
+		connectReq := &Request{
+			Method: "CONNECT",
+			RawURL: cm.targetAddr,
+			Host:   cm.targetAddr,
+			Header: make(Header),
 		}
-		fmt.Fprintf(conn, "\r\n")
+		if pa != "" {
+			connectReq.Header.Set("Proxy-Authorization", pa)
+		}
+		connectReq.Write(conn)
 
 		// Read response.
 		// Okay to use and discard buffered reader here, because
 		// TLS server will not speak until spoken to.
 		br := bufio.NewReader(conn)
-		resp, err := ReadResponse(br, "CONNECT")
+		resp, err := ReadResponse(br, connectReq)
 		if err != nil {
 			conn.Close()
 			return nil, err
@@ -285,7 +309,6 @@ func (t *Transport) getConn(cm *connectMethod) (*persistConn, os.Error) {
 
 	pconn.br = bufio.NewReader(pconn.conn)
 	pconn.cc = newClientConnFunc(conn, pconn.br)
-	pconn.cc.readRes = readResponseWithEOFSignal
 	go pconn.readLoop()
 	return pconn, nil
 }
@@ -293,7 +316,7 @@ func (t *Transport) getConn(cm *connectMethod) (*persistConn, os.Error) {
 // useProxy returns true if requests to addr should use a proxy,
 // according to the NO_PROXY or no_proxy environment variable.
 // addr is always a canonicalAddr with a host and port.
-func (t *Transport) useProxy(addr string) bool {
+func useProxy(addr string) bool {
 	if len(addr) == 0 {
 		return true
 	}
@@ -305,16 +328,12 @@ func (t *Transport) useProxy(addr string) bool {
 		return false
 	}
 	if ip := net.ParseIP(host); ip != nil {
-		if ip4 := ip.To4(); ip4 != nil && ip4[0] == 127 {
-			// 127.0.0.0/8 loopback isn't proxied.
-			return false
-		}
-		if bytes.Equal(ip, net.IPv6loopback) {
+		if ip.IsLoopback() {
 			return false
 		}
 	}
 
-	no_proxy := t.getenvEitherCase("NO_PROXY")
+	no_proxy := getenvEitherCase("NO_PROXY")
 	if no_proxy == "*" {
 		return false
 	}
@@ -447,7 +466,25 @@ func (pc *persistConn) readLoop() {
 		}
 
 		rc := <-pc.reqch
-		resp, err := pc.cc.Read(rc.req)
+		resp, err := pc.cc.readUsing(rc.req, func(buf *bufio.Reader, forReq *Request) (*Response, os.Error) {
+			resp, err := ReadResponse(buf, forReq)
+			if err != nil || resp.ContentLength == 0 {
+				return resp, err
+			}
+			if rc.addedGzip && resp.Header.Get("Content-Encoding") == "gzip" {
+				resp.Header.Del("Content-Encoding")
+				resp.Header.Del("Content-Length")
+				resp.ContentLength = -1
+				gzReader, err := gzip.NewReader(resp.Body)
+				if err != nil {
+					pc.close()
+					return nil, err
+				}
+				resp.Body = &readFirstCloseBoth{&discardOnCloseReadCloser{gzReader}, resp.Body}
+			}
+			resp.Body = &bodyEOFSignal{body: resp.Body}
+			return resp, err
+		})
 
 		if err == ErrPersistEOF {
 			// Succeeded, but we can't send any more
@@ -469,6 +506,17 @@ func (pc *persistConn) readLoop() {
 					waitForBodyRead <- true
 				}
 			} else {
+				// When there's no response body, we immediately
+				// reuse the TCP connection (putIdleConn), but
+				// we need to prevent ClientConn.Read from
+				// closing the Response.Body on the next
+				// loop, otherwise it might close the body
+				// before the client code has had a chance to
+				// read it (even though it'll just be 0, EOF).
+				pc.cc.lk.Lock()
+				pc.cc.lastbody = nil
+				pc.cc.lk.Unlock()
+
 				pc.t.putIdleConn(pc)
 			}
 		}
@@ -491,6 +539,11 @@ type responseAndError struct {
 type requestAndChan struct {
 	req *Request
 	ch  chan responseAndError
+
+	// did the Transport (as opposed to the client code) add an
+	// Accept-Encoding gzip header? only if it we set it do
+	// we transparently decode the gzip.
+	addedGzip bool
 }
 
 func (pc *persistConn) roundTrip(req *Request) (resp *Response, err os.Error) {
@@ -522,24 +575,11 @@ func (pc *persistConn) roundTrip(req *Request) (resp *Response, err os.Error) {
 	}
 
 	ch := make(chan responseAndError, 1)
-	pc.reqch <- requestAndChan{req, ch}
+	pc.reqch <- requestAndChan{req, ch, requestedGzip}
 	re := <-ch
 	pc.lk.Lock()
 	pc.numExpectedResponses--
 	pc.lk.Unlock()
-
-	if re.err == nil && requestedGzip && re.res.Header.Get("Content-Encoding") == "gzip" {
-		re.res.Header.Del("Content-Encoding")
-		re.res.Header.Del("Content-Length")
-		re.res.ContentLength = -1
-		esb := re.res.Body.(*bodyEOFSignal)
-		gzReader, err := gzip.NewReader(esb.body)
-		if err != nil {
-			pc.close()
-			return nil, err
-		}
-		esb.body = &readFirstCloseBoth{gzReader, esb.body}
-	}
 
 	return re.res, re.err
 }
@@ -572,16 +612,6 @@ func responseIsKeepAlive(res *Response) bool {
 	return false
 }
 
-// readResponseWithEOFSignal is a wrapper around ReadResponse that replaces
-// the response body with a bodyEOFSignal-wrapped version.
-func readResponseWithEOFSignal(r *bufio.Reader, requestMethod string) (resp *Response, err os.Error) {
-	resp, err = ReadResponse(r, requestMethod)
-	if err == nil && resp.ContentLength != 0 {
-		resp.Body = &bodyEOFSignal{body: resp.Body}
-	}
-	return
-}
-
 // bodyEOFSignal wraps a ReadCloser but runs fn (if non-nil) at most
 // once, right before the final Read() or Close() call returns, but after
 // EOF has been seen.
@@ -604,6 +634,9 @@ func (es *bodyEOFSignal) Read(p []byte) (n int, err os.Error) {
 }
 
 func (es *bodyEOFSignal) Close() (err os.Error) {
+	if es.isClosed {
+		return nil
+	}
 	es.isClosed = true
 	err = es.body.Close()
 	if err == nil && es.fn != nil {
@@ -627,4 +660,14 @@ func (r *readFirstCloseBoth) Close() os.Error {
 		return err
 	}
 	return nil
+}
+
+// discardOnCloseReadCloser consumes all its input on Close.
+type discardOnCloseReadCloser struct {
+	io.ReadCloser
+}
+
+func (d *discardOnCloseReadCloser) Close() os.Error {
+	io.Copy(ioutil.Discard, d.ReadCloser) // ignore errors; likely invalid or already closed
+	return d.ReadCloser.Close()
 }

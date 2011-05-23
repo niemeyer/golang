@@ -176,7 +176,7 @@ func remoteSearch(query string) (res *http.Response, err os.Error) {
 	// remote search
 	for _, addr := range addrs {
 		url := "http://" + addr + search
-		res, _, err = http.Get(url)
+		res, err = http.Get(url)
 		if err == nil && res.StatusCode == http.StatusOK {
 			break
 		}
@@ -246,8 +246,13 @@ func main() {
 			log.Printf("address = %s", *httpAddr)
 			log.Printf("goroot = %s", *goroot)
 			log.Printf("tabwidth = %d", *tabwidth)
-			if *maxResults > 0 {
-				log.Printf("maxresults = %d (full text index enabled)", *maxResults)
+			switch {
+			case !*indexEnabled:
+				log.Print("search index disabled")
+			case *maxResults > 0:
+				log.Printf("full text index enabled (maxresults = %d)", *maxResults)
+			default:
+				log.Print("identifier search index enabled")
 			}
 			if !fsMap.IsEmpty() {
 				log.Print("user-defined mapping:")
@@ -284,7 +289,9 @@ func main() {
 		}
 
 		// Start indexing goroutine.
-		go indexer()
+		if *indexEnabled {
+			go indexer()
+		}
 
 		// Start http server.
 		if err := http.ListenAndServe(*httpAddr, handler); err != nil {

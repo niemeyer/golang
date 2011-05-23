@@ -18,12 +18,13 @@ static	NodeList*	paramstoheap(Type **argin, int out);
 static	NodeList*	reorder1(NodeList*);
 static	NodeList*	reorder3(NodeList*);
 static	Node*	addstr(Node*, NodeList**);
+static	Node*	appendslice(Node*, NodeList**);
 static	Node*	append(Node*, NodeList**);
 
 static	NodeList*	walkdefstack;
 
 // can this code branch reach the end
-// without an undcontitional RETURN
+// without an unconditional RETURN
 // this is hard, so it is conservative
 static int
 walkret(NodeList *l)
@@ -805,18 +806,17 @@ walkexpr(Node **np, NodeList **init)
 		n->ninit = nil;
 		walkexpr(&n->left, init);
 		n->left = safeexpr(n->left, init);
+
 		if(oaslit(n, init))
 			goto ret;
+
 		walkexpr(&n->right, init);
-		l = n->left;
-		r = n->right;
-		if(l == N || r == N)
-			goto ret;
-		r = ascompatee1(n->op, l, r, init);
-		if(r != N) {
+		if(n->left != N && n->right != N) {
+			r = convas(nod(OAS, n->left, n->right), init);
 			r->dodata = n->dodata;
 			n = r;
 		}
+
 		goto ret;
 
 	case OAS2:
@@ -1134,6 +1134,7 @@ walkexpr(Node **np, NodeList **init)
 	case OINDEXMAP:
 		if(n->etype == 1)
 			goto ret;
+
 		t = n->left->type;
 		n = mkcall1(mapfn("mapaccess1", t), t->type, init, n->left, n->right);
 		goto ret;
@@ -1188,6 +1189,7 @@ walkexpr(Node **np, NodeList **init)
 		// sliceslice(old []any, lb uint64, hb uint64, width uint64) (ary []any)
 		// sliceslice1(old []any, lb uint64, width uint64) (ary []any)
 		t = n->type;
+		et = n->etype;
 		if(n->right->left == N)
 			l = nodintconst(0);
 		else
@@ -1210,6 +1212,7 @@ walkexpr(Node **np, NodeList **init)
 				l,
 				nodintconst(t->type->width));
 		}
+		n->etype = et;  // preserve no-typecheck flag from OSLICE to the slice* call.
 		goto ret;
 
 	slicearray:
@@ -1332,7 +1335,10 @@ walkexpr(Node **np, NodeList **init)
 		goto ret;
 	
 	case OAPPEND:
-		n = append(n, init);
+		if(n->isddd)
+			n = appendslice(n, init);
+		else
+			n = append(n, init);
 		goto ret;
 
 	case OCOPY:
@@ -1953,23 +1959,18 @@ callnew(Type *t)
 static Node*
 convas(Node *n, NodeList **init)
 {
-	Node *l, *r;
 	Type *lt, *rt;
 
 	if(n->op != OAS)
 		fatal("convas: not OAS %O", n->op);
+
 	n->typecheck = 1;
 
-	lt = T;
-	rt = T;
-
-	l = n->left;
-	r = n->right;
-	if(l == N || r == N)
+	if(n->left == N || n->right == N)
 		goto out;
 
-	lt = l->type;
-	rt = r->type;
+	lt = n->left->type;
+	rt = n->right->type;
 	if(lt == T || rt == T)
 		goto out;
 
@@ -1987,7 +1988,7 @@ convas(Node *n, NodeList **init)
 	if(eqtype(lt, rt))
 		goto out;
 	
-	n->right = assignconv(r, lt, "assignment");
+	n->right = assignconv(n->right, lt, "assignment");
 	walkexpr(&n->right, init);
 
 out:
@@ -2365,42 +2366,85 @@ addstr(Node *n, NodeList **init)
 }
 
 static Node*
+appendslice(Node *n, NodeList **init)
+{
+	Node *f;
+	
+	f = syslook("appendslice", 1);
+	argtype(f, n->type);
+	argtype(f, n->type->type);
+	argtype(f, n->type);
+	return mkcall1(f, n->type, init, typename(n->type), n->list->n, n->list->next->n);
+}
+
+// expand append(src, a [, b]* ) to
+//
+//   init {
+//     s := src
+//     const argc = len(args) - 1
+//     if cap(s) - len(s) < argc {
+//          s = growslice(s, argc) 
+//     }
+//     n := len(s)
+//     s = s[:n+argc]
+//     s[n] = a
+//     s[n+1] = b
+//     ...
+//   }
+//   s
+static Node*
 append(Node *n, NodeList **init)
 {
-	int i, j;
-	Node *f, *r;
-	NodeList *in, *args;
-	
-	if(n->isddd) {
-		f = syslook("appendslice", 1);
-		argtype(f, n->type);
-		argtype(f, n->type->type);
-		argtype(f, n->type);
-		r = mkcall1(f, n->type, init, typename(n->type), n->list->n, n->list->next->n);
-		return r;
+	NodeList *l, *a;
+	Node *nsrc, *ns, *nn, *na, *nx, *fn;
+	int argc;
+
+	walkexprlistsafe(n->list, init);
+
+	nsrc = n->list->n;
+	argc = count(n->list) - 1;
+	if (argc < 1) {
+		return nsrc;
 	}
 
-	j = count(n->list) - 1;
-	f = syslook("append", 1);
-	f->type = T;
-	f->ntype = nod(OTFUNC, N, N);
-	in = list1(nod(ODCLFIELD, N, typenod(ptrto(types[TUINT8]))));	// type
-	in = list(in, nod(ODCLFIELD, N, typenod(types[TINT])));	// count
-	in = list(in, nod(ODCLFIELD, N, typenod(n->type)));	// slice
-	for(i=0; i<j; i++)
-		in = list(in, nod(ODCLFIELD, N, typenod(n->type->type)));
-	f->ntype->list = in;
-	f->ntype->rlist = list1(nod(ODCLFIELD, N, typenod(n->type)));
-	
-	args = list1(typename(n->type));
-	args = list(args, nodintconst(j));
-	args = concat(args, n->list);
-	
-	r = nod(OCALL, f, N);
-	r->list = args;
-	typecheck(&r, Erv);
-	walkexpr(&r, init);
-	r->type = n->type;
+	l = nil;
 
-	return r;
+	ns = nod(OXXX, N, N);             // var s
+	tempname(ns, nsrc->type);
+	l = list(l, nod(OAS, ns, nsrc));  // s = src
+
+	na = nodintconst(argc);         // const argc
+	nx = nod(OIF, N, N);            // if cap(s) - len(s) < argc
+	nx->ntest = nod(OLT, nod(OSUB, nod(OCAP, ns, N), nod(OLEN, ns, N)), na);
+
+	fn = syslook("growslice", 1);   //   growslice(<type>, old []T, n int64) (ret []T)
+	argtype(fn, ns->type->type);    // 1 old []any 
+	argtype(fn, ns->type->type);    // 2 ret []any
+
+	nx->nbody = list1(nod(OAS, ns, mkcall1(fn,  ns->type, &nx->ninit,
+					       typename(ns->type),
+					       ns,
+					       conv(na, types[TINT64]))));
+	l = list(l, nx);
+
+	nn = nod(OXXX, N, N);                            // var n
+	tempname(nn, types[TINT]);
+	l = list(l, nod(OAS, nn, nod(OLEN, ns, N)));     // n = len(s)
+
+	nx = nod(OSLICE, ns, nod(OKEY, N, nod(OADD, nn, na)));   // ...s[:n+argc]
+	nx->etype = 1;  // disable bounds check
+	l = list(l, nod(OAS, ns, nx));                  // s = s[:n+argc]
+
+	for (a = n->list->next;  a != nil; a = a->next) {
+		nx = nod(OINDEX, ns, nn);               // s[n] ...
+		nx->etype = 1;  // disable bounds check
+		l = list(l, nod(OAS, nx, a->n));        // s[n] = arg
+		if (a->next != nil)
+			l = list(l, nod(OAS, nn, nod(OADD, nn, nodintconst(1))));  // n = n + 1
+	}
+
+	typechecklist(l, Etop);
+	walkstmtlist(l);
+	*init = concat(*init, l);
+	return ns;
 }

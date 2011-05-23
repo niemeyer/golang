@@ -219,9 +219,10 @@ func (sa *SockaddrInet4) sockaddr() (uintptr, _Socklen, int) {
 }
 
 type SockaddrInet6 struct {
-	Port int
-	Addr [16]byte
-	raw  RawSockaddrInet6
+	Port   int
+	ZoneId uint32
+	Addr   [16]byte
+	raw    RawSockaddrInet6
 }
 
 func (sa *SockaddrInet6) sockaddr() (uintptr, _Socklen, int) {
@@ -232,6 +233,7 @@ func (sa *SockaddrInet6) sockaddr() (uintptr, _Socklen, int) {
 	p := (*[2]byte)(unsafe.Pointer(&sa.raw.Port))
 	p[0] = byte(sa.Port >> 8)
 	p[1] = byte(sa.Port)
+	sa.raw.Scope_id = sa.ZoneId
 	for i := 0; i < len(sa.Addr); i++ {
 		sa.raw.Addr[i] = sa.Addr[i]
 	}
@@ -290,8 +292,33 @@ func (sa *SockaddrLinklayer) sockaddr() (uintptr, _Socklen, int) {
 	return uintptr(unsafe.Pointer(&sa.raw)), SizeofSockaddrLinklayer, 0
 }
 
+type SockaddrNetlink struct {
+	Family uint16
+	Pad    uint16
+	Pid    uint32
+	Groups uint32
+	raw    RawSockaddrNetlink
+}
+
+func (sa *SockaddrNetlink) sockaddr() (uintptr, _Socklen, int) {
+	sa.raw.Family = AF_NETLINK
+	sa.raw.Pad = sa.Pad
+	sa.raw.Pid = sa.Pid
+	sa.raw.Groups = sa.Groups
+	return uintptr(unsafe.Pointer(&sa.raw)), SizeofSockaddrNetlink, 0
+}
+
 func anyToSockaddr(rsa *RawSockaddrAny) (Sockaddr, int) {
 	switch rsa.Addr.Family {
+	case AF_NETLINK:
+		pp := (*RawSockaddrNetlink)(unsafe.Pointer(rsa))
+		sa := new(SockaddrNetlink)
+		sa.Family = pp.Family
+		sa.Pad = pp.Pad
+		sa.Pid = pp.Pid
+		sa.Groups = pp.Groups
+		return sa, 0
+
 	case AF_PACKET:
 		pp := (*RawSockaddrLinklayer)(unsafe.Pointer(rsa))
 		sa := new(SockaddrLinklayer)
@@ -345,6 +372,7 @@ func anyToSockaddr(rsa *RawSockaddrAny) (Sockaddr, int) {
 		sa := new(SockaddrInet6)
 		p := (*[2]byte)(unsafe.Pointer(&pp.Port))
 		sa.Port = int(p[0])<<8 + int(p[1])
+		sa.ZoneId = pp.Scope_id
 		for i := 0; i < len(sa.Addr); i++ {
 			sa.Addr[i] = pp.Addr[i]
 		}
@@ -489,7 +517,7 @@ func Recvmsg(fd int, p, oob []byte, flags int) (n, oobn int, recvflags int, from
 	oobn = int(msg.Controllen)
 	recvflags = int(msg.Flags)
 	// source address is only specified if the socket is unconnected
-	if rsa.Addr.Family != 0 {
+	if rsa.Addr.Family != AF_UNSPEC {
 		from, errno = anyToSockaddr(&rsa)
 	}
 	return
@@ -932,7 +960,6 @@ func Munmap(b []byte) (errno int) {
 // Semget
 // Semop
 // Semtimedop
-// Sendfile
 // SetMempolicy
 // SetRobustList
 // SetThreadArea

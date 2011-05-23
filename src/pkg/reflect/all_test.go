@@ -579,13 +579,7 @@ func TestCopyArray(t *testing.T) {
 	}
 	for i := len(a); i < len(b); i++ {
 		if b[i] != c[i] {
-			if i < len(a) {
-				t.Errorf("(ii) a[%d]=%d, b[%d]=%d, c[%d]=%d",
-					i, a[i], i, b[i], i, c[i])
-			} else {
-				t.Errorf("(iii) b[%d]=%d, c[%d]=%d",
-					i, b[i], i, c[i])
-			}
+			t.Errorf("(ii) b[%d]=%d, c[%d]=%d", i, b[i], i, c[i])
 		} else {
 			t.Logf("elem %d is okay\n", i)
 		}
@@ -729,6 +723,24 @@ func TestDeepEqualComplexStructInequality(t *testing.T) {
 	*b = _Complex{5, [3]*_Complex{b, a, a}, &strb, m}
 	if DeepEqual(a, b) {
 		t.Error("DeepEqual(complex different) = true, want false")
+	}
+}
+
+type UnexpT struct {
+	m map[int]int
+}
+
+func TestDeepEqualUnexportedMap(t *testing.T) {
+	// Check that DeepEqual can look at unexported fields.
+	x1 := UnexpT{map[int]int{1: 2}}
+	x2 := UnexpT{map[int]int{1: 2}}
+	if !DeepEqual(&x1, &x2) {
+		t.Error("DeepEqual(x1, x2) = false, want true")
+	}
+
+	y1 := UnexpT{map[int]int{2: 3}}
+	if DeepEqual(&x1, &y1) {
+		t.Error("DeepEqual(x1, y1) = true, want false")
 	}
 }
 
@@ -1439,7 +1451,9 @@ func noAlloc(t *testing.T, n int, f func(int)) {
 	for j := 0; j < n; j++ {
 		f(j)
 	}
-	if runtime.MemStats.Mallocs != 0 {
+	// A few allocs may happen in the testing package when GOMAXPROCS > 1, so don't
+	// require zero mallocs.
+	if runtime.MemStats.Mallocs > 5 {
 		t.Fatalf("%d mallocs after %d iterations", runtime.MemStats.Mallocs, n)
 	}
 }

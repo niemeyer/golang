@@ -30,6 +30,28 @@ type PublicKey struct {
 	n, e, p, q, g, y parsedMPI
 }
 
+func fromBig(n *big.Int) parsedMPI {
+	return parsedMPI{
+		bytes:     n.Bytes(),
+		bitLength: uint16(n.BitLen()),
+	}
+}
+
+// NewRSAPublicKey returns a PublicKey that wraps the given rsa.PublicKey.
+func NewRSAPublicKey(creationTimeSecs uint32, pub *rsa.PublicKey, isSubkey bool) *PublicKey {
+	pk := &PublicKey{
+		CreationTime: creationTimeSecs,
+		PubKeyAlgo:   PubKeyAlgoRSA,
+		PublicKey:    pub,
+		IsSubkey:     isSubkey,
+		n:            fromBig(pub.N),
+		e:            fromBig(big.NewInt(int64(pub.E))),
+	}
+
+	pk.setFingerPrintAndKeyId()
+	return pk
+}
+
 func (pk *PublicKey) parse(r io.Reader) (err os.Error) {
 	// RFC 4880, section 5.5.2
 	var buf [6]byte
@@ -54,14 +76,17 @@ func (pk *PublicKey) parse(r io.Reader) (err os.Error) {
 		return
 	}
 
+	pk.setFingerPrintAndKeyId()
+	return
+}
+
+func (pk *PublicKey) setFingerPrintAndKeyId() {
 	// RFC 4880, section 12.2
 	fingerPrint := sha1.New()
 	pk.SerializeSignaturePrefix(fingerPrint)
-	pk.Serialize(fingerPrint)
+	pk.serializeWithoutHeaders(fingerPrint)
 	copy(pk.Fingerprint[:], fingerPrint.Sum())
 	pk.KeyId = binary.BigEndian.Uint64(pk.Fingerprint[12:20])
-
-	return
 }
 
 // parseRSA parses RSA public key material from the given Reader. See RFC 4880,
@@ -143,9 +168,30 @@ func (pk *PublicKey) SerializeSignaturePrefix(h hash.Hash) {
 	return
 }
 
-// Serialize marshals the PublicKey to w in the form of an OpenPGP public key
-// packet, not including the packet header.
 func (pk *PublicKey) Serialize(w io.Writer) (err os.Error) {
+	length := 6 // 6 byte header
+
+	switch pk.PubKeyAlgo {
+	case PubKeyAlgoRSA, PubKeyAlgoRSAEncryptOnly, PubKeyAlgoRSASignOnly:
+		length += 2 + len(pk.n.bytes)
+		length += 2 + len(pk.e.bytes)
+	case PubKeyAlgoDSA:
+		length += 2 + len(pk.p.bytes)
+		length += 2 + len(pk.q.bytes)
+		length += 2 + len(pk.g.bytes)
+		length += 2 + len(pk.y.bytes)
+	}
+
+	err = serializeHeader(w, packetTypePublicKey, length)
+	if err != nil {
+		return
+	}
+	return pk.serializeWithoutHeaders(w)
+}
+
+// serializeWithoutHeaders marshals the PublicKey to w in the form of an
+// OpenPGP public key packet, not including the packet header.
+func (pk *PublicKey) serializeWithoutHeaders(w io.Writer) (err os.Error) {
 	var buf [6]byte
 	buf[0] = 4
 	buf[1] = byte(pk.CreationTime >> 24)
@@ -211,34 +257,43 @@ func (pk *PublicKey) VerifySignature(signed hash.Hash, sig *Signature) (err os.E
 	panic("unreachable")
 }
 
-// VerifyKeySignature returns nil iff sig is a valid signature, make by this
-// public key, of the public key in signed.
-func (pk *PublicKey) VerifyKeySignature(signed *PublicKey, sig *Signature) (err os.Error) {
-	h := sig.Hash.New()
+// keySignatureHash returns a Hash of the message that needs to be signed for
+// pk to assert a subkey relationship to signed.
+func keySignatureHash(pk, signed *PublicKey, sig *Signature) (h hash.Hash, err os.Error) {
+	h = sig.Hash.New()
 	if h == nil {
-		return error.UnsupportedError("hash function")
+		return nil, error.UnsupportedError("hash function")
 	}
 
 	// RFC 4880, section 5.2.4
 	pk.SerializeSignaturePrefix(h)
-	pk.Serialize(h)
+	pk.serializeWithoutHeaders(h)
 	signed.SerializeSignaturePrefix(h)
-	signed.Serialize(h)
+	signed.serializeWithoutHeaders(h)
+	return
+}
 
+// VerifyKeySignature returns nil iff sig is a valid signature, made by this
+// public key, of signed.
+func (pk *PublicKey) VerifyKeySignature(signed *PublicKey, sig *Signature) (err os.Error) {
+	h, err := keySignatureHash(pk, signed, sig)
+	if err != nil {
+		return err
+	}
 	return pk.VerifySignature(h, sig)
 }
 
-// VerifyUserIdSignature returns nil iff sig is a valid signature, make by this
-// public key, of the given user id.
-func (pk *PublicKey) VerifyUserIdSignature(id string, sig *Signature) (err os.Error) {
-	h := sig.Hash.New()
+// userIdSignatureHash returns a Hash of the message that needs to be signed
+// to assert that pk is a valid key for id.
+func userIdSignatureHash(id string, pk *PublicKey, sig *Signature) (h hash.Hash, err os.Error) {
+	h = sig.Hash.New()
 	if h == nil {
-		return error.UnsupportedError("hash function")
+		return nil, error.UnsupportedError("hash function")
 	}
 
 	// RFC 4880, section 5.2.4
 	pk.SerializeSignaturePrefix(h)
-	pk.Serialize(h)
+	pk.serializeWithoutHeaders(h)
 
 	var buf [5]byte
 	buf[0] = 0xb4
@@ -249,6 +304,16 @@ func (pk *PublicKey) VerifyUserIdSignature(id string, sig *Signature) (err os.Er
 	h.Write(buf[:])
 	h.Write([]byte(id))
 
+	return
+}
+
+// VerifyUserIdSignature returns nil iff sig is a valid signature, made by this
+// public key, of id.
+func (pk *PublicKey) VerifyUserIdSignature(id string, sig *Signature) (err os.Error) {
+	h, err := userIdSignatureHash(id, pk, sig)
+	if err != nil {
+		return err
+	}
 	return pk.VerifySignature(h, sig)
 }
 
@@ -272,7 +337,7 @@ type parsedMPI struct {
 	bitLength uint16
 }
 
-// writeMPIs is a utility function for serialising several big integers to the
+// writeMPIs is a utility function for serializing several big integers to the
 // given Writer.
 func writeMPIs(w io.Writer, mpis ...parsedMPI) (err os.Error) {
 	for _, mpi := range mpis {

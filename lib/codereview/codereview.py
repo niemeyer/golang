@@ -45,10 +45,23 @@ import stat
 import subprocess
 import threading
 from HTMLParser import HTMLParser
+
+# The standard 'json' package is new in Python 2.6.
+# Before that it was an external package named simplejson.
 try:
-	from xml.etree import ElementTree as ET
-except:
-	from elementtree import ElementTree as ET
+	# Standard location in 2.6 and beyond.
+	import json
+except Exception, e:
+	try:
+		# Conventional name for earlier package.
+		import simplejson as json
+	except:
+		try:
+			# Was also bundled with django, which is commonly installed.
+			from django.utils import simplejson as json
+		except:
+			# We give up.
+			raise e
 
 try:
 	hgversion = util.version()
@@ -112,6 +125,7 @@ defaultcc = None
 contributors = {}
 missing_codereview = None
 real_rollback = None
+releaseBranch = None
 
 #######################################################################
 # RE: UNICODE STRING HANDLING
@@ -501,14 +515,16 @@ def LoadCL(ui, repo, name, web=True):
 	else:
 		cl = CL(name)
 	if web:
-		try:
-			f = GetSettings(name)
-		except:
-			return None, "cannot load CL %s from code review server: %s" % (name, ExceptionDetail())
-		if 'reviewers' not in f:
+		set_status("getting issue metadata from web")
+		d = JSONGet(ui, "/api/" + name + "?messages=true")
+		set_status(None)
+		if d is None:
+			return None, "cannot load CL %s from server" % (name,)
+		if 'owner_email' not in d or 'issue' not in d or str(d['issue']) != name:
 			return None, "malformed response loading CL data from code review server"
-		cl.reviewer = SplitCommaSpace(f['reviewers'])
-		cl.cc = SplitCommaSpace(f['cc'])
+		cl.dict = d
+		cl.reviewer = d.get('reviewers', [])
+		cl.cc = d.get('cc', [])
 		if cl.local and cl.copied_from and cl.desc:
 			# local copy of CL written by someone else
 			# and we saved a description.  use that one,
@@ -516,9 +532,10 @@ def LoadCL(ui, repo, name, web=True):
 			# before doing hg submit.
 			pass
 		else:
-			cl.desc = f['description']
+			cl.desc = d.get('description', "")
 		cl.url = server_url_base + name
 		cl.web = True
+		cl.private = d.get('private', False) != False
 	set_status("loaded CL " + name)
 	return cl, ''
 
@@ -1049,7 +1066,7 @@ def change(ui, repo, *pats, **opts):
 
 	if missing_codereview:
 		return missing_codereview
-
+	
 	dirty = {}
 	if len(pats) > 0 and GoodCLName(pats[0]):
 		name = pats[0]
@@ -1062,6 +1079,8 @@ def change(ui, repo, *pats, **opts):
 		if not cl.local and (opts["stdin"] or not opts["stdout"]):
 			return "cannot change non-local CL " + name
 	else:
+		if repo[None].branch() != "default":
+			return "cannot run hg change outside default branch"
 		name = "new"
 		cl = CL("new")
 		dirty[cl] = True
@@ -1154,7 +1173,9 @@ def clpatch(ui, repo, clname, **opts):
 	Submitting an imported patch will keep the original author's
 	name as the Author: line but add your own name to a Committer: line.
 	"""
-	return clpatch_or_undo(ui, repo, clname, opts)
+	if repo[None].branch() != "default":
+		return "cannot run hg clpatch outside default branch"
+	return clpatch_or_undo(ui, repo, clname, opts, mode="clpatch")
 
 def undo(ui, repo, clname, **opts):
 	"""undo the effect of a CL
@@ -1163,7 +1184,66 @@ def undo(ui, repo, clname, **opts):
 	After creating the CL, opens the CL text for editing so that
 	you can add the reason for the undo to the description.
 	"""
-	return clpatch_or_undo(ui, repo, clname, opts, undo=True)
+	if repo[None].branch() != "default":
+		return "cannot run hg undo outside default branch"
+	return clpatch_or_undo(ui, repo, clname, opts, mode="undo")
+
+def release_apply(ui, repo, clname, **opts):
+	"""apply a CL to the release branch
+
+	Creates a new CL copying a previously committed change
+	from the main branch to the release branch.
+	The current client must either be clean or already be in
+	the release branch.
+	
+	The release branch must be created by starting with a
+	clean client, disabling the code review plugin, and running:
+	
+		hg update weekly.YYYY-MM-DD
+		hg branch release-branch.rNN
+		hg commit -m 'create release-branch.rNN'
+		hg push --new-branch
+	
+	Then re-enable the code review plugin.
+	
+	People can test the release branch by running
+	
+		hg update release-branch.rNN
+	
+	in a clean client.  To return to the normal tree,
+	
+		hg update default
+	
+	Move changes since the weekly into the release branch 
+	using hg release-apply followed by the usual code review
+	process and hg submit.
+
+	When it comes time to tag the release, record the
+	final long-form tag of the release-branch.rNN
+	in the *default* branch's .hgtags file.  That is, run
+	
+		hg update default
+	
+	and then edit .hgtags as you would for a weekly.
+		
+	"""
+	c = repo[None]
+	if not releaseBranch:
+		return "no active release branches"
+	if c.branch() != releaseBranch:
+		if c.modified() or c.added() or c.removed():
+			raise util.Abort("uncommitted local changes - cannot switch branches")
+		err = hg.clean(repo, releaseBranch)
+		if err:
+			return err
+	try:
+		err = clpatch_or_undo(ui, repo, clname, opts, mode="backport")
+		if err:
+			raise util.Abort(err)
+	except Exception, e:
+		hg.clean(repo, "default")
+		raise e
+	return None
 
 def rev2clname(rev):
 	# Extract CL name from revision description.
@@ -1185,15 +1265,24 @@ undoFooter = """
 »»»
 """
 
+backportHeader = """[%s] %s
+
+««« CL %s / %s
+"""
+
+backportFooter = """
+»»»
+"""
+
 # Implementation of clpatch/undo.
-def clpatch_or_undo(ui, repo, clname, opts, undo=False):
+def clpatch_or_undo(ui, repo, clname, opts, mode):
 	if missing_codereview:
 		return missing_codereview
 
-	if undo:
+	if mode == "undo" or mode == "backport":
 		if hgversion < '1.4':
 			# Don't have cmdutil.match (see implementation of sync command).
-			return "hg is too old to run hg undo - update to 1.4 or newer"
+			return "hg is too old to run hg %s - update to 1.4 or newer" % mode
 
 		# Find revision in Mercurial repository.
 		# Assume CL number is 7+ decimal digits.
@@ -1227,8 +1316,19 @@ def clpatch_or_undo(ui, repo, clname, opts, undo=False):
 		# Create fresh CL and start with patch that would reverse the change.
 		vers = short(rev.node())
 		cl = CL("new")
-		cl.desc = (undoHeader % (clname, vers)) + rev.description() + undoFooter
-		patch = RunShell(["hg", "diff", "--git", "-r", vers + ":" + short(rev.parents()[0].node())])
+		desc = rev.description()
+		if mode == "undo":
+			cl.desc = (undoHeader % (clname, vers)) + desc + undoFooter
+		else:
+			cl.desc = (backportHeader % (releaseBranch, line1(desc), clname, vers)) + desc + undoFooter
+		v1 = vers
+		v0 = short(rev.parents()[0].node())
+		if mode == "undo":
+			arg = v1 + ":" + v0
+		else:
+			vers = v0
+			arg = v0 + ":" + v1
+		patch = RunShell(["hg", "diff", "--git", "-r", arg])
 
 	else:  # clpatch
 		cl, vers, patch, err = DownloadCL(ui, repo, clname)
@@ -1236,8 +1336,6 @@ def clpatch_or_undo(ui, repo, clname, opts, undo=False):
 			return err
 		if patch == emptydiff:
 			return "codereview issue %s has no diff" % clname
-		if not repo[vers]:
-			return "codereview issue %s is newer than the current repository; hg sync" % clname
 
 	# find current hg version (hg identify)
 	ctx = repo[None]
@@ -1246,13 +1344,20 @@ def clpatch_or_undo(ui, repo, clname, opts, undo=False):
 
 	# if version does not match the patch version,
 	# try to update the patch line numbers.
-	if id != vers:
+	if vers != "" and id != vers:
+		# "vers in repo" gives the wrong answer
+		# on some versions of Mercurial.  Instead, do the actual
+		# lookup and catch the exception.
+		try:
+			repo[vers].description()
+		except:
+			return "local repository is out of date; sync to get %s" % (vers)
 		patch, err = portPatch(repo, patch, vers, id)
 		if err != "":
-			return "codereview issue %s is out of date: %s" % (clname, err)
+			return "codereview issue %s is out of date: %s (%s->%s)" % (clname, err, vers, id)
 
 	argv = ["hgpatch"]
-	if opts["no_incoming"]:
+	if opts["no_incoming"] or mode == "backport":
 		argv += ["--checksync=false"]
 	try:
 		cmd = subprocess.Popen(argv, shell=False, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=None, close_fds=sys.platform != "win32")
@@ -1271,7 +1376,7 @@ def clpatch_or_undo(ui, repo, clname, opts, undo=False):
 	if extra:
 		ui.warn("warning: these files were listed in the patch but not changed:\n\t" + "\n\t".join(extra) + "\n")
 	cl.Flush(ui, repo)
-	if undo:
+	if mode == "undo":
 		err = EditCL(ui, repo, cl)
 		if err != "":
 			return "CL created, but error editing: " + err
@@ -1506,7 +1611,7 @@ def reposetup(ui, repo):
 
 def CheckContributor(ui, repo, user=None):
 	set_status("checking CONTRIBUTORS file")
-	_, userline = FindContributor(ui, repo, user, warn=False)
+	user, userline = FindContributor(ui, repo, user, warn=False)
 	if not userline:
 		raise util.Abort("cannot find %s in CONTRIBUTORS" % (user,))
 	return userline
@@ -1524,7 +1629,7 @@ def FindContributor(ui, repo, user=None, warn=True):
 	if user not in contributors:
 		if warn:
 			ui.warn("warning: cannot find %s in CONTRIBUTORS\n" % (user,))
-		return None, None
+		return user, None
 	
 	user, email = contributors[user]
 	return email, "%s <%s>" % (user, email)
@@ -1650,6 +1755,14 @@ def submit(ui, repo, *pats, **opts):
 	if not cl.copied_from:
 		EditDesc(cl.name, closed=True, private=cl.private)
 	cl.Delete(ui, repo)
+	
+	c = repo[None]
+	if c.branch() == releaseBranch and not c.modified() and not c.added() and not c.removed():
+		ui.write("switching from %s to default branch.\n" % releaseBranch)
+		err = hg.clean(repo, "default")
+		if err:
+			return err
+	return None
 
 def sync(ui, repo, **opts):
 	"""synchronize with remote repository
@@ -1822,6 +1935,15 @@ cmdtable = {
 		] + commands.walkopts,
 		"[-r reviewer] [--cc cc] [change# | file ...]"
 	),
+	"^release-apply": (
+		release_apply,
+		[
+			('', 'ignore_hgpatch_failure', None, 'create CL metadata even if hgpatch fails'),
+			('', 'no_incoming', None, 'disable check for incoming changes'),
+		],
+		"change#"
+	),
+	# TODO: release-start, release-tag, weekly-tag
 	"^submit": (
 		submit,
 		review_opts + [
@@ -1899,100 +2021,94 @@ class FormParser(HTMLParser):
 		if self.curdata is not None:
 			self.curdata += data
 
-# XML parser
-def XMLGet(ui, path):
+def JSONGet(ui, path):
 	try:
-		data = MySend(path, force_auth=False);
+		data = MySend(path, force_auth=False)
+		typecheck(data, str)
+		d = fix_json(json.loads(data))
 	except:
-		ui.warn("XMLGet %s: %s\n" % (path, ExceptionDetail()))
+		ui.warn("JSONGet %s: %s\n" % (path, ExceptionDetail()))
 		return None
-	return ET.XML(data)
+	return d
+
+# Clean up json parser output to match our expectations:
+#   * all strings are UTF-8-encoded str, not unicode.
+#   * missing fields are missing, not None,
+#     so that d.get("foo", defaultvalue) works.
+def fix_json(x):
+	if type(x) in [str, int, float, bool, type(None)]:
+		pass
+	elif type(x) is unicode:
+		x = x.encode("utf-8")
+	elif type(x) is list:
+		for i in range(len(x)):
+			x[i] = fix_json(x[i])
+	elif type(x) is dict:
+		todel = []
+		for k in x:
+			if x[k] is None:
+				todel.append(k)
+			else:
+				x[k] = fix_json(x[k])
+		for k in todel:
+			del x[k]
+	else:
+		raise util.Abort("unknown type " + str(type(x)) + " in fix_json")
+	if type(x) is str:
+		x = x.replace('\r\n', '\n')
+	return x
 
 def IsRietveldSubmitted(ui, clname, hex):
-	feed = XMLGet(ui, "/rss/issue/" + clname)
-	if feed is None:
+	dict = JSONGet(ui, "/api/" + clname + "?messages=true")
+	if dict is None:
 		return False
-	for sum in feed.findall("{http://www.w3.org/2005/Atom}entry/{http://www.w3.org/2005/Atom}summary"):
-		text = sum.text.strip()
+	for msg in dict.get("messages", []):
+		text = msg.get("text", "")
 		m = re.match('\*\*\* Submitted as [^*]*?([0-9a-f]+) \*\*\*', text)
 		if m is not None and len(m.group(1)) >= 8 and hex.startswith(m.group(1)):
 			return True
 	return False
 
-def IsRietveldMailed(ui, clname):
-	feed = XMLGet(ui, "/rss/issue/" + clname)
-	if feed is None:
-		return False
-	for sum in feed.findall("{http://www.w3.org/2005/Atom}entry/{http://www.w3.org/2005/Atom}summary"):
-		text = sum.text.strip()
-		if re.match("I'd like you to review this change", text):
+def IsRietveldMailed(cl):
+	for msg in cl.dict.get("messages", []):
+		if msg.get("text", "").find("I'd like you to review this change") >= 0:
 			return True
 	return False
 
 def DownloadCL(ui, repo, clname):
 	set_status("downloading CL " + clname)
-	cl, err = LoadCL(ui, repo, clname)
+	cl, err = LoadCL(ui, repo, clname, web=True)
 	if err != "":
 		return None, None, None, "error loading CL %s: %s" % (clname, err)
 
-	# Grab RSS feed to learn about CL
-	feed = XMLGet(ui, "/rss/issue/" + clname)
-	if feed is None:
-		return None, None, None, "cannot download CL"
-
 	# Find most recent diff
-	diff = None
-	prefix = 'http://' + server + '/'
+	diffs = cl.dict.get("patchsets", [])
+	if not diffs:
+		return None, None, None, "CL has no patch sets"
+	patchid = diffs[-1]
+
+	patchset = JSONGet(ui, "/api/" + clname + "/" + str(patchid))
+	if patchset is None:
+		return None, None, None, "error loading CL patchset %s/%d" % (clname, patchid)
+	if patchset.get("patchset", 0) != patchid:
+		return None, None, None, "malformed patchset information"
+	
 	vers = ""
-	for entry in feed.findall("{http://www.w3.org/2005/Atom}entry"):
-		thisVers = ""
-		for title in entry.findall("{http://www.w3.org/2005/Atom}title"):
-			m = re.search('diff -r ([0-9a-f]+) ', title.text)
-			if m:
-				thisVers = m.group(1)
-		if thisVers == "":
-			continue
-		for link in entry.findall("{http://www.w3.org/2005/Atom}link"):
-			if link.get('rel') != 'alternate':
-				continue
-			text = link.get('href')
-			if not text.startswith(prefix) or not text.endswith('.diff'):
-				continue
-			diff = text[len(prefix)-1:]
-			vers = thisVers
-	if diff is None:
-		return None, None, None, "CL has no diff"
+	msg = patchset.get("message", "").split()
+	if len(msg) >= 3 and msg[0] == "diff" and msg[1] == "-r":
+		vers = msg[2]
+	diff = "/download/issue" + clname + "_" + str(patchid) + ".diff"
+
 	diffdata = MySend(diff, force_auth=False)
-
-	# Find author - first entry will be author who created CL.
-	nick = None
-	for author in feed.findall("{http://www.w3.org/2005/Atom}entry/{http://www.w3.org/2005/Atom}author/{http://www.w3.org/2005/Atom}name"):
-		nick = author.text.strip()
-		break
-	if not nick:
-		return None, None, None, "CL has no author"
-
-	# The author is just a nickname: get the real email address.
-	try:
-		# want URL-encoded nick, but without a=, and rietveld rejects + for %20.
-		url = "/user_popup/" + urllib.urlencode({"a": nick})[2:].replace("+", "%20")
-		data = MySend(url, force_auth=False)
-	except:
-		ui.warn("error looking up %s: %s\n" % (nick, ExceptionDetail()))
-		cl.copied_from = nick+"@needtofix"
-		return cl, vers, diffdata, ""
-	match = re.match(r"<b>(.*) \((.*)\)</b>", data)
-	if not match:
-		return None, None, "error looking up %s: cannot parse result %s" % (nick, repr(data))
-	if match.group(1) != nick and match.group(2) != nick:
-		return None, None, "error looking up %s: got info for %s, %s" % (nick, match.group(1), match.group(2))
-	email = match.group(1)
-
+	
 	# Print warning if email is not in CONTRIBUTORS file.
+	email = cl.dict.get("owner_email", "")
+	if not email:
+		return None, None, None, "cannot find owner for %s" % (clname)
 	him = FindContributor(ui, repo, email)
 	me = FindContributor(ui, repo, None)
 	if him == me:
-		cl.mailed = IsRietveldMailed(ui, clname)
+		cl.mailed = IsRietveldMailed(cl)
 	else:
 		cl.copied_from = email
 
@@ -2090,25 +2206,6 @@ def GetForm(url):
 	for k,v in f.map.items():
 		m[k.encode("utf-8")] = v.replace("\r\n", "\n").encode("utf-8")
 	return m
-
-# Fetch the settings for the CL, like reviewer and CC list, by
-# scraping the Rietveld editing forms.
-def GetSettings(issue):
-	set_status("getting issue metadata from web")
-	# The /issue/edit page has everything but only the
-	# CL owner is allowed to fetch it (and submit it).
-	f = None
-	try:
-		f = GetForm("/" + issue + "/edit")
-	except:
-		pass
-	if not f or 'reviewers' not in f:
-		# Maybe we're not the CL owner.  Fall back to the
-		# /publish page, which has the reviewer and CC lists,
-		# and then fetch the description separately.
-		f = GetForm("/" + issue + "/publish")
-		f['description'] = MySend("/"+issue+"/description", force_auth=False)
-	return f
 
 def EditDesc(issue, subject=None, desc=None, reviewers=None, cc=None, closed=False, private=False):
 	set_status("uploading change to description")
@@ -2263,6 +2360,19 @@ def RietveldSetup(ui, repo):
 		upload_options.email = "test@example.com"
 
 	rpc = None
+	
+	global releaseBranch
+	tags = repo.branchtags().keys()
+	if 'release-branch.r100' in tags:
+		# NOTE(rsc): This tags.sort is going to get the wrong
+		# answer when comparing release-branch.r99 with
+		# release-branch.r100.  If we do ten releases a year
+		# that gives us 4 years before we have to worry about this.
+		raise util.Abort('tags.sort needs to be fixed for release-branch.r100')
+	tags.sort()
+	for t in tags:
+		if t.startswith('release-branch.'):
+			releaseBranch = t			
 
 #######################################################################
 # http://codereview.appspot.com/static/upload.py, heavily edited.

@@ -25,9 +25,9 @@ _go_.$O: $(GOFILES) $(PREREQ)
 install: $(TARGDIR)/$(TARG)
 
 $(TARGDIR)/$(TARG): $(TARG)
-	cp -f $(TARG) $(TARGDIR)
+	mkdir -p $(TARGDIR) && cp -f $(TARG) $(TARGDIR)
 
-CLEANFILES+=$(TARG) _test _testmain.go
+CLEANFILES+=$(TARG) _test _testmain.go test.out build.out
 
 nuke: clean
 	rm -f $(TARGDIR)/$(TARG)
