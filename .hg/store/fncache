@@ -4444,3 +4444,13 @@ data/test/fixedbugs/bug341.go.i
 data/src/pkg/mime/multipart/writer_test.go.i
 data/src/pkg/mime/multipart/writer.go.i
 data/misc/IntelliJIDEA/Go.xml.i
+data/misc/chrome/gophertool/popup.html.i
+data/misc/chrome/gophertool/gopher.png.i
+data/misc/chrome/gophertool/README.txt.i
+data/src/pkg/net/sendfile_linux.go.i
+data/test/shift1.go.i
+data/test/fixedbugs/bug322.dir/lib.go.i
+data/src/pkg/net/sendfile_stub.go.i
+data/test/shift2.go.i
+data/test/fixedbugs/bug322.dir/main.go.i
+data/misc/chrome/gophertool/manifest.json.i

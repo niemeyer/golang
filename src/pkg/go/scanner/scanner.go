@@ -134,36 +134,6 @@ func (S *Scanner) Init(file *token.File, src []byte, err ErrorHandler, mode uint
 }
 
 
-func charString(ch int) string {
-	var s string
-	switch ch {
-	case -1:
-		return `EOF`
-	case '\a':
-		s = `\a`
-	case '\b':
-		s = `\b`
-	case '\f':
-		s = `\f`
-	case '\n':
-		s = `\n`
-	case '\r':
-		s = `\r`
-	case '\t':
-		s = `\t`
-	case '\v':
-		s = `\v`
-	case '\\':
-		s = `\\`
-	case '\'':
-		s = `\'`
-	default:
-		s = string(ch)
-	}
-	return "'" + s + "' (U+" + strconv.Itob(ch, 16) + ")"
-}
-
-
 func (S *Scanner) error(offs int, msg string) {
 	if S.err != nil {
 		S.err.Error(S.file.Position(S.file.Pos(offs)), msg)
@@ -700,7 +670,7 @@ scanAgain:
 			tok = S.switch3(token.OR, token.OR_ASSIGN, '|', token.LOR)
 		default:
 			if S.mode&AllowIllegalChars == 0 {
-				S.error(offs, "illegal character "+charString(ch))
+				S.error(offs, "illegal character "+strconv.QuoteRune(ch))
 			}
 			insertSemi = S.insertSemi // preserve insertSemi info
 		}

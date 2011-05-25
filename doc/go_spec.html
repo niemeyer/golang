@@ -1,5 +1,5 @@
 <!-- title The Go Programming Language Specification -->
-<!-- subtitle Version of May 15, 2011 -->
+<!-- subtitle Version of May 24, 2011 -->
 
 <!--
 TODO
@@ -10,7 +10,6 @@ TODO
 [ ] clarify what a field name is in struct declarations
     (struct{T} vs struct {T T} vs struct {t T})
 [ ] need explicit language about the result type of operations
-[ ] may want to have some examples for the types of shift operations
 [ ] should string(1<<s) and float32(1<<s) be valid?
 [ ] should probably write something about evaluation order of statements even
 	though obvious
@@ -49,7 +48,7 @@ The syntax is specified using Extended Backus-Naur Form (EBNF):
 Production  = production_name "=" [ Expression ] "." .
 Expression  = Alternative { "|" Alternative } .
 Alternative = Term { Term } .
-Term        = production_name | token [ "..." token ] | Group | Option | Repetition .
+Term        = production_name | token [ "…" token ] | Group | Option | Repetition .
 Group       = "(" Expression ")" .
 Option      = "[" Expression "]" .
 Repetition  = "{" Expression "}" .
@@ -73,8 +72,12 @@ double quotes <code>""</code> or back quotes <code>``</code>.
 </p>
 
 <p>
-The form <code>a ... b</code> represents the set of characters from
-<code>a</code> through <code>b</code> as alternatives.
+The form <code>a … b</code> represents the set of characters from
+<code>a</code> through <code>b</code> as alternatives. The horizontal
+ellipis … is also used elsewhere in the spec to informally denote various
+enumerations or code snippets that are not further specified. The character …
+(as opposed to the three characters <code>...</code>) is not a token of the Go
+language.
 </p>
 
 <h2 id="Source_code_representation">Source code representation</h2>
@@ -123,9 +126,9 @@ The underscore character <code>_</code> (U+005F) is considered a letter.
 </p>
 <pre class="ebnf">
 letter        = unicode_letter | "_" .
-decimal_digit = "0" ... "9" .
-octal_digit   = "0" ... "7" .
-hex_digit     = "0" ... "9" | "A" ... "F" | "a" ... "f" .
+decimal_digit = "0" … "9" .
+octal_digit   = "0" … "7" .
+hex_digit     = "0" … "9" | "A" … "F" | "a" … "f" .
 </pre>
 
 <h2 id="Lexical_elements">Lexical elements</h2>
@@ -287,7 +290,7 @@ An optional prefix sets a non-decimal base: <code>0</code> for octal, <code>0x</
 </p>
 <pre class="ebnf">
 int_lit     = decimal_lit | octal_lit | hex_lit .
-decimal_lit = ( "1" ... "9" ) { decimal_digit } .
+decimal_lit = ( "1" … "9" ) { decimal_digit } .
 octal_lit   = "0" { octal_digit } .
 hex_lit     = "0" ( "x" | "X" ) hex_digit { hex_digit } .
 </pre>
@@ -822,7 +825,7 @@ make([]T, length, capacity)
 </pre>
 
 <p>
-The <code>make()</code> call allocates a new, hidden array to which the returned
+A call to <code>make</code> allocates a new, hidden array to which the returned
 slice value refers. That is, executing
 </p>
 
@@ -1054,9 +1057,9 @@ have the method set
 </p>
 
 <pre>
-func (p T) Read(b Buffer) bool { return ... }
-func (p T) Write(b Buffer) bool { return ... }
-func (p T) Close() { ... }
+func (p T) Read(b Buffer) bool { return … }
+func (p T) Write(b Buffer) bool { return … }
+func (p T) Close() { … }
 </pre>
 
 <p>
@@ -1094,8 +1097,8 @@ If <code>S1</code> and <code>S2</code> also implement
 </p>
 
 <pre>
-func (p T) Lock() { ... }
-func (p T) Unlock() { ... }
+func (p T) Lock() { … }
+func (p T) Unlock() { … }
 </pre>
 
 <p>
@@ -1177,7 +1180,6 @@ maps grow to accommodate the number of items
 stored in them, with the exception of <code>nil</code> maps.
 A <code>nil</code> map is equivalent to an empty map except that no elements
 may be added.
-</code>
 
 <h3 id="Channel_types">Channel types</h3>
 
@@ -1697,7 +1699,7 @@ of an interface type or of elements of a composite type remains unchanged:
 </p>
 
 <pre>
-// A Mutex is a data type with two methods Lock and Unlock.
+// A Mutex is a data type with two methods, Lock and Unlock.
 type Mutex struct         { /* Mutex fields */ }
 func (m *Mutex) Lock()    { /* Lock implementation */ }
 func (m *Mutex) Unlock()  { /* Unlock implementation */ }
@@ -2100,7 +2102,7 @@ element index plus one. A slice literal has the form
 </p>
 
 <pre>
-[]T{x1, x2, ... xn}
+[]T{x1, x2, … xn}
 </pre>
 
 <p>
@@ -2108,7 +2110,7 @@ and is a shortcut for a slice operation applied to an array literal:
 </p>
 
 <pre>
-[n]T{x1, x2, ... xn}[0 : n]
+[n]T{x1, x2, … xn}[0 : n]
 </pre>
 
 <p>
@@ -2134,8 +2136,8 @@ parentheses.
 </p>
 
 <pre>
-if x == (T{a,b,c}[i]) { ... }
-if (x == T{a,b,c}[i]) { ... }
+if x == (T{a,b,c}[i]) { … }
+if (x == T{a,b,c}[i]) { … }
 </pre>
 
 <p>
@@ -2568,11 +2570,11 @@ Given an expression <code>f</code> of function type
 </p>
 
 <pre>
-f(a1, a2, ... an)
+f(a1, a2, … an)
 </pre>
 
 <p>
-calls <code>f</code> with arguments <code>a1, a2, ... an</code>.
+calls <code>f</code> with arguments <code>a1, a2, … an</code>.
 Except for one special case, arguments must be single-valued expressions
 <a href="#Assignability">assignable</a> to the parameter types of
 <code>F</code> and are evaluated before the function is called.
@@ -2651,7 +2653,7 @@ arguments bound to the final parameter and may differ for each call site.
 Given the function and call
 </p>
 <pre>
-func Greeting(prefix string, who ... string)
+func Greeting(prefix string, who ...string)
 Greeting("hello:", "Joe", "Anna", "Eileen")
 </pre>
 
@@ -2702,42 +2704,34 @@ unary_op   = "+" | "-" | "!" | "^" | "*" | "&amp;" | "&lt;-" .
 <p>
 Comparisons are discussed <a href="#Comparison_operators">elsewhere</a>.
 For other binary operators, the operand types must be <a href="#Type_identity">identical</a>
-unless the operation involves channels, shifts, or untyped <a href="#Constants">constants</a>.
+unless the operation involves shifts or untyped <a href="#Constants">constants</a>.
 For operations involving constants only, see the section on
 <a href="#Constant_expressions">constant expressions</a>.
 </p>
 
 <p>
-In a channel send, the first operand is always a channel and the second
-must be a value <a href="#Assignability">assignable</a>
-to the channel's element type.
-</p>
-
-<p>
-Except for shift operations,
-if one operand is an untyped <a href="#Constants">constant</a>
+Except for shift operations, if one operand is an untyped <a href="#Constants">constant</a>
 and the other operand is not, the constant is <a href="#Conversions">converted</a>
 to the type of the other operand.
 </p>
 
 <p>
-The right operand in a shift operation must have unsigned integer type
+The right operand in a shift expression must have unsigned integer type
 or be an untyped constant that can be converted to unsigned integer type.
-</p>
-
-<p>
-If the left operand of a non-constant shift operation is an untyped constant,
-the type of constant is what it would be if the shift operation were replaced by
-the left operand alone.
+If the left operand of a non-constant shift expression is an untyped constant,
+the type of the constant is what it would be if the shift expression were
+replaced by its left operand alone.
 </p>
 
 <pre>
 var s uint = 33
-var i = 1&lt;&lt;s            // 1 has type int
-var j = int32(1&lt;&lt;s)     // 1 has type int32; j == 0
-var u = uint64(1&lt;&lt;s)    // 1 has type uint64; u == 1&lt;&lt;33
-var f = float32(1&lt;&lt;s)   // illegal: 1 has type float32, cannot shift
-var g = float32(1&lt;&lt;33)  // legal; 1&lt;&lt;33 is a constant shift operation; g == 1&lt;&lt;33
+var i = 1&lt;&lt;s           // 1 has type int
+var j int32 = 1&lt;&lt;s     // 1 has type int32; j == 0
+var k = uint64(1&lt;&lt;s)   // 1 has type uint64; k == 1&lt;&lt;33
+var m int = 1.0&lt;&lt;s     // legal: 1.0 has type int
+var u = 1.0&lt;&lt;s         // illegal: 1.0 has type float64, cannot shift
+var v float32 = 1&lt;&lt;s   // illegal: 1 has type float32, cannot shift
+var w int64 = 1.0&lt;&lt;33  // legal: 1.0&lt;&lt;33 is a constant shift expression
 </pre>
 
 <h3 id="Operator_precedence">Operator precedence</h3>
@@ -2869,8 +2863,8 @@ be replaced by a bitwise "and" operation:
 <p>
 The shift operators shift the left operand by the shift count specified by the
 right operand. They implement arithmetic shifts if the left operand is a signed
-integer and logical shifts if it is an unsigned integer. The shift count must
-be an unsigned integer. There is no upper limit on the shift count. Shifts behave
+integer and logical shifts if it is an unsigned integer.
+There is no upper limit on the shift count. Shifts behave
 as if the left operand is shifted <code>n</code> times by 1 for a shift
 count of <code>n</code>.
 As a result, <code>x &lt;&lt; 1</code> is the same as <code>x*2</code>
@@ -3382,20 +3376,34 @@ respectively. Except for shift operations, if the operands of a binary operation
 are an untyped integer constant and an untyped floating-point constant,
 the integer constant is converted to an untyped floating-point constant
 (relevant for <code>/</code> and <code>%</code>).
-Similarly,
-untyped integer or floating-point constants may be used as operands
+Similarly, untyped integer or floating-point constants may be used as operands
 wherever it is legal to use an operand of complex type;
 the integer or floating point constant is converted to a
 complex constant with a zero imaginary part.
 </p>
 
 <p>
-Applying an operator to untyped constants results in an untyped
+A constant <a href="#Comparison_operators">comparison</a> always yields
+a constant of type <code>bool</code>. If the left operand of a constant
+<a href="#Operators">shift expression</a> is an untyped constant, the
+result is an integer constant; otherwise it is a constant of the same
+type as the left operand, which must be of integer type
+(§<a href="#Arithmetic_operators">Arithmetic operators</a>).
+Applying all other operators to untyped constants results in an untyped
 constant of the same kind (that is, a boolean, integer, floating-point,
-complex, or string constant), except for
-<a href="#Comparison_operators">comparison operators</a>, which result in
-a constant of type <code>bool</code>.
+complex, or string constant).
 </p>
+
+<pre>
+const a = 2 + 3.0          // a == 5.0   (floating-point constant)
+const b = 15 / 4           // b == 3     (integer constant)
+const c = 15 / 4.0         // c == 3.75  (floating-point constant)
+const d = 1 &lt;&lt; 3.0         // d == 8     (integer constant)
+const e = 1.0 &lt;&lt; 3         // e == 8     (integer constant)
+const f = int32(1) &lt;&lt; 33   // f == 0     (type int32)
+const g = float64(2) &gt;&gt; 1  // illegal    (float64(2) is a typed floating-point constant)
+const h = "foo" &gt; "bar"    // h == true  (type bool)
+</pre>
 
 <p>
 Imaginary literals are untyped complex constants (with zero real part)
@@ -4886,7 +4894,7 @@ package main
 
 import "fmt"
 
-// Send the sequence 2, 3, 4, ... to channel 'ch'.
+// Send the sequence 2, 3, 4, … to channel 'ch'.
 func generate(ch chan&lt;- int) {
 	for i := 2; ; i++ {
 		ch &lt;- i  // Send 'i' to channel 'ch'.
@@ -4926,7 +4934,7 @@ func main() {
 <h3 id="The_zero_value">The zero value</h3>
 <p>
 When memory is allocated to store a value, either through a declaration
-or <code>make()</code> or <code>new()</code> call,
+or a call of <code>make</code> or <code>new</code>,
 and no explicit initialization is provided, the memory is
 given a default initialization.  Each element of such a value is
 set to the <i>zero value</i> for its type: <code>false</code> for booleans,
@@ -4984,7 +4992,7 @@ func init()
 <p>
 defined in its source.
 A package may contain multiple
-<code>init()</code> functions, even
+<code>init</code> functions, even
 within a single source file; they execute
 in unspecified order.
 </p>
@@ -5014,8 +5022,8 @@ program is complete. Therefore, all initialization code is run in a single
 goroutine.
 </p>
 <p>
-An <code>init()</code> function cannot be referred to from anywhere
-in a program. In particular, <code>init()</code> cannot be called explicitly,
+An <code>init</code> function cannot be referred to from anywhere
+in a program. In particular, <code>init</code> cannot be called explicitly,
 nor can a pointer to <code>init</code> be assigned to a function variable.
 </p>
 <p>
@@ -5037,7 +5045,7 @@ arguments and returns no value.
 </p>
 
 <pre>
-func main() { ... }
+func main() { … }
 </pre>
 
 <p>
