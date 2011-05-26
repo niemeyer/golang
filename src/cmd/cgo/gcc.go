@@ -100,25 +100,80 @@ NextLine:
 			fatalf("%s: bad #cgo option: %s", srcfile, fields[0])
 		}
 
-		if k != "CFLAGS" && k != "LDFLAGS" {
+		v := strings.TrimSpace(fields[1])
+
+		var err os.Error
+		switch k {
+
+		case "CFLAGS", "LDFLAGS":
+			err = p.addToFlag(k, v)
+
+		case "pkg-config":
+			var cflags, ldflags string
+			cflags, ldflags, err = pkgConfig(v)
+			if err == nil {
+				err = p.addToFlag("CFLAGS", cflags)
+			}
+			if err == nil {
+				err = p.addToFlag("LDFLAGS", ldflags)
+			}
+
+		default:
 			fatalf("%s: unsupported #cgo option %s", srcfile, k)
+
+		}
+		if err != nil {
+			fatalf("%s: bad #cgo option %s: %s", srcfile, k, err)
 		}
 
-		v := strings.TrimSpace(fields[1])
-		args, err := splitQuoted(v)
-		if err != nil {
-			fatalf("%s: bad #cgo option %s: %s", srcfile, k, err.String())
-		}
-		if oldv, ok := p.CgoFlags[k]; ok {
-			p.CgoFlags[k] = oldv + " " + v
-		} else {
-			p.CgoFlags[k] = v
-		}
-		if k == "CFLAGS" {
-			p.GccOptions = append(p.GccOptions, args...)
-		}
 	}
 	f.Preamble = strings.Join(linesOut, "\n")
+}
+
+// addToFlag appends content to the named flag.  All flags are later
+// written out onto the _cgo_flags file for the build system to use.
+func (p *Package) addToFlag(name, content string) os.Error {
+	// Always split up, to report errors early.
+	args, err := splitQuoted(content)
+	if err != nil {
+		return err
+	}
+
+	if oldv, ok := p.CgoFlags[name]; ok {
+		p.CgoFlags[name] = oldv + " " + content
+	} else {
+		p.CgoFlags[name] = content
+	}
+
+	if name == "CFLAGS" {
+		// We'll also need these when preprocessing for dwarf information.
+		p.GccOptions = append(p.GccOptions, args...)
+	}
+
+	return nil
+}
+
+// pkgConfig runs pkg-config and extracts --libs and --cflags information.
+func pkgConfig(name string) (cflags, ldflags string, err os.Error) {
+	if len(name) == 0 || !safeName(name) || name[0] == '-' {
+		return "", "", os.NewError(fmt.Sprintf("invalid name: %q", name))
+	}
+
+	stdout, stderr, ok := run(nil, []string{"pkg-config", "--cflags", name})
+	if !ok {
+		os.Stderr.Write(stderr)
+		return "", "", os.NewError("pkg-config failed")
+	}
+	cflags = strings.TrimSpace(string(stdout))
+
+	stdout, stderr, ok = run(nil, []string{"pkg-config", "--libs", name})
+	if !ok {
+		os.Stderr.Write(stderr)
+		return "", "", os.NewError("pkg-config failed")
+	}
+	ldflags = strings.TrimSpace(string(stdout))
+
+	return
 }
 
 // splitQuoted splits the string s around each instance of one or more consecutive
@@ -180,6 +235,20 @@ func splitQuoted(s string) (r []string, err os.Error) {
 		err = os.ErrorString("unfinished escaping")
 	}
 	return args, err
+}
+
+var safeBytes = []byte("+-./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz")
+
+func safeName(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; c < 0x80 && bytes.IndexByte(safeBytes, c) < 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // Translate rewrites f.AST, the original Go input, to remove
