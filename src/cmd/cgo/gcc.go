@@ -100,23 +100,21 @@ NextLine:
 			fatalf("%s: bad #cgo option: %s", srcfile, fields[0])
 		}
 
-		v := strings.TrimSpace(fields[1])
+		args, err := splitQuoted(fields[1])
+		if err != nil {
+			fatalf("%s: bad #cgo option %s: %s", srcfile, k, err)
+		}
 
-		var err os.Error
 		switch k {
 
 		case "CFLAGS", "LDFLAGS":
-			err = p.addToFlag(k, v)
+			p.addToFlag(k, args)
 
 		case "pkg-config":
-			var cflags, ldflags string
-			cflags, ldflags, err = pkgConfig(v)
-			if err == nil {
-				err = p.addToFlag("CFLAGS", cflags)
-			}
-			if err == nil {
-				err = p.addToFlag("LDFLAGS", ldflags)
-			}
+			var cflags, ldflags []string
+			cflags, ldflags, err = pkgConfig(args)
+			p.addToFlag("CFLAGS", cflags)
+			p.addToFlag("LDFLAGS", ldflags)
 
 		default:
 			fatalf("%s: unsupported #cgo option %s", srcfile, k)
@@ -130,49 +128,47 @@ NextLine:
 	f.Preamble = strings.Join(linesOut, "\n")
 }
 
-// addToFlag appends content to the named flag.  All flags are later
-// written out onto the _cgo_flags file for the build system to use.
-func (p *Package) addToFlag(name, content string) os.Error {
-	// Always split up, to report errors early.
-	args, err := splitQuoted(content)
-	if err != nil {
-		return err
-	}
-
-	if oldv, ok := p.CgoFlags[name]; ok {
-		p.CgoFlags[name] = oldv + " " + content
+// addToFlag appends args to flag.  All flags are later written out onto the
+// _cgo_flags file for the build system to use.
+func (p *Package) addToFlag(flag string, args []string) {
+	if oldv, ok := p.CgoFlags[flag]; ok {
+		p.CgoFlags[flag] = oldv + " " + strings.Join(args, " ")
 	} else {
-		p.CgoFlags[name] = content
+		p.CgoFlags[flag] = strings.Join(args, " ")
 	}
-
-	if name == "CFLAGS" {
+	if flag == "CFLAGS" {
 		// We'll also need these when preprocessing for dwarf information.
 		p.GccOptions = append(p.GccOptions, args...)
 	}
-
-	return nil
 }
 
-// pkgConfig runs pkg-config and extracts --libs and --cflags information.
-func pkgConfig(name string) (cflags, ldflags string, err os.Error) {
-	if len(name) == 0 || !safeName(name) || name[0] == '-' {
-		return "", "", os.NewError(fmt.Sprintf("invalid name: %q", name))
+// pkgConfig runs pkg-config and extracts --libs and --cflags information
+// for packages.
+func pkgConfig(packages []string) (cflags, ldflags []string, err os.Error) {
+	for _, name := range packages {
+		if len(name) == 0 || !safeName(name) || name[0] == '-' {
+			return nil, nil, os.NewError(fmt.Sprintf("invalid name: %q", name))
+		}
 	}
 
-	stdout, stderr, ok := run(nil, []string{"pkg-config", "--cflags", name})
+	args := append([]string{"pkg-config", "--cflags"}, packages...)
+	stdout, stderr, ok := run(nil, args)
 	if !ok {
 		os.Stderr.Write(stderr)
-		return "", "", os.NewError("pkg-config failed")
+		return nil, nil, os.NewError("pkg-config failed")
 	}
-	cflags = strings.TrimSpace(string(stdout))
+	cflags, err = splitQuoted(string(stdout))
+	if err != nil {
+		return
+	}
 
-	stdout, stderr, ok = run(nil, []string{"pkg-config", "--libs", name})
+	args = append([]string{"pkg-config", "--libs"}, packages...)
+	stdout, stderr, ok = run(nil, args)
 	if !ok {
 		os.Stderr.Write(stderr)
-		return "", "", os.NewError("pkg-config failed")
+		return nil, nil, os.NewError("pkg-config failed")
 	}
-	ldflags = strings.TrimSpace(string(stdout))
-
+	ldflags, err = splitQuoted(string(stdout))
 	return
 }
 
