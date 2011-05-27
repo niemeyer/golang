@@ -4454,3 +4454,7 @@ data/src/pkg/net/sendfile_stub.go.i
 data/test/shift2.go.i
 data/test/fixedbugs/bug322.dir/main.go.i
 data/misc/chrome/gophertool/manifest.json.i
+data/src/pkg/syscall/route_bsd.go.i
+data/src/pkg/http/spdy/framer_test.go.i
+data/src/pkg/http/spdy/framer.go.i
+data/src/pkg/syscall/netlink_linux.go.i
