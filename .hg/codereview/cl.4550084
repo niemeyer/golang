@@ -1,8 +1,0 @@
-Mailed: True
-Description:
-	cgo: support pkg-config for flags and libs
-	
-	Fixes issue #1853.
-Files:
-	src/cmd/cgo/doc.go
-	src/cmd/cgo/gcc.go
