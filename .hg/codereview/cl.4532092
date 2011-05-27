@@ -1,6 +1,8 @@
-Mailed: False
+Mailed: True
 Description:
 	cgo: restrict #cgo directives to prevent shell expansion
+	
+	Fixes issue #1879.
 	
 	Directives were not directly expanded, but since their
 	content ended up in makefiles, further expansion would
@@ -13,3 +15,4 @@ Description:
 	and CFLAGS information, so hopefully this is a
 	reasonable default to get started.
 Files:
+	src/cmd/cgo/gcc.go
