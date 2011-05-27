@@ -111,8 +111,10 @@ NextLine:
 			p.addToFlag(k, args)
 
 		case "pkg-config":
-			var cflags, ldflags []string
-			cflags, ldflags, err = pkgConfig(args)
+			cflags, ldflags, err := pkgConfig(args)
+			if err != nil {
+				fatalf("%s: bad #cgo option %s: %s", srcfile, k, err)
+			}
 			p.addToFlag("CFLAGS", cflags)
 			p.addToFlag("LDFLAGS", ldflags)
 
@@ -120,10 +122,6 @@ NextLine:
 			fatalf("%s: unsupported #cgo option %s", srcfile, k)
 
 		}
-		if err != nil {
-			fatalf("%s: bad #cgo option %s: %s", srcfile, k, err)
-		}
-
 	}
 	f.Preamble = strings.Join(linesOut, "\n")
 }
