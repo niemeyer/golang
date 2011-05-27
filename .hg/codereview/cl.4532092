@@ -1,0 +1,15 @@
+Mailed: False
+Description:
+	cgo: restrict #cgo directives to prevent shell expansion
+	
+	Directives were not directly expanded, but since their
+	content ended up in makefiles, further expansion would
+	take place there.  This prevents such artifacts by
+	restricting the set of characters that may be used in
+	a directive value.
+	
+	To build the list of safe characters I went through the
+	contents of /usr/lib/pkgconfig and extracted LDFLAGS
+	and CFLAGS information, so hopefully this is a
+	reasonable default to get started.
+Files:
