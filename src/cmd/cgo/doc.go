@@ -36,7 +36,8 @@ systems.  For example:
 	import "C"
 
 Alternatively, CFLAGS and LDFLAGS may be obtained via the pkg-config
-tool using a #cgo directive with the package names:
+tool using a '#cgo pkg-config:' directive followed by the package names.
+For example:
 
 	// #cgo pkg-config: png cairo
 	// #include <png.h>
