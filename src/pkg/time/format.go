@@ -272,9 +272,19 @@ func (t *Time) Format(layout string) string {
 		case stdHour:
 			p = zeroPad(t.Hour)
 		case stdHour12:
-			p = strconv.Itoa(t.Hour % 12)
+			// Noon is 12PM, midnight is 12AM.
+			hr := t.Hour % 12
+			if hr == 0 {
+				hr = 12
+			}
+			p = strconv.Itoa(hr)
 		case stdZeroHour12:
-			p = zeroPad(t.Hour % 12)
+			// Noon is 12PM, midnight is 12AM.
+			hr := t.Hour % 12
+			if hr == 0 {
+				hr = 12
+			}
+			p = zeroPad(hr)
 		case stdMinute:
 			p = strconv.Itoa(t.Minute)
 		case stdZeroMinute:
@@ -429,6 +439,7 @@ func skip(value, prefix string) (string, os.Error) {
 func Parse(alayout, avalue string) (*Time, os.Error) {
 	var t Time
 	rangeErrString := "" // set if a value is out of range
+	amSet := false       // do we need to subtract 12 from the hour for midnight?
 	pmSet := false       // do we need to add 12 to the hour?
 	layout, value := alayout, avalue
 	// Each iteration processes one std value.
@@ -558,9 +569,12 @@ func Parse(alayout, avalue string) (*Time, os.Error) {
 				break
 			}
 			p, value = value[0:2], value[2:]
-			if p == "PM" {
+			switch p {
+			case "PM":
 				pmSet = true
-			} else if p != "AM" {
+			case "AM":
+				amSet = true
+			default:
 				err = errBad
 			}
 		case stdpm:
@@ -569,9 +583,12 @@ func Parse(alayout, avalue string) (*Time, os.Error) {
 				break
 			}
 			p, value = value[0:2], value[2:]
-			if p == "pm" {
+			switch p {
+			case "pm":
 				pmSet = true
-			} else if p != "am" {
+			case "am":
+				amSet = true
+			default:
 				err = errBad
 			}
 		case stdTZ:
@@ -613,6 +630,8 @@ func Parse(alayout, avalue string) (*Time, os.Error) {
 	}
 	if pmSet && t.Hour < 12 {
 		t.Hour += 12
+	} else if amSet && t.Hour == 12 {
+		t.Hour = 0
 	}
 	return &t, nil
 }
