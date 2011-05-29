@@ -1,0 +1,6 @@
+Mailed: False
+Description:
+	template: fix quote-handling with formatters
+	
+	Fixes issue #1896.
+Files:
