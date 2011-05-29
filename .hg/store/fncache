@@ -4458,3 +4458,6 @@ data/src/pkg/syscall/route_bsd.go.i
 data/src/pkg/http/spdy/framer_test.go.i
 data/src/pkg/http/spdy/framer.go.i
 data/src/pkg/syscall/netlink_linux.go.i
+data/src/pkg/os/path_plan9.go.i
+data/src/pkg/os/path_unix.go.i
+data/src/pkg/os/path_windows.go.i
