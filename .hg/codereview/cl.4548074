@@ -1,0 +1,12 @@
+Mailed: False
+Description:
+	filepath: Abs must always return a clean path
+	
+	When I was first coding Abs, I wondered if people wouldn't
+	expect the path to be consistently clean, even if the path
+	passed in was already absolute.
+	
+	CL 4524078 has a potential problem based on exactly that
+	assumption, so it feels like this behavior is indeed the
+	most useful and least surprising.
+Files:
