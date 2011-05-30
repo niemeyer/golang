@@ -491,7 +491,7 @@ func (t *Template) formatter(name string) func(io.Writer, string, ...interface{}
 
 // -- Parsing
 
-// Allocate a new variable-evaluation element.
+// newVariable allocates a new variable-evaluation element.
 func (t *Template) newVariable(words []string) *variableElement {
 	formatters := extractFormatters(words)
 	args := make([]interface{}, len(words))
@@ -540,14 +540,11 @@ func (t *Template) newVariable(words []string) *variableElement {
 }
 
 // extractFormatters extracts a list of formatters from words.
-//
 // After the final space-separated argument in a variable, formatters may be
 // specified separated by pipe symbols. For example: {a b c|d|e}
-//
 // The words parameter still has the formatters joined by '|' in the last word.
 // extractFormatters splits formatters, replaces the last word with the content
 // found before the first '|' within it, and returns the formatters obtained.
-//
 // If no formatters are found in words, the default formatter is returned.
 func extractFormatters(words []string) (formatters []string) {
 	// "" is the default formatter.
@@ -555,7 +552,6 @@ func extractFormatters(words []string) (formatters []string) {
 	if len(words) == 0 {
 		return
 	}
-
 	var bar int
 	lastWord := words[len(words)-1]
 	if isQuote(lastWord[0]) {
@@ -570,7 +566,6 @@ func extractFormatters(words []string) (formatters []string) {
 			return
 		}
 	}
-
 	words[len(words)-1] = lastWord[0:bar]
 	formatters = strings.Split(lastWord[bar+1:], "|", -1)
 	return
