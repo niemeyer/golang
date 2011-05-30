@@ -1,8 +1,0 @@
-Mailed: True
-Description:
-	template: fix and clean interaction between quotes and formatters
-	
-	Fixes issue #1897.
-Files:
-	src/pkg/template/template.go
-	src/pkg/template/template_test.go
