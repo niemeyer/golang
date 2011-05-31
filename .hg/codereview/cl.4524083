@@ -1,0 +1,6 @@
+Mailed: False
+Description:
+	sync: wake up current goroutine on Cond.Signal if waiters=0
+	
+	Fixes issue #1648.
+Files:
