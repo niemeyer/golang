@@ -1,4 +1,4 @@
-Mailed: False
+Mailed: True
 Description:
 	filepath: Abs must always return a clean path
 	
@@ -10,3 +10,5 @@ Description:
 	assumption, so it feels like this behavior is indeed the
 	most useful and least surprising.
 Files:
+	src/pkg/path/filepath/path.go
+	src/pkg/path/filepath/path_test.go
