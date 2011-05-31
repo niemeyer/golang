@@ -62,6 +62,10 @@ func (c *Cond) Signal() {
 	if c.waiters > 0 {
 		c.waiters--
 		runtime.Semrelease(c.sema)
+		if c.waiters == 0 {
+			// See the comment in Broadcast.
+			c.sema = nil
+		}
 	}
 	c.m.Unlock()
 }

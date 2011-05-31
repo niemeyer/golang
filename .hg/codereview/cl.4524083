@@ -1,6 +1,8 @@
-Mailed: False
+Mailed: True
 Description:
 	sync: wake up current goroutine on Cond.Signal if waiters=0
 	
 	Fixes issue #1648.
 Files:
+	src/pkg/sync/cond.go
+	src/pkg/sync/cond_test.go
