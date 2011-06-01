@@ -1,8 +1,13 @@
 Mailed: True
 Description:
-	sync: wake up current goroutine on Cond.Signal if waiters=0
+	sync: always wake up previously sleeping goroutines on Cond.Signal
 	
-	Fixes issue #1648.
+	This changes the internal implementation of Cond so that
+	it uses two generations of waiters.  This enables Signal
+	to guarantee that it will only wake up waiters that are
+	currently sleeping at the call time.
+	
+	Fixes issue 1648.
 Files:
 	src/pkg/sync/cond.go
 	src/pkg/sync/cond_test.go

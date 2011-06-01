@@ -14,10 +14,12 @@ import "runtime"
 // which must be held when changing the condition and
 // when calling the Wait method.
 type Cond struct {
-	L       Locker // held while observing or changing the condition
-	m       Mutex  // held to avoid internal races
-	waiters int    // number of goroutines blocked on Wait
-	sema    *uint32
+	L          Locker  // held while observing or changing the condition
+	m          Mutex   // held to avoid internal races
+	oldwaiters int     // number of goroutines blocked on Wait for oldsema
+	newwaiters int     // number of goroutines blocked on Wait for newsema
+	oldsema    *uint32 // semaphore for old generation (wakes up first)
+	newsema    *uint32 // semaphore for new generation (wakes up later)
 }
 
 // NewCond returns a new Cond with Locker l.
@@ -42,11 +44,11 @@ func NewCond(l Locker) *Cond {
 //
 func (c *Cond) Wait() {
 	c.m.Lock()
-	if c.sema == nil {
-		c.sema = new(uint32)
+	if c.newsema == nil {
+		c.newsema = new(uint32)
 	}
-	s := c.sema
-	c.waiters++
+	s := c.newsema
+	c.newwaiters++
 	c.m.Unlock()
 	c.L.Unlock()
 	runtime.Semacquire(s)
@@ -59,13 +61,16 @@ func (c *Cond) Wait() {
 // during the call.
 func (c *Cond) Signal() {
 	c.m.Lock()
-	if c.waiters > 0 {
-		c.waiters--
-		runtime.Semrelease(c.sema)
-		if c.waiters == 0 {
-			// See the comment in Broadcast.
-			c.sema = nil
-		}
+	if c.oldwaiters == 0 && c.newwaiters > 0 {
+		// Swap generations.
+		c.oldwaiters = c.newwaiters
+		c.oldsema = c.newsema
+		c.newwaiters = 0
+		c.newsema = nil
+	}
+	if c.oldwaiters > 0 {
+		c.oldwaiters--
+		runtime.Semrelease(c.oldsema)
 	}
 	c.m.Unlock()
 }
@@ -76,19 +81,16 @@ func (c *Cond) Signal() {
 // during the call.
 func (c *Cond) Broadcast() {
 	c.m.Lock()
-	if c.waiters > 0 {
-		s := c.sema
-		n := c.waiters
-		for i := 0; i < n; i++ {
-			runtime.Semrelease(s)
+	if c.oldwaiters > 0 || c.newwaiters > 0 {
+		for i := 0; i < c.oldwaiters; i++ {
+			runtime.Semrelease(c.oldsema)
 		}
-		// We just issued n wakeups via the semaphore s.
-		// To ensure that they wake up the existing waiters
-		// and not waiters that arrive after Broadcast returns,
-		// clear c.sema.  The next operation will allocate
-		// a new one.
-		c.sema = nil
-		c.waiters = 0
+		for i := 0; i < c.newwaiters; i++ {
+			runtime.Semrelease(c.newsema)
+		}
+		c.oldwaiters = 0
+		c.newwaiters = 0
+		c.newsema = nil
 	}
 	c.m.Unlock()
 }
