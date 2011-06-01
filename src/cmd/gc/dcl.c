@@ -188,6 +188,7 @@ declare(Node *n, int ctxt)
 		else if(n->op == ONAME)
 			gen = ++vargen;
 		pushdcl(s);
+		n->curfn = curfn;
 	}
 	if(ctxt == PAUTO)
 		n->xoffset = BADWIDTH;
@@ -521,6 +522,30 @@ colas(NodeList *left, NodeList *right)
 	}
 
 	return as;
+}
+
+/*
+ * declare the arguments in an
+ * interface field declaration.
+ */
+void
+ifacedcl(Node *n)
+{
+	if(n->op != ODCLFIELD || n->right == N)
+		fatal("ifacedcl");
+
+	dclcontext = PAUTO;
+	markdcl();
+	funcdepth++;
+	n->outer = curfn;
+	curfn = n;
+	funcargs(n->right);
+
+	// funcbody is normally called after the parser has
+	// seen the body of a function but since an interface
+	// field declaration does not have a body, we must
+	// call it now to pop the current declaration context.
+	funcbody(n);
 }
 
 /*

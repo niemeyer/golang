@@ -770,8 +770,15 @@ walkexpr(Node **np, NodeList **init)
 		t = n->left->type;
 		if(n->list && n->list->n->op == OAS)
 			goto ret;
-		walkexpr(&n->left, init);
+
+		if(n->left->op == OCLOSURE) {
+			walkcallclosure(n, init);
+			t = n->left->type;
+		} else
+			walkexpr(&n->left, init);
+
 		walkexprlist(n->list, init);
+
 		ll = ascompatte(n->op, n->isddd, getinarg(t), n->list, 0, init);
 		n->list = reorder1(ll);
 		if(isselect(n)) {
@@ -1525,7 +1532,7 @@ ascompatee(int op, NodeList *nl, NodeList *nr, NodeList **init)
 static int
 fncall(Node *l, Type *rt)
 {
-	if(l->ullman >= UINF)
+	if(l->ullman >= UINF || l->op == OINDEXMAP)
 		return 1;
 	if(eqtype(l->type, rt))
 		return 0;

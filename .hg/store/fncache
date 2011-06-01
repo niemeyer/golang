@@ -4461,3 +4461,14 @@ data/src/pkg/syscall/netlink_linux.go.i
 data/src/pkg/os/path_plan9.go.i
 data/src/pkg/os/path_unix.go.i
 data/src/pkg/os/path_windows.go.i
+data/src/pkg/mail/message.go.i
+data/misc/godoc/init.go.i
+data/misc/chrome/gophertool/gopher.js.i
+data/test/fixedbugs/bug342.go.i
+data/src/pkg/mail/Makefile.i
+data/misc/godoc/app.yaml.i
+data/misc/chrome/gophertool/background.html.i
+data/src/pkg/mail/message_test.go.i
+data/test/fixedbugs/bug343.go.i
+data/src/pkg/runtime/closure_test.go.i
+data/misc/godoc/README.i
