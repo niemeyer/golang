@@ -14,14 +14,15 @@ import (
 	"strconv"
 )
 
-// PathError records the name of a binary that was not
-// found on the current $PATH.
-type PathError struct {
-	Name string
+// Error records the name of a binary that failed to be be executed
+// and the reason it failed.
+type Error struct {
+	Name  string
+	Error os.Error
 }
 
-func (e *PathError) String() string {
-	return "command " + strconv.Quote(e.Name) + " not found in $PATH"
+func (e *Error) String() string {
+	return "exec: " + strconv.Quote(e.Name) + ": " + e.Error.String()
 }
 
 // Cmd represents an external command being prepared or run.
@@ -32,8 +33,8 @@ type Cmd struct {
 	// value.
 	Path string
 
-	// Args is the command line arguments, including the command as Args[0].
-	// If Args is empty, Run uses {Path}.
+	// Args holds command line arguments, including the command as Args[0].
+	// If the Args field is empty or nil, Run uses {Path}.
 	// 
 	// In typical use, both Path and Args are set by calling Command.
 	Args []string
@@ -44,7 +45,7 @@ type Cmd struct {
 
 	// Dir specifies the working directory of the command.
 	// If Dir is the empty string, Run runs the command in the
-	// process's current directory.
+	// calling process's current directory.
 	Dir string
 
 	// Stdin specifies the process's standard input.
@@ -63,9 +64,10 @@ type Cmd struct {
 
 	err             os.Error // last error (from LookPath, stdin, stdout, stderr)
 	process         *os.Process
+	finished        bool // when Wait was called
 	childFiles      []*os.File
-	closeAfterStart []*os.File
-	closeAfterWait  []*os.File
+	closeAfterStart []io.Closer
+	closeAfterWait  []io.Closer
 	goroutine       []func() os.Error
 	errch           chan os.Error // one send per goroutine
 }
@@ -80,7 +82,7 @@ type Cmd struct {
 // resolve the path to a complete name if possible. Otherwise it uses
 // name directly.
 //
-// The returned Cmd's Args is constructed from the command name
+// The returned Cmd's Args field is constructed from the command name
 // followed by the elements of arg, so arg should not include the
 // command name itself. For example, Command("echo", "hello")
 func Command(name string, arg ...string) *Cmd {
@@ -96,7 +98,7 @@ func Command(name string, arg ...string) *Cmd {
 }
 
 // interfaceEqual protects against panics from doing equality tests on
-// two interface with non-comparable underlying types
+// two interfaces with non-comparable underlying types
 func interfaceEqual(a, b interface{}) bool {
 	defer func() {
 		recover()
@@ -182,7 +184,7 @@ func (c *Cmd) writerDescriptor(w io.Writer) (f *os.File, err os.Error) {
 	return pw, nil
 }
 
-// Run runs the specified command and waits for it to complete.
+// Run starts the specified command and waits for it to complete.
 //
 // The returned error is nil if the command runs, has no problems
 // copying stdin, stdout, and stderr, and exits with a zero exit
@@ -198,6 +200,7 @@ func (c *Cmd) Run() os.Error {
 	return c.Wait()
 }
 
+// Start starts the specified command but does not wait for it to complete.
 func (c *Cmd) Start() os.Error {
 	if c.err != nil {
 		return c.err
@@ -239,10 +242,24 @@ func (c *Cmd) Start() os.Error {
 	return nil
 }
 
+// Wait waits for the command to exit.
+// It must have been started by Start.
+//
+// The returned error is nil if the command runs, has no problems
+// copying stdin, stdout, and stderr, and exits with a zero exit
+// status.
+//
+// If the command fails to run or doesn't complete successfully, the
+// error is of type *os.Waitmsg. Other error types may be
+// returned for I/O problems.
 func (c *Cmd) Wait() os.Error {
 	if c.process == nil {
 		return os.NewError("exec: not started")
 	}
+	if c.finished {
+		return os.NewError("exec: Wait was already called")
+	}
+	c.finished = true
 	msg, err := c.process.Wait(0)
 
 	var copyError os.Error
@@ -267,6 +284,9 @@ func (c *Cmd) Wait() os.Error {
 
 // Output runs the command and returns its standard output.
 func (c *Cmd) Output() ([]byte, os.Error) {
+	if c.Stdout != nil {
+		return nil, os.NewError("exec: Stdout already set")
+	}
 	var b bytes.Buffer
 	c.Stdout = &b
 	err := c.Run()
@@ -276,9 +296,72 @@ func (c *Cmd) Output() ([]byte, os.Error) {
 // CombinedOutput runs the command and returns its combined standard
 // output and standard error.
 func (c *Cmd) CombinedOutput() ([]byte, os.Error) {
+	if c.Stdout != nil {
+		return nil, os.NewError("exec: Stdout already set")
+	}
+	if c.Stderr != nil {
+		return nil, os.NewError("exec: Stderr already set")
+	}
 	var b bytes.Buffer
 	c.Stdout = &b
 	c.Stderr = &b
 	err := c.Run()
 	return b.Bytes(), err
+}
+
+// StdinPipe returns a pipe that will be connected to the command's
+// standard input when the command starts.
+func (c *Cmd) StdinPipe() (io.WriteCloser, os.Error) {
+	if c.Stdin != nil {
+		return nil, os.NewError("exec: Stdin already set")
+	}
+	if c.process != nil {
+		return nil, os.NewError("exec: StdinPipe after process started")
+	}
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	c.Stdin = pr
+	c.closeAfterStart = append(c.closeAfterStart, pr)
+	c.closeAfterWait = append(c.closeAfterStart, pw)
+	return pw, nil
+}
+
+// StdoutPipe returns a pipe that will be connected to the command's
+// standard output when the command starts.
+func (c *Cmd) StdoutPipe() (io.Reader, os.Error) {
+	if c.Stdout != nil {
+		return nil, os.NewError("exec: Stdout already set")
+	}
+	if c.process != nil {
+		return nil, os.NewError("exec: StdoutPipe after process started")
+	}
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	c.Stdout = pw
+	c.closeAfterStart = append(c.closeAfterStart, pw)
+	c.closeAfterWait = append(c.closeAfterStart, pr)
+	return pr, nil
+}
+
+// StderrPipe returns a pipe that will be connected to the command's
+// standard error when the command starts.
+func (c *Cmd) StderrPipe() (io.Reader, os.Error) {
+	if c.Stderr != nil {
+		return nil, os.NewError("exec: Stderr already set")
+	}
+	if c.process != nil {
+		return nil, os.NewError("exec: StderrPipe after process started")
+	}
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	c.Stderr = pw
+	c.closeAfterStart = append(c.closeAfterStart, pw)
+	c.closeAfterWait = append(c.closeAfterStart, pr)
+	return pr, nil
 }
