@@ -77,13 +77,14 @@ DIRS=\
 	encoding/pem\
 	exec\
 	exp/datafmt\
-	exp/draw\
-	exp/draw/x11\
 	exp/eval\
+	exp/gui\
+	exp/gui/x11\
 	expvar\
 	flag\
 	fmt\
 	go/ast\
+	go/build\
 	go/doc\
 	go/parser\
 	go/printer\
@@ -106,6 +107,7 @@ DIRS=\
 	http/spdy\
 	image\
 	image/bmp\
+	image/draw\
 	image/gif\
 	image/jpeg\
 	image/png\
@@ -183,7 +185,8 @@ NOTEST+=\
 	crypto\
 	crypto/openpgp/error\
 	debug/proc\
-	exp/draw/x11\
+	exp/gui\
+	exp/gui/x11\
 	go/ast\
 	go/doc\
 	go/token\
