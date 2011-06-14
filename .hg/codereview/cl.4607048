@@ -1,7 +1,0 @@
-Mailed: True
-Description:
-	ld: make .rodata section read-only
-	
-	Fixes the respective warning from elflint.
-Files:
-	src/cmd/ld/data.c
