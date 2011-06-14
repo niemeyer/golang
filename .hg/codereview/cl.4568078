@@ -5,3 +5,10 @@ Description:
 	.o files are commonly found in default ignore lists by
 	source managament tools, including dpkg-source, bzr, etc.
 Files:
+	src/pkg/debug/elf/file_test.go
+	src/pkg/debug/elf/testdata/go-relocation-test-gcc424-x86-64.o
+	src/pkg/debug/elf/testdata/go-relocation-test-gcc424-x86-64.obj
+	src/pkg/debug/elf/testdata/go-relocation-test-gcc441-x86-64.o
+	src/pkg/debug/elf/testdata/go-relocation-test-gcc441-x86-64.obj
+	src/pkg/debug/elf/testdata/go-relocation-test-gcc441-x86.o
+	src/pkg/debug/elf/testdata/go-relocation-test-gcc441-x86.obj
