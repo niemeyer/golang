@@ -4528,3 +4528,5 @@ data/src/pkg/exp/regexp/syntax/regexp.go.i
 data/src/pkg/exp/regexp/syntax/parse.go.i
 data/src/pkg/net/lookup_windows.go.i
 data/src/pkg/template/parse.go.i
+data/src/pkg/syscall/bpf_bsd.go.i
+data/src/pkg/os/str.go.i

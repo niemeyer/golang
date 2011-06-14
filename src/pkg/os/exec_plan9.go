@@ -15,6 +15,7 @@ func StartProcess(name string, argv []string, attr *ProcAttr) (p *Process, err E
 	sysattr := &syscall.ProcAttr{
 		Dir: attr.Dir,
 		Env: attr.Env,
+		Sys: attr.Sys,
 	}
 
 	// Create array of integer (system) fds.
@@ -35,6 +36,17 @@ func StartProcess(name string, argv []string, attr *ProcAttr) (p *Process, err E
 	}
 
 	return newProcess(pid, h), nil
+}
+
+// Kill causes the Process to exit immediately.
+func (p *Process) Kill() Error {
+	f, e := OpenFile("/proc/"+itoa(p.Pid)+"/ctl", O_WRONLY, 0)
+	if iserror(e) {
+		return NewSyscallError("kill", e)
+	}
+	defer f.Close()
+	_, e = f.Write([]byte("kill"))
+	return e
 }
 
 // Exec replaces the current process with an execution of the
