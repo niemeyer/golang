@@ -2,3 +2,4 @@ Mailed: False
 Description:
 	ld: make .rodata section read-only
 Files:
+	src/cmd/ld/data.c
