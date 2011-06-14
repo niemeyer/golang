@@ -4530,3 +4530,6 @@ data/src/pkg/net/lookup_windows.go.i
 data/src/pkg/template/parse.go.i
 data/src/pkg/syscall/bpf_bsd.go.i
 data/src/pkg/os/str.go.i
+data/src/pkg/debug/elf/testdata/go-relocation-test-gcc424-x86-64.obj.i
+data/src/pkg/debug/elf/testdata/go-relocation-test-gcc441-x86-64.obj.i
+data/src/pkg/debug/elf/testdata/go-relocation-test-gcc441-x86.obj.i
