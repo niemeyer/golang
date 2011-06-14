@@ -127,3 +127,153 @@ func TestDateParsing(t *testing.T) {
 		}
 	}
 }
+
+func TestAddressParsing(t *testing.T) {
+	tests := []struct {
+		addrsStr string
+		exp      []*Address
+	}{
+		// Bare address
+		{
+			`jdoe@machine.example`,
+			[]*Address{&Address{
+				Address: "jdoe@machine.example",
+			}},
+		},
+		// RFC 5322, Appendix A.1.1
+		{
+			`John Doe <jdoe@machine.example>`,
+			[]*Address{&Address{
+				Name:    "John Doe",
+				Address: "jdoe@machine.example",
+			}},
+		},
+		// RFC 5322, Appendix A.1.2
+		{
+			`"Joe Q. Public" <john.q.public@example.com>`,
+			[]*Address{&Address{
+				Name:    "Joe Q. Public",
+				Address: "john.q.public@example.com",
+			}},
+		},
+		{
+			`Mary Smith <mary@x.test>, jdoe@example.org, Who? <one@y.test>`,
+			[]*Address{
+				&Address{
+					Name:    "Mary Smith",
+					Address: "mary@x.test",
+				},
+				&Address{
+					Address: "jdoe@example.org",
+				},
+				&Address{
+					Name:    "Who?",
+					Address: "one@y.test",
+				},
+			},
+		},
+		{
+			`<boss@nil.test>, "Giant; \"Big\" Box" <sysservices@example.net>`,
+			[]*Address{
+				&Address{
+					Address: "boss@nil.test",
+				},
+				&Address{
+					Name:    `Giant; "Big" Box`,
+					Address: "sysservices@example.net",
+				},
+			},
+		},
+		// RFC 5322, Appendix A.1.3
+		// TODO(dsymonds): Group addresses.
+
+		// RFC 2047 "Q"-encoded ISO-8859-1 address.
+		{
+			`=?iso-8859-1?q?J=F6rg_Doe?= <joerg@example.com>`,
+			[]*Address{
+				&Address{
+					Name:    `Jörg Doe`,
+					Address: "joerg@example.com",
+				},
+			},
+		},
+		// RFC 2047 "Q"-encoded UTF-8 address.
+		{
+			`=?utf-8?q?J=C3=B6rg_Doe?= <joerg@example.com>`,
+			[]*Address{
+				&Address{
+					Name:    `Jörg Doe`,
+					Address: "joerg@example.com",
+				},
+			},
+		},
+		// RFC 2047, Section 8.
+		{
+			`=?ISO-8859-1?Q?Andr=E9?= Pirard <PIRARD@vm1.ulg.ac.be>`,
+			[]*Address{
+				&Address{
+					Name:    `André Pirard`,
+					Address: "PIRARD@vm1.ulg.ac.be",
+				},
+			},
+		},
+		// Custom example of RFC 2047 "B"-encoded ISO-8859-1 address.
+		{
+			`=?ISO-8859-1?B?SvZyZw==?= <joerg@example.com>`,
+			[]*Address{
+				&Address{
+					Name:    `Jörg`,
+					Address: "joerg@example.com",
+				},
+			},
+		},
+		// Custom example of RFC 2047 "B"-encoded UTF-8 address.
+		{
+			// XXX: a different example
+			`=?UTF-8?B?SsO2cmc=?= <joerg@example.com>`,
+			[]*Address{
+				&Address{
+					Name:    `Jörg`,
+					Address: "joerg@example.com",
+				},
+			},
+		},
+	}
+	for _, test := range tests {
+		addrs, err := newAddrParser(test.addrsStr).parseAddressList()
+		if err != nil {
+			t.Errorf("Failed parsing %q: %v", test.addrsStr, err)
+			continue
+		}
+		if !reflect.DeepEqual(addrs, test.exp) {
+			t.Errorf("Parse of %q: got %+v, want %+v", test.addrsStr, *addrs[0], *test.exp[0])
+		}
+	}
+}
+
+func TestAddressFormatting(t *testing.T) {
+	tests := []struct {
+		addr *Address
+		exp  string
+	}{
+		{
+			&Address{Address: "bob@example.com"},
+			"<bob@example.com>",
+		},
+		{
+			&Address{Name: "Bob", Address: "bob@example.com"},
+			`"Bob" <bob@example.com>`,
+		},
+		{
+			// note the ö (o with an umlaut)
+			&Address{Name: "Böb", Address: "bob@example.com"},
+			`=?utf-8?q?B=C3=B6b?= <bob@example.com>`,
+		},
+	}
+	for _, test := range tests {
+		s := test.addr.String()
+		if s != test.exp {
+			t.Errorf("Address%+v.String() = %v, want %v", *test.addr, s, test.exp)
+		}
+	}
+}

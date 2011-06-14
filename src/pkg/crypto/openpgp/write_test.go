@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"os"
 	"io"
+	"io/ioutil"
 	"testing"
 	"time"
 )
@@ -119,4 +120,80 @@ func TestSymmetricEncryption(t *testing.T) {
 	if !bytes.Equal(message, messageBuf.Bytes()) {
 		t.Errorf("recovered message incorrect got '%s', want '%s'", messageBuf.Bytes(), message)
 	}
+}
+
+func testEncryption(t *testing.T, isSigned bool) {
+	kring, _ := ReadKeyRing(readerFromHex(testKeys1And2PrivateHex))
+
+	var signed *Entity
+	if isSigned {
+		signed = kring[0]
+	}
+
+	buf := new(bytes.Buffer)
+	w, err := Encrypt(buf, kring[:1], signed, nil /* no hints */ )
+	if err != nil {
+		t.Errorf("error in Encrypt: %s", err)
+		return
+	}
+
+	const message = "testing"
+	_, err = w.Write([]byte(message))
+	if err != nil {
+		t.Errorf("error writing plaintext: %s", err)
+		return
+	}
+	err = w.Close()
+	if err != nil {
+		t.Errorf("error closing WriteCloser: %s", err)
+		return
+	}
+
+	md, err := ReadMessage(buf, kring, nil /* no prompt */ )
+	if err != nil {
+		t.Errorf("error reading message: %s", err)
+		return
+	}
+
+	if isSigned {
+		expectedKeyId := kring[0].signingKey().PublicKey.KeyId
+		if md.SignedByKeyId != expectedKeyId {
+			t.Errorf("message signed by wrong key id, got: %d, want: %d", *md.SignedBy, expectedKeyId)
+		}
+		if md.SignedBy == nil {
+			t.Errorf("failed to find the signing Entity")
+		}
+	}
+
+	plaintext, err := ioutil.ReadAll(md.UnverifiedBody)
+	if err != nil {
+		t.Errorf("error reading encrypted contents: %s", err)
+		return
+	}
+
+	expectedKeyId := kring[0].encryptionKey().PublicKey.KeyId
+	if len(md.EncryptedToKeyIds) != 1 || md.EncryptedToKeyIds[0] != expectedKeyId {
+		t.Errorf("expected message to be encrypted to %v, but got %#v", expectedKeyId, md.EncryptedToKeyIds)
+	}
+
+	if string(plaintext) != message {
+		t.Errorf("got: %s, want: %s", string(plaintext), message)
+	}
+
+	if isSigned {
+		if md.SignatureError != nil {
+			t.Errorf("signature error: %s", err)
+		}
+		if md.Signature == nil {
+			t.Error("signature missing")
+		}
+	}
+}
+
+func TestEncryption(t *testing.T) {
+	testEncryption(t, false /* not signed */ )
+}
+
+func TestEncryptAndSign(t *testing.T) {
+	testEncryption(t, true /* signed */ )
 }

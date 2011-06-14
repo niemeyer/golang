@@ -15,6 +15,7 @@
 #define FLAGS_V (1 << 28)
 
 void	runtime·abort(void);
+void	math·sqrtGoC(uint64, uint64*);
 
 static	uint32	trace = 0;
 
@@ -354,6 +355,15 @@ stage3:	// regd, regm are 4bit variables
 
 		if(trace)
 			runtime·printf("*** D[%d] = D[%d] %x-%x\n",
+				regd, regm, m->freghi[regd], m->freglo[regd]);
+		break;
+
+	case 0xeeb10bc0:	// D[regd] = sqrt D[regm]
+		math·sqrtGoC(getd(regm), &uval);
+		putd(regd, uval);
+
+		if(trace)
+			runtime·printf("*** D[%d] = sqrt D[%d] %x-%x\n",
 				regd, regm, m->freghi[regd], m->freglo[regd]);
 		break;
 

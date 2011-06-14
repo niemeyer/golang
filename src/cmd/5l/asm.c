@@ -34,8 +34,6 @@
 #include	"../ld/lib.h"
 #include	"../ld/elf.h"
 
-int32	OFFSET;
-
 static Prog *PP;
 
 char linuxdynld[] = "/lib/ld-linux.so.2";
@@ -295,7 +293,7 @@ asmb(void)
 {
 	int32 t;
 	int a, dynsym;
-	uint32 fo, symo, startva, elfsymo, elfstro, elfsymsize;
+	uint32 fo, symo, startva;
 	ElfEhdr *eh;
 	ElfPhdr *ph, *pph;
 	ElfShdr *sh;
@@ -304,10 +302,6 @@ asmb(void)
 	if(debug['v'])
 		Bprint(&bso, "%5.2f asmb\n", cputime());
 	Bflush(&bso);
-
-	elfsymsize = 0;
-	elfstro = 0;
-	elfsymo = 0;
 
 	sect = segtext.sect;
 	seek(cout, sect->vaddr - segtext.vaddr + segtext.fileoff, 0);
@@ -361,34 +355,28 @@ asmb(void)
 			debug['s'] = 1;
 			break;
 		case Hplan9x32:
-			OFFSET = HEADR+textsize+segdata.filelen;
-			seek(cout, OFFSET, 0);
+			symo = HEADR+segtext.len+segdata.filelen;
 			break;
 		case Hnetbsd:
-			OFFSET += rnd(segdata.filelen, 4096);
-			seek(cout, OFFSET, 0);
+			symo = rnd(segdata.filelen, 4096);
 			break;
 		ElfSym:
 			symo = rnd(HEADR+segtext.filelen, INITRND)+segdata.filelen;
 			symo = rnd(symo, INITRND);
 			break;
 		}
+		seek(cout, symo, 0);
 		if(iself) {
 			if(debug['v'])
 			       Bprint(&bso, "%5.2f elfsym\n", cputime());
-			elfsymo = symo+8+symsize+lcsize;
-			seek(cout, elfsymo, 0);
-			asmelfsym32();
+			asmelfsym();
 			cflush();
-			elfstro = seek(cout, 0, 1);
-			elfsymsize = elfstro - elfsymo;
 			ewrite(cout, elfstrdat, elfstrsize);
 
 			// if(debug['v'])
 			// 	Bprint(&bso, "%5.2f dwarf\n", cputime());
 			// dwarfemitdebugsections();
 		}
-		asmthumbmap();
 		cflush();
 		
 	}
@@ -397,8 +385,7 @@ asmb(void)
 	if(debug['v'])
 		Bprint(&bso, "%5.2f header\n", cputime());
 	Bflush(&bso);
-	OFFSET = 0;
-	seek(cout, OFFSET, 0);
+	seek(cout, 0L, 0);
 	switch(HEADTYPE) {
 	case Hnoheader:	/* no header */
 		break;
@@ -599,15 +586,15 @@ asmb(void)
 
 			sh = newElfShdr(elfstr[ElfStrSymtab]);
 			sh->type = SHT_SYMTAB;
-			sh->off = elfsymo;
-			sh->size = elfsymsize;
+			sh->off = symo;
+			sh->size = symsize;
 			sh->addralign = 4;
 			sh->entsize = 16;
 			sh->link = eh->shnum;	// link to strtab
 
 			sh = newElfShdr(elfstr[ElfStrStrtab]);
 			sh->type = SHT_STRTAB;
-			sh->off = elfstro;
+			sh->off = symo+symsize;
 			sh->size = elfstrsize;
 			sh->addralign = 1;
 
@@ -740,59 +727,6 @@ nopstat(char *f, Count *c)
 		(double)(c->outof - c->count)/c->outof);
 }
 
-static void
-outt(int32 f, int32 l)
-{
-	if(debug['L'])
-		Bprint(&bso, "tmap: %ux-%ux\n", f, l);
-	lput(f);
-	lput(l);
-}
-
-void
-asmthumbmap(void)
-{
-	int32 pc, lastt;
-	Prog *p;
-
-	if(!seenthumb)
-		return;
-	pc = 0;
-	lastt = -1;
-	for(cursym = textp; cursym != nil; cursym = cursym->next) {
-		p = cursym->text;
-		pc = p->pc - INITTEXT;
-		setarch(p);
-		if(thumb){
-			if(p->from.sym->foreign){	// 8 bytes of ARM first
-				if(lastt >= 0){
-					outt(lastt, pc-1);
-					lastt = -1;
-				}
-				pc += 8;
-			}
-			if(lastt < 0)
-				lastt = pc;
-		}
-		else{
-			if(p->from.sym->foreign){	// 4 bytes of THUMB first
-				if(lastt < 0)
-					lastt = pc;
-				pc += 4;
-			}
-			if(lastt >= 0){
-				outt(lastt, pc-1);
-				lastt = -1;
-			}
-		}
-		if(cursym->next == nil)
-			for(; p != P; p = p->link)
-				pc = p->pc = INITTEXT;
-	}
-	if(lastt >= 0)
-		outt(lastt, pc+1);
-}
-
 void
 asmout(Prog *p, Optab *o, int32 *out)
 {
@@ -816,7 +750,7 @@ if(debug['P']) print("%ux: %P	type %d\n", (uint32)(p->pc), p, o->type);
 		break;
 
 	case 0:		/* pseudo ops */
-if(debug['G']) print("%ux: %s: arm %d %d %d\n", (uint32)(p->pc), p->from.sym->name, p->from.sym->thumb, p->from.sym->foreign, p->from.sym->fnptr);
+if(debug['G']) print("%ux: %s: arm %d\n", (uint32)(p->pc), p->from.sym->name, p->from.sym->fnptr);
 		break;
 
 	case 1:		/* op R,[R],R */
@@ -880,10 +814,6 @@ if(debug['G']) print("%ux: %s: arm %d %d %d\n", (uint32)(p->pc), p->from.sym->na
 		v = -8;
 		if(p->cond != P)
 			v = (p->cond->pc - pc) - 8;
-#ifdef CALLEEBX
-		if(p->as == ABL)
-			v += fninc(p->to.sym);
-#endif
 		o1 = opbra(p->as, p->scond);
 		o1 |= (v >> 2) & 0xffffff;
 		break;
@@ -1198,7 +1128,7 @@ if(debug['G']) print("%ux: %s: arm %d %d %d\n", (uint32)(p->pc), p->from.sym->na
 		r = p->reg;
 		if(r == NREG) {
 			r = rt;
-			if(p->as == AMOVF || p->as == AMOVD)
+			if(p->as == AMOVF || p->as == AMOVD || p->as == ASQRTF || p->as == ASQRTD)
 				r = 0;
 		}
 		o1 |= rf | (r<<16) | (rt<<12);
@@ -1340,19 +1270,7 @@ if(debug['G']) print("%ux: %s: arm %d %d %d\n", (uint32)(p->pc), p->from.sym->na
 			o2 ^= (1<<6);
 		break;
 	case 74:	/* bx $I */
-#ifdef CALLEEBX
-		diag("bx $i case (arm)");
-#endif
-		if(!seenthumb)
-			diag("ABX $I and seenthumb==0");
-		v = p->cond->pc;
-		if(p->to.sym->thumb)
-			v |= 1;	// T bit
-		o1 = olr(8, REGPC, REGTMP, p->scond&C_SCOND);	// mov 8(PC), Rtmp
-		o2 = oprrr(AADD, p->scond) | immrot(8) | (REGPC<<16) | (REGLINK<<12);	// add 8,PC, LR
-		o3 = ((p->scond&C_SCOND)<<28) | (0x12fff<<8) | (1<<4) | REGTMP;		// bx Rtmp
-		o4 = opbra(AB, 14);	// B over o6
-		o5 = v;
+		diag("ABX $I");
 		break;
 	case 75:	/* bx O(R) */
 		aclass(&p->to);
@@ -1371,14 +1289,7 @@ if(debug['G']) print("%ux: %s: arm %d %d %d\n", (uint32)(p->pc), p->from.sym->na
 		o3 = ((p->scond&C_SCOND)<<28) | (0x12fff<<8) | (1<<4) | REGTMP;		// BX Rtmp
 		break;
 	case 76:	/* bx O(R) when returning from fn*/
-		if(!seenthumb)
-			diag("ABXRET and seenthumb==0");
-		aclass(&p->to);
-// print("ARM BXRET %d(R%d)\n", instoffset, p->to.reg);
-		if(instoffset != 0)
-			diag("non-zero offset in ABXRET");
-		// o1 = olr(instoffset, p->to.reg, REGTMP, p->scond);	// mov O(R), Rtmp
-		o1 = ((p->scond&C_SCOND)<<28) | (0x12fff<<8) | (1<<4) | p->to.reg;		// BX R
+		diag("ABXRET");
 		break;
 	case 77:	/* ldrex oreg,reg */
 		aclass(&p->from);
@@ -1632,6 +1543,8 @@ oprrr(int a, int sc)
 	case AMULF:	return o | (0xe<<24) | (0x2<<20) | (0xa<<8) | (0<<4);
 	case ADIVD:	return o | (0xe<<24) | (0x8<<20) | (0xb<<8) | (0<<4);
 	case ADIVF:	return o | (0xe<<24) | (0x8<<20) | (0xa<<8) | (0<<4);
+	case ASQRTD:	return o | (0xe<<24) | (0xb<<20) | (1<<16) | (0xb<<8) | (0xc<<4);
+	case ASQRTF:	return o | (0xe<<24) | (0xb<<20) | (1<<16) | (0xa<<8) | (0xc<<4);
 	case ACMPD:	return o | (0xe<<24) | (0xb<<20) | (4<<16) | (0xb<<8) | (0xc<<4);
 	case ACMPF:	return o | (0xe<<24) | (0xb<<20) | (4<<16) | (0xa<<8) | (0xc<<4);
 

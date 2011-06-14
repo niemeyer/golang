@@ -18,6 +18,7 @@ DIRS=\
 	archive/zip\
 	asn1\
 	big\
+	bike/shed\
 	bufio\
 	bytes\
 	cmath\
@@ -59,7 +60,7 @@ DIRS=\
 	crypto/tls\
 	crypto/twofish\
 	crypto/x509\
-	crypto/x509/crl\
+	crypto/x509/pkix\
 	crypto/xtea\
 	debug/dwarf\
 	debug/macho\
@@ -80,6 +81,7 @@ DIRS=\
 	exp/eval\
 	exp/gui\
 	exp/gui/x11\
+	exp/regexp/syntax\
 	expvar\
 	flag\
 	fmt\
@@ -184,6 +186,7 @@ endif
 NOTEST+=\
 	crypto\
 	crypto/openpgp/error\
+	crypto/x509/pkix\
 	debug/proc\
 	exp/gui\
 	exp/gui/x11\

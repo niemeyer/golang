@@ -13,6 +13,7 @@ import (
 	"debug/elf"
 	"debug/macho"
 	"debug/pe"
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -477,7 +478,27 @@ func (p *Package) loadDWARF(f *File, names []*Name) {
 			fmt.Fprintf(&b, "enum { __cgo_enum__%d = %s };\n", i, n.C)
 		}
 	}
-	d := p.gccDebug(b.Bytes())
+
+	// Apple's LLVM-based gcc does not include the enumeration
+	// names and values in its DWARF debug output.  In case we're
+	// using such a gcc, create a data block initialized with the values.
+	// We can read them out of the object file.
+	fmt.Fprintf(&b, "long long __cgodebug_data[] = {\n")
+	for _, n := range names {
+		if n.Kind == "const" {
+			fmt.Fprintf(&b, "\t%s,\n", n.C)
+		} else {
+			fmt.Fprintf(&b, "\t0,\n")
+		}
+	}
+	fmt.Fprintf(&b, "\t0\n")
+	fmt.Fprintf(&b, "};\n")
+
+	d, bo, debugData := p.gccDebug(b.Bytes())
+	enumVal := make([]int64, len(debugData)/8)
+	for i := range enumVal {
+		enumVal[i] = int64(bo.Uint64(debugData[i*8:]))
+	}
 
 	// Scan DWARF info for top-level TagVariable entries with AttrName __cgo__i.
 	types := make([]dwarf.Type, len(names))
@@ -569,9 +590,12 @@ func (p *Package) loadDWARF(f *File, names []*Name) {
 				// Remove injected enum to ensure the value will deep-compare
 				// equally in future loads of the same constant.
 				n.Type.EnumValues[k] = 0, false
+			} else if n.Kind == "const" && i < len(enumVal) {
+				n.Const = strconv.Itoa64(enumVal[i])
 			}
 		}
 	}
+
 }
 
 // rewriteRef rewrites all the C.xxx references in f.AST to refer to the
@@ -593,6 +617,9 @@ func (p *Package) rewriteRef(f *File) {
 	// are trying to do a ,err call.  Also check that
 	// functions are only used in calls.
 	for _, r := range f.Ref {
+		if r.Name.Kind == "const" && r.Name.Const == "" {
+			error(r.Pos(), "unable to find value of constant C.%s", r.Name.Go)
+		}
 		var expr ast.Expr = ast.NewIdent(r.Name.Mangle) // default
 		switch r.Context {
 		case "call", "call2":
@@ -660,11 +687,14 @@ func (p *Package) gccName() (ret string) {
 }
 
 // gccMachine returns the gcc -m flag to use, either "-m32" or "-m64".
-func (p *Package) gccMachine() string {
-	if p.PtrSize == 8 {
-		return "-m64"
+func (p *Package) gccMachine() []string {
+	switch runtime.GOARCH {
+	case "amd64":
+		return []string{"-m64"}
+	case "386":
+		return []string{"-m32"}
 	}
-	return "-m32"
+	return nil
 }
 
 const gccTmp = "_obj/_cgo_.o"
@@ -674,7 +704,6 @@ const gccTmp = "_obj/_cgo_.o"
 func (p *Package) gccCmd() []string {
 	c := []string{
 		p.gccName(),
-		p.gccMachine(),
 		"-Wall",                             // many warnings
 		"-Werror",                           // warnings are errors
 		"-o" + gccTmp,                       // write object to tmp
@@ -684,34 +713,63 @@ func (p *Package) gccCmd() []string {
 		"-xc",                               // input language is C
 	}
 	c = append(c, p.GccOptions...)
+	c = append(c, p.gccMachine()...)
 	c = append(c, "-") //read input from standard input
 	return c
 }
 
 // gccDebug runs gcc -gdwarf-2 over the C program stdin and
-// returns the corresponding DWARF data and any messages
-// printed to standard error.
-func (p *Package) gccDebug(stdin []byte) *dwarf.Data {
+// returns the corresponding DWARF data and, if present, debug data block.
+func (p *Package) gccDebug(stdin []byte) (*dwarf.Data, binary.ByteOrder, []byte) {
 	runGcc(stdin, p.gccCmd())
 
-	// Try to parse f as ELF and Mach-O and hope one works.
-	var f interface {
-		DWARF() (*dwarf.Data, os.Error)
-	}
-	var err os.Error
-	if f, err = elf.Open(gccTmp); err != nil {
-		if f, err = macho.Open(gccTmp); err != nil {
-			if f, err = pe.Open(gccTmp); err != nil {
-				fatalf("cannot parse gcc output %s as ELF or Mach-O or PE object", gccTmp)
+	if f, err := macho.Open(gccTmp); err == nil {
+		d, err := f.DWARF()
+		if err != nil {
+			fatalf("cannot load DWARF output from %s: %v", gccTmp, err)
+		}
+		var data []byte
+		if f.Symtab != nil {
+			for i := range f.Symtab.Syms {
+				s := &f.Symtab.Syms[i]
+				// Mach-O still uses a leading _ to denote non-assembly symbols.
+				if s.Name == "_"+"__cgodebug_data" {
+					// Found it.  Now find data section.
+					if i := int(s.Sect) - 1; 0 <= i && i < len(f.Sections) {
+						sect := f.Sections[i]
+						if sect.Addr <= s.Value && s.Value < sect.Addr+sect.Size {
+							if sdat, err := sect.Data(); err == nil {
+								data = sdat[s.Value-sect.Addr:]
+							}
+						}
+					}
+				}
 			}
 		}
+		return d, f.ByteOrder, data
 	}
 
-	d, err := f.DWARF()
-	if err != nil {
-		fatalf("cannot load DWARF debug information from %s: %s", gccTmp, err)
+	// Can skip debug data block in ELF and PE for now.
+	// The DWARF information is complete.
+
+	if f, err := elf.Open(gccTmp); err == nil {
+		d, err := f.DWARF()
+		if err != nil {
+			fatalf("cannot load DWARF output from %s: %v", gccTmp, err)
+		}
+		return d, f.ByteOrder, nil
 	}
-	return d
+
+	if f, err := pe.Open(gccTmp); err == nil {
+		d, err := f.DWARF()
+		if err != nil {
+			fatalf("cannot load DWARF output from %s: %v", gccTmp, err)
+		}
+		return d, binary.LittleEndian, nil
+	}
+
+	fatalf("cannot parse gcc output %s as ELF, Mach-O, PE object", gccTmp)
+	panic("not reached")
 }
 
 // gccDefines runs gcc -E -dM -xc - over the C program stdin
@@ -719,7 +777,8 @@ func (p *Package) gccDebug(stdin []byte) *dwarf.Data {
 // #defines that gcc encountered while processing the input
 // and its included files.
 func (p *Package) gccDefines(stdin []byte) string {
-	base := []string{p.gccName(), p.gccMachine(), "-E", "-dM", "-xc"}
+	base := []string{p.gccName(), "-E", "-dM", "-xc"}
+	base = append(base, p.gccMachine()...)
 	stdout, _ := runGcc(stdin, append(append(base, p.GccOptions...), "-"))
 	return stdout
 }
