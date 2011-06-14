@@ -1,4 +1,4 @@
-Mailed: False
+Mailed: True
 Description:
 	debug/elf: rename test .o files to .obj
 	
