@@ -1,0 +1,4 @@
+Mailed: False
+Description:
+	ld: make .rodata section read-only
+Files:
