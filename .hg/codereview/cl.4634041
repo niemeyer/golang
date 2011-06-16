@@ -1,0 +1,18 @@
+Mailed: False
+Description:
+	reflect: simplify and optimize internal representation
+	
+	While profiling a large-scale deserialization through the
+	mgo MongoDB driver, I ended up finding that the internal()
+	function within reflect would always pop to the top.  This
+	is caused by the fact that pretty much every function
+	call to reflect would recompute the internal representation
+	of a Value.
+	
+	This CL simplifies and optimizes this internal representation
+	while retaining the same API and the same desired properties
+	of the current design (no heap allocs, etc).
+	
+	In a trivial benchmark that explores a common reflect workflow
+	(included in the CL) a 30%+ improvement may be perceived.
+Files:
