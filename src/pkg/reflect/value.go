@@ -61,6 +61,7 @@ func memmove(adst, asrc unsafe.Pointer, n uintptr) {
 type Value struct {
 	Internal [ivSize]byte
 }
+
 const ivSize = uintptr(unsafe.Sizeof(internalValue{}))
 
 // A ValueError occurs when a Value method is invoked on
@@ -206,10 +207,10 @@ const (
 // An internalValue is the real representation of a Value.
 // A zero Value is also a zero internalValue
 type internalValue struct {
-	typ       *commonType // type of value
-	word      iword
-	rcvr      iword
-	flag      uint32
+	typ  *commonType // type of value
+	word iword
+	rcvr iword
+	flag uint32
 }
 
 // packValue returns a Value with the given flag bits, type, and interface word.
