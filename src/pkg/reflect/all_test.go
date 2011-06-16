@@ -1508,3 +1508,14 @@ func TestVariadic(t *testing.T) {
 		t.Errorf("after Fprintf CallSlice: %q != %q", b.String(), "hello 42 world")
 	}
 }
+
+func BenchmarkSimpleOps(b *testing.B) {
+	n := 0
+	for i := 0; i < b.N; i++ {
+		v := ValueOf(&n).Elem()
+		v.Type()
+		v.Kind()
+		v.SetInt(42)
+		v.Int()
+	}
+}

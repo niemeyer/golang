@@ -16,3 +16,6 @@ Description:
 	In a trivial benchmark that explores a common reflect workflow
 	(included in the CL) a 30%+ improvement may be perceived.
 Files:
+	src/pkg/reflect/all_test.go
+	src/pkg/reflect/type.go
+	src/pkg/reflect/value.go

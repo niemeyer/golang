@@ -347,7 +347,7 @@ type Method struct {
 }
 
 // High bit says whether type has
-// embedded pointers,to help garbage collector.
+// embedded pointers, to help garbage collector.
 const kindMask = 0x7f
 
 func (k Kind) String() string {
@@ -431,7 +431,12 @@ func (t *commonType) Align() int { return int(t.align) }
 
 func (t *commonType) FieldAlign() int { return int(t.fieldAlign) }
 
-func (t *commonType) Kind() Kind { return Kind(t.kind & kindMask) }
+func (t *commonType) Kind() Kind {
+	if t == nil {
+		return Invalid
+	}
+	return Kind(t.kind & kindMask)
+}
 
 func (t *commonType) common() *commonType { return t }
 
@@ -794,11 +799,7 @@ func toCommonType(p *runtime.Type) *commonType {
 		x interface{}
 		t commonType
 	}
-	x := unsafe.Pointer(p)
-	if uintptr(x)&reflectFlags != 0 {
-		panic("invalid interface value")
-	}
-	return &(*hdr)(x).t
+	return &(*hdr)(unsafe.Pointer(p)).t
 }
 
 func toType(p *runtime.Type) Type {
