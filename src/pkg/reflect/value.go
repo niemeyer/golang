@@ -188,9 +188,26 @@ type nonEmptyInterface struct {
 // allowed to be written.  We call such values read-only.
 //
 // A Value can be set (via the Set, SetUint, etc. methods) only if it is both
-// addressable and not read-only.  These two permission bits - addressable
-// and read-only - are stored in the flag field of the internal value.
-// Methods are never addressable.
+// addressable and not read-only.
+//
+// The two permission bits - addressable and read-only - are stored in
+// the bottom two bits of the type pointer in the interface value.
+//
+//     ordinary value: Internal = value
+//     addressable value: Internal = value, Internal.typ |= flagAddr
+//     read-only value: Internal = value, Internal.typ |= flagRO
+//     addressable, read-only value: Internal = value, Internal.typ |= flagAddr | flagRO
+//
+// It is important that the read-only values have the extra bit set
+// (as opposed to using the bit to mean writable), because client code
+// can grab the interface field and try to use it.  Having the extra bit
+// set makes the type pointer compare not equal to any real type,
+// so that a client cannot, say, write through v.Internal.(*int).
+// The runtime routines that access interface types reject types with
+// low bits set.
+//
+// If a Value fv = v.Method(i), then fv = v with the InternalMethod
+// field set to i+1.  Methods are never addressable.
 //
 // All in all, this is a lot of effort just to avoid making this new API
 // depend on a language change we'll probably do anyway, but
