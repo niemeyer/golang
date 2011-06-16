@@ -5,53 +5,57 @@
 package build
 
 import (
-	"os"
+	"exec"
 	"path/filepath"
-	"runtime"
-	"strings"
 	"testing"
 )
 
-var buildDirs = []string{
-	"pkg/path",
-	"cmd/gofix",
-	"pkg/big",
-	"pkg/go/build/cgotest",
+var buildPkgs = []string{
+	"go/build/pkgtest",
+	"go/build/cmdtest",
+	"go/build/cgotest",
 }
+
+const cmdtestOutput = "3"
 
 func TestBuild(t *testing.T) {
-	out, err := filepath.Abs("_test/out")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, d := range buildDirs {
-		if runtime.GOARCH == "arm" && strings.Contains(d, "/cgo") {
-			// no cgo for arm, yet.
+	for _, pkg := range buildPkgs {
+		tree := Path[0] // Goroot
+		dir := filepath.Join(tree.SrcDir(), pkg)
+
+		info, err := ScanDir(dir, true)
+		if err != nil {
+			t.Error("ScanDir:", err)
 			continue
 		}
-		dir := filepath.Join(runtime.GOROOT(), "src", d)
-		testBuild(t, dir, out)
-	}
-}
 
-func testBuild(t *testing.T, dir, targ string) {
-	d, err := ScanDir(dir, true)
-	if err != nil {
-		t.Error(err)
-		return
-	}
-	defer os.Remove(targ)
-	cmds, err := d.Build(targ)
-	if err != nil {
-		t.Error(err)
-		return
-	}
-	for _, c := range cmds {
-		t.Log("Run:", c)
-		err = c.Run(dir)
+		s, err := Build(tree, pkg, info)
 		if err != nil {
-			t.Error(c, err)
-			return
+			t.Error("Build:", err)
+			continue
 		}
+
+		if err := s.Run(); err != nil {
+			t.Error("Run:", err)
+			continue
+		}
+
+		if pkg == "go/build/cmdtest" {
+			bin := s.Output[0]
+			b, err := exec.Command(bin).CombinedOutput()
+			if err != nil {
+				t.Errorf("exec: %s: %v", bin, err)
+				continue
+			}
+			if string(b) != cmdtestOutput {
+				t.Errorf("cmdtest output: %s want: %s", b, cmdtestOutput)
+			}
+		}
+
+		defer func(s *Script) {
+			if err := s.Nuke(); err != nil {
+				t.Errorf("nuking: %v", err)
+			}
+		}(s)
 	}
 }
