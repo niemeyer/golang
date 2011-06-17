@@ -4544,3 +4544,5 @@ data/src/cmd/godoc/parser.go.i
 data/src/pkg/go/build/pkgtest/sqrt_arm.s.i
 data/src/pkg/exp/regexp/syntax/make_perl_groups.pl.i
 data/src/pkg/go/build/cmdtest/main.go.i
+data/src/cmd/gofix/httpheaders.go.i
+data/src/cmd/gofix/httpheaders_test.go.i
