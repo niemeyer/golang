@@ -59,10 +59,8 @@ func memmove(adst, asrc unsafe.Pointer, n uintptr) {
 // directly.  A future language change may make it possible not to
 // export these fields while still keeping Values usable as values.
 type Value struct {
-	Internal [ivSize]byte
+	Internal, InternalRcvr interface{}
 }
-
-const ivSize = uintptr(unsafe.Sizeof(internalValue{}))
 
 // A ValueError occurs when a Value method is invoked on
 // a Value that does not support it.  Such cases are documented
@@ -217,12 +215,17 @@ type nonEmptyInterface struct {
 const (
 	flagAddr uint32 = 1 << iota // holds address of value
 	flagRO                      // read-only
-	flagMethod
-	flagNilMethod
+	flagRcvr                    // word is receiver for type
+
+	reflectFlags = 7
+
+	// This is never included into the packed Value
+	flagMethod uint32 = (reflectFlags + 1) << iota // word is a method
 )
 
-// An internalValue is the real representation of a Value.
-// A zero Value is also a zero internalValue
+
+// An internalValue is the unpacked form of a Value.
+// The zero Value unpacks to a zero internalValue
 type internalValue struct {
 	typ  *commonType // type of value
 	word iword
@@ -230,24 +233,87 @@ type internalValue struct {
 	flag uint32
 }
 
+func (v Value) internal() (iv internalValue) {
+	eface := *(*emptyInterface)(unsafe.Pointer(&v.Internal))
+	p := uintptr(unsafe.Pointer(eface.typ))
+	iv.typ = toCommonType((*runtime.Type)(unsafe.Pointer(p &^ reflectFlags)))
+	if iv.typ == nil {
+		return
+	}
+	iv.flag = uint32(p & reflectFlags)
+	iv.word = eface.word
+	if iv.flag&flagAddr != 0 {
+		iv.typ = iv.typ.Elem().common()
+	}
+	if iv.flag&flagRcvr != 0 {
+		panic("reflect: broken Value")
+	}
+	if v.InternalRcvr != nil {
+		eface := *(*emptyInterface)(unsafe.Pointer(&v.InternalRcvr))
+		if uintptr(unsafe.Pointer(eface.typ)) != p|uintptr(flagRcvr) {
+			panic("reflect: broken Value")
+		}
+		iv.rcvr = eface.word
+		iv.flag |= flagMethod
+	}
+	return
+}
+
 // packValue returns a Value with the given flag bits, type, and interface word.
 func packValue(flag uint32, typ *runtime.Type, word iword) Value {
 	if typ == nil {
 		panic("packValue")
 	}
-	t := toCommonType((*runtime.Type)(unsafe.Pointer(typ)))
-	if t == nil {
-		return Value{}
-	}
-	var iv internalValue
-	iv.flag = flag
-	iv.word = word
-	if iv.flag&flagAddr != 0 {
-		iv.typ = t.Elem().common()
+	t := uintptr(unsafe.Pointer(typ)) | uintptr(flag)
+	eface := emptyInterface{(*runtime.Type)(unsafe.Pointer(t)), word}
+	v := Value{Internal: *(*interface{})(unsafe.Pointer(&eface))}
+	return v
+}
+
+// packMethod returns a Value representing the ith method on receiver v.
+func (v Value) packMethod(i int) Value {
+	// If this Value is a method value (x.Method(i) for some Value x)
+	// then we will invoke it using the interface form of the method,
+	// which always passes the receiver as a single word.
+	iv := v.internal()
+	var typ *runtime.Type
+	var word, rcvr iword
+	flag := iv.flag & flagRO
+
+	if iv.typ.Kind() == Interface {
+		it := (*interfaceType)(unsafe.Pointer(iv.typ))
+		if i < 0 || i >= len(it.methods) {
+			panic("reflect: broken Value")
+		}
+		m := &it.methods[i]
+		if m.pkgPath != nil {
+			flag |= flagRO
+		}
+		typ = m.typ
+		iface := (*nonEmptyInterface)(unsafe.Pointer(iv.word))
+		if iface.itab != nil {
+			word = iword(iface.itab.fun[i])
+		}
+		rcvr = iface.word
 	} else {
-		iv.typ = t
+		rcvr = iv.indirect()
+		ut := iv.typ.uncommon()
+		if ut == nil || i < 0 || i >= len(ut.methods) {
+			panic("reflect: broken Value")
+		}
+		m := &ut.methods[i]
+		if m.pkgPath != nil {
+			flag |= flagRO
+		}
+		typ = m.mtyp
+		word = iword(m.ifn)
 	}
-	return *(*Value)(unsafe.Pointer(&iv))
+
+	tm := uintptr(unsafe.Pointer(typ)) | uintptr(flag&^flagMethod)
+	tr := uintptr(unsafe.Pointer(typ)) | uintptr(flag|flagRcvr)
+	meface := emptyInterface{(*runtime.Type)(unsafe.Pointer(tm)), word}
+	reface := emptyInterface{(*runtime.Type)(unsafe.Pointer(tr)), rcvr}
+	return Value{*(*interface{})(unsafe.Pointer(&meface)), *(*interface{})(unsafe.Pointer(&reface))}
 }
 
 // valueFromAddr returns a Value using the given type and address.
@@ -286,49 +352,6 @@ func (iv internalValue) indirect() iword {
 	return iv.word
 }
 
-// method returns an internalValue representing the ith method on
-// the receiver iv.
-func (iv internalValue) method(i int) internalValue {
-	// If this Value is a method value (x.Method(i) for some Value x)
-	// then we will invoke it using the interface form of the method,
-	// which always passes the receiver as a single word.
-	// Record that information.
-	if iv.typ.Kind() == Interface {
-		it := (*interfaceType)(unsafe.Pointer(iv.typ))
-		if i < 0 || i >= len(it.methods) {
-			panic("reflect: broken Value")
-		}
-		m := &it.methods[i]
-		if m.pkgPath != nil {
-			iv.flag |= flagRO
-		}
-		iv.typ = toCommonType(m.typ)
-		iface := (*nonEmptyInterface)(unsafe.Pointer(iv.word))
-		if iface.itab == nil {
-			iv.word = 0
-			iv.flag |= flagNilMethod
-		} else {
-			iv.word = iword(iface.itab.fun[i])
-		}
-		iv.rcvr = iface.word
-	} else {
-		ut := iv.typ.uncommon()
-		if ut == nil || i < 0 || i >= len(ut.methods) {
-			panic("reflect: broken Value")
-		}
-		m := &ut.methods[i]
-		if m.pkgPath != nil {
-			iv.flag |= flagRO
-		}
-		iv.rcvr = iv.indirect()
-		iv.typ = toCommonType(m.mtyp)
-		iv.word = iword(m.ifn)
-	}
-	iv.flag |= flagMethod
-	iv.flag &^= flagAddr
-	return iv
-}
-
 
 func (iv internalValue) mustBe(want Kind) {
 	if iv.typ.Kind() != want {
@@ -364,7 +387,7 @@ func (iv internalValue) mustBeAssignable() {
 // or slice element in order to call a method that requires a
 // pointer receiver.
 func (v Value) Addr() Value {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	if iv.flag&flagAddr == 0 {
 		panic("reflect.Value.Addr of unaddressable value")
 	}
@@ -374,7 +397,7 @@ func (v Value) Addr() Value {
 // Bool returns v's underlying value.
 // It panics if v's kind is not Bool.
 func (v Value) Bool() bool {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	iv.mustBe(Bool)
 	if iv.flag&flagAddr != 0 {
 		return *(*bool)(unsafe.Pointer(iv.word))
@@ -388,7 +411,7 @@ func (v Value) Bool() bool {
 // a field of an addressable struct, or the result of dereferencing a pointer.
 // If CanAddr returns false, calling Addr will panic.
 func (v Value) CanAddr() bool {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	return iv.flag&flagAddr != 0
 }
 
@@ -398,7 +421,7 @@ func (v Value) CanAddr() bool {
 // If CanSet returns false, calling Set or any type-specific
 // setter (e.g., SetBool, SetInt64) will panic.
 func (v Value) CanSet() bool {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	return iv.flag&(flagAddr|flagRO) == flagAddr
 }
 
@@ -411,7 +434,7 @@ func (v Value) CanSet() bool {
 // If v is a variadic function, Call creates the variadic slice parameter
 // itself, copying in the corresponding values.
 func (v Value) Call(in []Value) []Value {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	iv.mustBe(Func)
 	iv.mustBeExported()
 	return iv.call("Call", in)
@@ -425,7 +448,7 @@ func (v Value) Call(in []Value) []Value {
 // As in Go, each input argument must be assignable to the
 // type of the function's corresponding input parameter.
 func (v Value) CallSlice(in []Value) []Value {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	iv.mustBe(Func)
 	iv.mustBeExported()
 	return iv.call("CallSlice", in)
@@ -434,7 +457,7 @@ func (v Value) CallSlice(in []Value) []Value {
 func (iv internalValue) call(method string, in []Value) []Value {
 	mword := iv.indirect()
 	if mword == 0 {
-		if iv.flag&flagNilMethod != 0 {
+		if iv.flag&flagMethod != 0 && iv.rcvr == 0 {
 			panic("reflect.Value.Call: call of method on nil interface value")
 		}
 		panic("reflect.Value.Call: call of nil function")
@@ -547,7 +570,7 @@ func (iv internalValue) call(method string, in []Value) []Value {
 		off = ptrSize
 	}
 	for i, v := range in {
-		iv := *(*internalValue)(unsafe.Pointer(&v))
+		iv := v.internal()
 		iv.mustBeExported()
 		targ := t.In(i).(*commonType)
 		a := uintptr(targ.align)
@@ -587,7 +610,7 @@ func (iv internalValue) call(method string, in []Value) []Value {
 // Cap returns v's capacity.
 // It panics if v's Kind is not Array, Chan, or Slice.
 func (v Value) Cap() int {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	switch iv.typ.Kind() {
 	case Array:
 		return iv.typ.Len()
@@ -602,7 +625,7 @@ func (v Value) Cap() int {
 // Close closes the channel v.
 // It panics if v's Kind is not Chan.
 func (v Value) Close() {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	iv.mustBe(Chan)
 	iv.mustBeExported()
 	chanclose(iv.indirect())
@@ -611,7 +634,7 @@ func (v Value) Close() {
 // Complex returns v's underlying value, as a complex128.
 // It panics if v's Kind is not Complex64 or Complex128
 func (v Value) Complex() complex128 {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	switch iv.typ.Kind() {
 	case Complex64:
 		if iv.flag&flagAddr == 0 && iv.typ.size <= ptrSize {
@@ -629,7 +652,7 @@ func (v Value) Complex() complex128 {
 // It panics if v's Kind is not Interface or Ptr.
 // It returns the zero Value if v is nil.
 func (v Value) Elem() Value {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	return iv.Elem()
 }
 
@@ -667,7 +690,7 @@ func (iv internalValue) Elem() Value {
 // Field returns the i'th field of the struct v.
 // It panics if v's Kind is not Struct or i is out of range.
 func (v Value) Field(i int) Value {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	iv.mustBe(Struct)
 	t := iv.typ.toType()
 	if i < 0 || i >= t.NumField() {
@@ -713,7 +736,7 @@ func valueFromValueOffset(flag uint32, typ Type, outer internalValue, offset uin
 // FieldByIndex returns the nested field corresponding to index.
 // It panics if v's Kind is not struct.
 func (v Value) FieldByIndex(index []int) Value {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	iv.mustBe(Struct)
 	for i, x := range index {
 		if i > 0 {
@@ -730,7 +753,7 @@ func (v Value) FieldByIndex(index []int) Value {
 // It returns the zero Value if no field was found.
 // It panics if v's Kind is not struct.
 func (v Value) FieldByName(name string) Value {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	iv.mustBe(Struct)
 	if f, ok := iv.typ.FieldByName(name); ok {
 		return v.FieldByIndex(f.Index)
@@ -743,7 +766,7 @@ func (v Value) FieldByName(name string) Value {
 // It panics if v's Kind is not struct.
 // It returns the zero Value if no field was found.
 func (v Value) FieldByNameFunc(match func(string) bool) Value {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	iv.mustBe(Struct)
 	if f, ok := v.Type().FieldByNameFunc(match); ok {
 		return v.FieldByIndex(f.Index)
@@ -754,7 +777,7 @@ func (v Value) FieldByNameFunc(match func(string) bool) Value {
 // Float returns v's underlying value, as an float64.
 // It panics if v's Kind is not Float32 or Float64
 func (v Value) Float() float64 {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	switch iv.typ.Kind() {
 	case Float32:
 		if iv.flag&flagAddr == 0 {
@@ -776,7 +799,7 @@ func (v Value) Float() float64 {
 // Index returns v's i'th element.
 // It panics if v's Kind is not Array or Slice or i is out of range.
 func (v Value) Index(i int) Value {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	switch iv.typ.Kind() {
 	default:
 		panic(&ValueError{"reflect.Value.Index", iv.typ.Kind()})
@@ -808,7 +831,7 @@ func (v Value) Index(i int) Value {
 // Int returns v's underlying value, as an int64.
 // It panics if v's Kind is not Int, Int8, Int16, Int32, or Int64.
 func (v Value) Int() int64 {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	w := iv.indirect()
 	switch iv.typ.Kind() {
 	case Int:
@@ -827,7 +850,7 @@ func (v Value) Int() int64 {
 
 // CanInterface returns true if Interface can be used without panicking.
 func (v Value) CanInterface() bool {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	if iv.typ == nil {
 		panic(&ValueError{"reflect.Value.CanInterface", iv.typ.Kind()})
 	}
@@ -846,7 +869,7 @@ func (v Value) CanInterface() bool {
 // (as opposed to Type.Method), Interface cannot return an
 // interface value, so it panics.
 func (v Value) Interface() interface{} {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	return iv.Interface()
 }
 
@@ -879,7 +902,7 @@ func (iv internalValue) Interface() interface{} {
 // InterfaceData returns the interface v's value as a uintptr pair.
 // It panics if v's Kind is not Interface.
 func (v Value) InterfaceData() [2]uintptr {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	iv.mustBe(Interface)
 	// We treat this as a read operation, so we allow
 	// it even for unexported data, because the caller
@@ -891,7 +914,7 @@ func (v Value) InterfaceData() [2]uintptr {
 // IsNil returns true if v is a nil value.
 // It panics if v's Kind is not Chan, Func, Interface, Map, Ptr, or Slice.
 func (v Value) IsNil() bool {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	return iv.IsNil()
 }
 
@@ -915,23 +938,19 @@ func (iv internalValue) IsNil() bool {
 // Most functions and methods never return an invalid value.
 // If one does, its documentation states the conditions explicitly.
 func (v Value) IsValid() bool {
-	// Reduce copying knowing typ is first in the struct.
-	typ := (*(**commonType)(unsafe.Pointer(&v)))
-	return typ != nil
+	return v.Internal != nil
 }
 
 // Kind returns v's Kind.
 // If v is the zero Value (IsValid returns false), Kind returns Invalid.
 func (v Value) Kind() Kind {
-	// Reduce copying knowing typ is first in the struct.
-	typ := (*(**commonType)(unsafe.Pointer(&v)))
-	return typ.Kind()
+	return v.internal().typ.Kind()
 }
 
 // Len returns v's length.
 // It panics if v's Kind is not Array, Chan, Map, or Slice.
 func (v Value) Len() int {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	switch iv.typ.Kind() {
 	case Array:
 		return iv.typ.Len()
@@ -950,7 +969,7 @@ func (v Value) Len() int {
 // It returns the zero Value if key is not found in the map or if v represents a nil map.
 // As in Go, the key's value must be assignable to the map's key type.
 func (v Value) MapIndex(key Value) Value {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	iv.mustBe(Map)
 	typ := iv.typ.toType()
 
@@ -960,10 +979,10 @@ func (v Value) MapIndex(key Value) Value {
 	// or the key is unexported, though, the result will be
 	// considered unexported.
 
-	ikey := *(*internalValue)(unsafe.Pointer(&key))
-	keyt := typ.Key()
-	if ikey.typ != keyt.(*commonType) {
-		ikey = convertForAssignment("reflect.Value.MapIndex", nil, keyt, ikey)
+	ikey := key.internal()
+	keyType := typ.Key()
+	if ikey.typ != keyType.(*commonType) {
+		ikey = convertForAssignment("reflect.Value.MapIndex", nil, keyType, ikey)
 	}
 	m := iv.indirect()
 	if m == 0 {
@@ -984,7 +1003,7 @@ func (v Value) MapIndex(key Value) Value {
 // It panics if v's Kind is not Map.
 // It returns an empty slice if v represents a nil map.
 func (v Value) MapKeys() []Value {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	iv.mustBe(Map)
 	keyType := iv.typ.Key()
 
@@ -1013,22 +1032,20 @@ func (v Value) MapKeys() []Value {
 // a receiver; the returned function will always use v as the receiver.
 // Method panics if i is out of range.
 func (v Value) Method(i int) Value {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	if iv.typ == nil {
 		panic(&ValueError{"reflect.Value.Method", Invalid})
 	}
 	if i < 0 || i >= iv.typ.NumMethod() {
 		panic("reflect: Method index out of range")
 	}
-	mv := Value{}
-	*(*internalValue)(unsafe.Pointer(&mv)) = iv.method(i)
-	return mv
+	return v.packMethod(i)
 }
 
 // NumField returns the number of fields in the struct v.
 // It panics if v's Kind is not Struct.
 func (v Value) NumField() int {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	iv.mustBe(Struct)
 	return iv.typ.NumField()
 }
@@ -1036,7 +1053,7 @@ func (v Value) NumField() int {
 // OverflowComplex returns true if the complex128 x cannot be represented by v's type.
 // It panics if v's Kind is not Complex64 or Complex128.
 func (v Value) OverflowComplex(x complex128) bool {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	switch iv.typ.Kind() {
 	case Complex64:
 		return overflowFloat32(real(x)) || overflowFloat32(imag(x))
@@ -1049,7 +1066,7 @@ func (v Value) OverflowComplex(x complex128) bool {
 // OverflowFloat returns true if the float64 x cannot be represented by v's type.
 // It panics if v's Kind is not Float32 or Float64.
 func (v Value) OverflowFloat(x float64) bool {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	switch iv.typ.Kind() {
 	case Float32:
 		return overflowFloat32(x)
@@ -1069,7 +1086,7 @@ func overflowFloat32(x float64) bool {
 // OverflowInt returns true if the int64 x cannot be represented by v's type.
 // It panics if v's Kind is not Int, Int8, int16, Int32, or Int64.
 func (v Value) OverflowInt(x int64) bool {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	switch iv.typ.Kind() {
 	case Int, Int8, Int16, Int32, Int64:
 		bitSize := iv.typ.size * 8
@@ -1082,7 +1099,7 @@ func (v Value) OverflowInt(x int64) bool {
 // OverflowUint returns true if the uint64 x cannot be represented by v's type.
 // It panics if v's Kind is not Uint, Uintptr, Uint8, Uint16, Uint32, or Uint64.
 func (v Value) OverflowUint(x uint64) bool {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	switch iv.typ.Kind() {
 	case Uint, Uintptr, Uint8, Uint16, Uint32, Uint64:
 		bitSize := iv.typ.size * 8
@@ -1098,7 +1115,7 @@ func (v Value) OverflowUint(x uint64) bool {
 // without importing the unsafe package explicitly.
 // It panics if v's Kind is not Chan, Func, Map, Ptr, Slice, or UnsafePointer.
 func (v Value) Pointer() uintptr {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	switch iv.typ.Kind() {
 	case Chan, Func, Map, Ptr, UnsafePointer:
 		if iv.typ.Kind() == Func && iv.flag&flagMethod != 0 {
@@ -1117,7 +1134,7 @@ func (v Value) Pointer() uintptr {
 // The boolean value ok is true if the value x corresponds to a send
 // on the channel, false if it is a zero value received because the channel is closed.
 func (v Value) Recv() (x Value, ok bool) {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	iv.mustBe(Chan)
 	iv.mustBeExported()
 	return iv.recv(false)
@@ -1144,7 +1161,7 @@ func (iv internalValue) recv(nb bool) (val Value, ok bool) {
 // It panics if v's kind is not Chan or if x's type is not the same type as v's element type.
 // As in Go, x's value must be assignable to the channel's element type.
 func (v Value) Send(x Value) {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	iv.mustBe(Chan)
 	iv.mustBeExported()
 	iv.send(x, false)
@@ -1157,11 +1174,11 @@ func (iv internalValue) send(x Value, nb bool) (selected bool) {
 		panic("send on recv-only channel")
 	}
 
-	ix := *(*internalValue)(unsafe.Pointer(&x))
+	ix := x.internal()
 	ix.mustBeExported() // do not let unexported x leak
-	et := t.Elem()
-	if ix.typ != et.(*commonType) {
-		ix = convertForAssignment("reflect.Value.Send", nil, et, ix)
+	elemType := t.Elem()
+	if ix.typ != elemType.(*commonType) {
+		ix = convertForAssignment("reflect.Value.Send", nil, elemType, ix)
 	}
 
 	ch := iv.indirect()
@@ -1175,8 +1192,8 @@ func (iv internalValue) send(x Value, nb bool) (selected bool) {
 // It panics if CanSet returns false.
 // As in Go, x's value must be assignable to v's type.
 func (v Value) Set(x Value) {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
-	ix := *(*internalValue)(unsafe.Pointer(&x))
+	iv := v.internal()
+	ix := x.internal()
 
 	iv.mustBeAssignable()
 	ix.mustBeExported() // do not let unexported x leak
@@ -1196,7 +1213,7 @@ func (v Value) Set(x Value) {
 // SetBool sets v's underlying value.
 // It panics if v's Kind is not Bool or if CanSet() is false.
 func (v Value) SetBool(x bool) {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	iv.mustBeAssignable()
 	iv.mustBe(Bool)
 	*(*bool)(unsafe.Pointer(iv.word)) = x
@@ -1205,7 +1222,7 @@ func (v Value) SetBool(x bool) {
 // SetComplex sets v's underlying value to x.
 // It panics if v's Kind is not Complex64 or Complex128, or if CanSet() is false.
 func (v Value) SetComplex(x complex128) {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	iv.mustBeAssignable()
 	switch iv.typ.Kind() {
 	default:
@@ -1220,7 +1237,7 @@ func (v Value) SetComplex(x complex128) {
 // SetFloat sets v's underlying value to x.
 // It panics if v's Kind is not Float32 or Float64, or if CanSet() is false.
 func (v Value) SetFloat(x float64) {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	iv.mustBeAssignable()
 	switch iv.typ.Kind() {
 	default:
@@ -1235,7 +1252,7 @@ func (v Value) SetFloat(x float64) {
 // SetInt sets v's underlying value to x.
 // It panics if v's Kind is not Int, Int8, Int16, Int32, or Int64, or if CanSet() is false.
 func (v Value) SetInt(x int64) {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	iv.mustBeAssignable()
 	switch iv.typ.Kind() {
 	default:
@@ -1256,7 +1273,7 @@ func (v Value) SetInt(x int64) {
 // SetLen sets v's length to n.
 // It panics if v's Kind is not Slice.
 func (v Value) SetLen(n int) {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	iv.mustBeAssignable()
 	iv.mustBe(Slice)
 	s := (*SliceHeader)(unsafe.Pointer(iv.word))
@@ -1272,24 +1289,24 @@ func (v Value) SetLen(n int) {
 // As in Go, key's value must be assignable to the map's key type,
 // and val's value must be assignable to the map's value type.
 func (v Value) SetMapIndex(key, val Value) {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
-	ikey := *(*internalValue)(unsafe.Pointer(&key))
-	ival := *(*internalValue)(unsafe.Pointer(&val))
+	iv := v.internal()
+	ikey := key.internal()
+	ival := val.internal()
 
 	iv.mustBe(Map)
 	iv.mustBeExported()
 
 	ikey.mustBeExported()
-	keyt := iv.typ.Key()
-	if ikey.typ != keyt.(*commonType) {
-		ikey = convertForAssignment("reflect.Value.SetMapIndex", nil, keyt, ikey)
+	keyType := iv.typ.Key()
+	if ikey.typ != keyType.(*commonType) {
+		ikey = convertForAssignment("reflect.Value.SetMapIndex", nil, keyType, ikey)
 	}
 
 	if ival.typ != nil {
 		ival.mustBeExported()
-		valt := iv.typ.Elem()
-		if ival.typ != valt.(*commonType) {
-			ival = convertForAssignment("reflect.Value.SetMapIndex", nil, valt, ival)
+		valType := iv.typ.Elem()
+		if ival.typ != valType.(*commonType) {
+			ival = convertForAssignment("reflect.Value.SetMapIndex", nil, valType, ival)
 		}
 	}
 
@@ -1299,7 +1316,7 @@ func (v Value) SetMapIndex(key, val Value) {
 // SetUint sets v's underlying value to x.
 // It panics if v's Kind is not Uint, Uintptr, Uint8, Uint16, Uint32, or Uint64, or if CanSet() is false.
 func (v Value) SetUint(x uint64) {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	iv.mustBeAssignable()
 	switch iv.typ.Kind() {
 	default:
@@ -1322,7 +1339,7 @@ func (v Value) SetUint(x uint64) {
 // SetPointer sets the unsafe.Pointer value v to x.
 // It panics if v's Kind is not UnsafePointer.
 func (v Value) SetPointer(x unsafe.Pointer) {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	iv.mustBeAssignable()
 	iv.mustBe(UnsafePointer)
 	*(*unsafe.Pointer)(unsafe.Pointer(iv.word)) = x
@@ -1331,7 +1348,7 @@ func (v Value) SetPointer(x unsafe.Pointer) {
 // SetString sets v's underlying value to x.
 // It panics if v's Kind is not String or if CanSet() is false.
 func (v Value) SetString(x string) {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	iv.mustBeAssignable()
 	iv.mustBe(String)
 	*(*string)(unsafe.Pointer(iv.word)) = x
@@ -1340,7 +1357,7 @@ func (v Value) SetString(x string) {
 // Slice returns a slice of v.
 // It panics if v's Kind is not Array or Slice.
 func (v Value) Slice(beg, end int) Value {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	if iv.typ.Kind() != Array && iv.typ.Kind() != Slice {
 		panic(&ValueError{"reflect.Value.Slice", iv.typ.Kind()})
 	}
@@ -1373,7 +1390,7 @@ func (v Value) Slice(beg, end int) Value {
 // Unlike the other getters, it does not panic if v's Kind is not String.
 // Instead, it returns a string of the form "<T value>" where T is v's type.
 func (v Value) String() string {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	switch iv.typ.Kind() {
 	case Invalid:
 		return "<invalid Value>"
@@ -1389,7 +1406,7 @@ func (v Value) String() string {
 // The boolean ok is true if the value x corresponds to a send
 // on the channel, false if it is a zero value received because the channel is closed.
 func (v Value) TryRecv() (x Value, ok bool) {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	iv.mustBe(Chan)
 	iv.mustBeExported()
 	return iv.recv(true)
@@ -1400,7 +1417,7 @@ func (v Value) TryRecv() (x Value, ok bool) {
 // It returns true if the value was sent, false otherwise.
 // As in Go, x's value must be assignable to the channel's element type.
 func (v Value) TrySend(x Value) bool {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	iv.mustBe(Chan)
 	iv.mustBeExported()
 	return iv.send(x, true)
@@ -1408,7 +1425,7 @@ func (v Value) TrySend(x Value) bool {
 
 // Type returns v's type.
 func (v Value) Type() Type {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	t := iv.typ
 	if t == nil {
 		panic(&ValueError{"reflect.Value.Type", Invalid})
@@ -1419,7 +1436,7 @@ func (v Value) Type() Type {
 // Uint returns v's underlying value, as a uint64.
 // It panics if v's Kind is not Uint, Uintptr, Uint8, Uint16, Uint32, or Uint64.
 func (v Value) Uint() uint64 {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	w := iv.indirect()
 	switch iv.typ.Kind() {
 	case Uint:
@@ -1442,7 +1459,7 @@ func (v Value) Uint() uint64 {
 // It is for advanced clients that also import the "unsafe" package.
 // It panics if v is not addressable.
 func (v Value) UnsafeAddr() uintptr {
-	iv := *(*internalValue)(unsafe.Pointer(&v))
+	iv := v.internal()
 	if iv.typ == nil {
 		panic(&ValueError{"reflect.Value.UnsafeAddr", iv.typ.Kind()})
 	}
@@ -1504,7 +1521,7 @@ func grow(s Value, extra int) (Value, int, int) {
 // Append appends the values x to a slice s and returns the resulting slice.
 // As in Go, each x's value must be assignable to the slice's element type.
 func Append(s Value, x ...Value) Value {
-	siv := *(*internalValue)(unsafe.Pointer(&s))
+	siv := s.internal()
 	siv.mustBe(Slice)
 	s, i0, i1 := grow(s, len(x))
 	for i, j := i0, 0; i < i1; i, j = i+1, j+1 {
@@ -1516,8 +1533,8 @@ func Append(s Value, x ...Value) Value {
 // AppendSlice appends a slice t to a slice s and returns the resulting slice.
 // The slices s and t must have the same element type.
 func AppendSlice(s, t Value) Value {
-	siv := *(*internalValue)(unsafe.Pointer(&s))
-	tiv := *(*internalValue)(unsafe.Pointer(&t))
+	siv := s.internal()
+	tiv := t.internal()
 	siv.mustBe(Slice)
 	tiv.mustBe(Slice)
 	typesMustMatch("reflect.AppendSlice", s.Type().Elem(), t.Type().Elem())
@@ -1532,8 +1549,8 @@ func AppendSlice(s, t Value) Value {
 // Dst and src each must have kind Slice or Array, and
 // dst and src must have the same element type.
 func Copy(dst, src Value) int {
-	idst := *(*internalValue)(unsafe.Pointer(&dst))
-	isrc := *(*internalValue)(unsafe.Pointer(&src))
+	idst := dst.internal()
+	isrc := src.internal()
 
 	dkind := idst.typ.Kind()
 	skind := isrc.typ.Kind()
