@@ -4546,3 +4546,13 @@ data/src/pkg/exp/regexp/syntax/make_perl_groups.pl.i
 data/src/pkg/go/build/cmdtest/main.go.i
 data/src/cmd/gofix/httpheaders.go.i
 data/src/cmd/gofix/httpheaders_test.go.i
+data/src/pkg/time/zoneinfo_posix.go.i
+data/src/pkg/time/zoneinfo_plan9.go.i
+data/src/pkg/time/sys_posix.go.i
+data/src/cmd/godefs/testdata_darwin_386.golden.i
+data/src/cmd/godefs/testdata_darwin_amd64.golden.i
+data/src/pkg/exec/lp_plan9.go.i
+data/test/sizeof.go.i
+data/src/pkg/time/sys_plan9.go.i
+data/src/cmd/godefs/test.sh.i
+data/src/cmd/godefs/testdata.c.i

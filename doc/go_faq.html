@@ -183,16 +183,6 @@ easier to understand what happens when things combine.
 
 <h2 id="Usage">Usage</h2>
 
-<h3 id="Who_should_use_the_language">
-Who should use the language?</h3>
-
-<p>
-Go is an experiment. We hope adventurous users will give it a try and see
-if they enjoy it. Not every programmer
-will, but we hope enough will find satisfaction in the approach it
-offers to justify further development.
-</p>
-
 <h3 id="Is_Google_using_go_internally"> Is Google using Go internally?</h3>
 
 <p>
@@ -597,6 +587,24 @@ Most code doesn't make use of such constraints, since they limit the utility of
 the interface idea. Sometimes, though, they're necessary to resolve ambiguities
 among similar interfaces.
 </p>
+
+<h3 id="convert_slice_of_interface">
+Can I convert a []T to an []interface{}?</h3>
+
+<p>
+Not directly because they do not have the same representation in memory.
+It is necessary to copy the elements individually to the destination
+slice. This example converts a slice of <code>int</code> to a slice of
+<code>interface{}</code>:
+</p>
+
+<pre>
+t := []int{1, 2, 3, 4}
+s := make([]interface{}, len(t))
+for i, v := range t {
+	s[i] = v
+}
+</pre>
 
 <h2 id="values">Values</h2>
 
