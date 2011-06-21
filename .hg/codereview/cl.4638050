@@ -1,0 +1,14 @@
+Mailed: False
+Description:
+	ld: don't attempt to build dynamic sections unnecessarily
+	
+	This prevents ld from generating zeroed symtab entries for
+	sections that aren't going to be generated because dynamic
+	linkage has been disabled (-d was used or no dynamic libs
+	were seen).  Even though they were not explicitly added by
+	doelf, the relocation process was making them reachable
+	again.
+	
+	The windows head is being disconsidered for this because
+	apparently it's not taking into account debug['d'].
+Files:
