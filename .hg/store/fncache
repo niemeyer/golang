@@ -4556,3 +4556,6 @@ data/test/sizeof.go.i
 data/src/pkg/time/sys_plan9.go.i
 data/src/cmd/godefs/test.sh.i
 data/src/cmd/godefs/testdata.c.i
+data/test/goto.go.i
+data/src/pkg/syscall/sockcmsg_unix.go.i
+data/src/pkg/syscall/lsf_linux.go.i
