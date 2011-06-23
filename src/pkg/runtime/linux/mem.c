@@ -89,11 +89,11 @@ runtime·SysMap(void *v, uintptr n)
 	if(sizeof(void*) == 8) {
 		p = runtime·mmap(v, n, PROT_READ|PROT_WRITE|PROT_EXEC, MAP_ANON|MAP_PRIVATE, -1, 0);
 		if(p != v && addrspace_free(v, n)) {
+			// On some systems, mmap ignores v without
+			// MAP_FIXED, so retry if the address space is free.
 			if(p > (void*)4096) {
 				runtime·munmap(p, n);
 			}
-			// On some systems, mmap ignores v without
-			// MAP_FIXED, so retry if the address space is free.
 			p = runtime·mmap(v, n, PROT_READ|PROT_WRITE|PROT_EXEC, MAP_ANON|MAP_FIXED|MAP_PRIVATE, -1, 0);
 		}
 		if(p == (void*)ENOMEM)
