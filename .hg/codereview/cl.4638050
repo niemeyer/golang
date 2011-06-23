@@ -1,4 +1,4 @@
-Mailed: False
+Mailed: True
 Description:
 	ld: don't attempt to build dynamic sections unnecessarily
 	
@@ -11,4 +11,7 @@ Description:
 	
 	The windows head is being disconsidered for this because
 	apparently it's not taking into account debug['d'].
+	
+	This makes elflint 0.1% happier.
 Files:
+	src/cmd/ld/data.c
