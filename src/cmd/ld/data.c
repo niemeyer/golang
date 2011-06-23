@@ -278,6 +278,10 @@ dynreloc(void)
 {
 	Sym *s;
 	
+	// -d supresses dynamic loader format, so we may as well not
+	// compute these sections or mark their symbols as reachable.
+	if(debug['d'] && HEADTYPE != Hwindows)
+		return;
 	if(debug['v'])
 		Bprint(&bso, "%5.2f reloc\n", cputime());
 	Bflush(&bso);
@@ -482,13 +486,13 @@ codeblk(int32 addr, int32 size)
 			q = sym->p;
 			
 			while(n >= 16) {
-				Bprint(&bso, "%.6ux\t%-20.16I\n",  addr, q);
+				Bprint(&bso, "%.6ux\t%-20.16I\n", addr, q);
 				addr += 16;
 				q += 16;
 				n -= 16;
 			}
 			if(n > 0)
-				Bprint(&bso, "%.6ux\t%-20.*I\n", addr, n, q);
+				Bprint(&bso, "%.6ux\t%-20.*I\n", addr, (int)n, q);
 			addr += n;
 			continue;
 		}
@@ -502,7 +506,7 @@ codeblk(int32 addr, int32 size)
 			Bprint(&bso, "%.6ux\t", p->pc);
 			q = sym->p + p->pc - sym->value;
 			n = epc - p->pc;
-			Bprint(&bso, "%-20.*I | %P\n", n, q, p);
+			Bprint(&bso, "%-20.*I | %P\n", (int)n, q, p);
 			addr += n;
 		}
 	}
@@ -543,7 +547,7 @@ datblk(int32 addr, int32 size)
 			Bprint(&bso, "%-20s %.8ux| 00 ...\n", "(pre-pad)", addr);
 			addr = sym->value;
 		}
-		Bprint(&bso, "%-20s %.8ux|", sym->name, addr);
+		Bprint(&bso, "%-20s %.8ux|", sym->name, (uint)addr);
 		p = sym->p;
 		ep = p + sym->np;
 		while(p < ep)
@@ -555,8 +559,8 @@ datblk(int32 addr, int32 size)
 	}
 
 	if(addr < eaddr)
-		Bprint(&bso, "%-20s %.8ux| 00 ...\n", "(post-pad)", addr);
-	Bprint(&bso, "%-20s %.8ux|\n", "", eaddr);
+		Bprint(&bso, "%-20s %.8ux| 00 ...\n", "(post-pad)", (uint)addr);
+	Bprint(&bso, "%-20s %.8ux|\n", "", (uint)eaddr);
 }
 
 void
@@ -808,9 +812,9 @@ dodata(void)
 			t = rnd(t, PtrSize);
 		else if(t > 2)
 			t = rnd(t, 4);
-		if(t & 1)
+		if(t & 1) {
 			;
-		else if(t & 2)
+		} else if(t & 2)
 			datsize = rnd(datsize, 2);
 		else if(t & 4)
 			datsize = rnd(datsize, 4);
@@ -834,9 +838,9 @@ dodata(void)
 			t = rnd(t, PtrSize);
 		else if(t > 2)
 			t = rnd(t, 4);
-		if(t & 1)
+		if(t & 1) {
 			;
-		else if(t & 2)
+		} else if(t & 2)
 			datsize = rnd(datsize, 2);
 		else if(t & 4)
 			datsize = rnd(datsize, 4);

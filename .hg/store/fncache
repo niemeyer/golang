@@ -4559,3 +4559,11 @@ data/src/cmd/godefs/testdata.c.i
 data/test/goto.go.i
 data/src/pkg/syscall/sockcmsg_unix.go.i
 data/src/pkg/syscall/lsf_linux.go.i
+data/src/pkg/exp/template/parse.go.i
+data/src/pkg/crypto/openpgp/elgamal/elgamal_test.go.i
+data/src/pkg/crypto/openpgp/elgamal/Makefile.i
+data/src/pkg/crypto/openpgp/elgamal/elgamal.go.i
+data/src/cmd/gofix/oserrorstring.go.i
+data/src/pkg/net/interface_windows.go.i
+data/src/cmd/gofix/oserrorstring_test.go.i
+data/src/pkg/exp/template/parse_test.go.i

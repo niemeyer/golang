@@ -150,7 +150,7 @@ func logPackage(pkg string) {
 }
 
 // install installs the package named by path, which is needed by parent.
-func install(pkg, parent string) (built bool) {
+func install(pkg, parent string) {
 	// Make sure we're not already trying to install pkg.
 	switch visit[pkg] {
 	case done:
@@ -201,12 +201,9 @@ func install(pkg, parent string) (built bool) {
 		errorf("%s: package has no files\n", pkg)
 		return
 	}
-	var depBuilt bool
 	for _, p := range dirInfo.Imports {
 		if p != "C" {
-			if install(p, pkg) {
-				depBuilt = true
-			}
+			install(p, pkg)
 		}
 	}
 	if errors {
@@ -227,13 +224,12 @@ func install(pkg, parent string) (built bool) {
 		script.Clean()
 	}
 	if *doInstall {
-		if depBuilt || script.Stale() {
+		if script.Stale() {
 			printf("%s: install\n", pkg)
 			if err := script.Run(); err != nil {
 				errorf("%s: install: %v\n", pkg, err)
 				return
 			}
-			built = true
 		} else {
 			printf("%s: up-to-date\n", pkg)
 		}
@@ -283,7 +279,7 @@ func genRun(dir string, stdin []byte, arg []string, quiet bool) os.Error {
 			os.Stderr.Write(out)
 			fmt.Fprintf(os.Stderr, "--- %s\n", err)
 		}
-		return os.ErrorString("running " + arg[0] + ": " + err.String())
+		return os.NewError("running " + arg[0] + ": " + err.String())
 	}
 	return nil
 }
