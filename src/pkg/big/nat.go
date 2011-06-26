@@ -2,7 +2,11 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package big implements multi-precision arithmetic (big numbers).
+// This file contains operations on unsigned multi-precision integers.
+// These are the building blocks for the operations on signed integers
+// and rationals.
+
+// This package implements multi-precision arithmetic (big numbers).
 // The following numeric types are supported:
 //
 //	- Int	signed integers
@@ -14,16 +18,7 @@
 //
 package big
 
-// This file contains operations on unsigned multi-precision integers.
-// These are the building blocks for the operations on signed integers
-// and rationals.
-
-import (
-	"io"
-	"os"
-	"rand"
-)
-
+import "rand"
 
 // An unsigned integer x of the form
 //
@@ -550,14 +545,9 @@ func (z nat) divLarge(u, uIn, v nat) (q, r nat) {
 	u.clear()
 
 	// D1.
-	shift := leadingZeros(v[n-1])
-	if shift > 0 {
-		// do not modify v, it may be used by another goroutine simultaneously
-		v1 := make(nat, n)
-		shlVU(v1, v, shift)
-		v = v1
-	}
-	u[len(uIn)] = shlVU(u[0:len(uIn)], uIn, shift)
+	shift := Word(leadingZeros(v[n-1]))
+	shlVW(v, v, shift)
+	u[len(uIn)] = shlVW(u[0:len(uIn)], uIn, shift)
 
 	// D2.
 	for j := m; j >= 0; j-- {
@@ -596,7 +586,8 @@ func (z nat) divLarge(u, uIn, v nat) (q, r nat) {
 	}
 
 	q = q.norm()
-	shrVU(u, u, shift)
+	shrVW(u, u, shift)
+	shrVW(v, v, shift)
 	r = u.norm()
 
 	return q, r
@@ -612,252 +603,96 @@ func (x nat) bitLen() int {
 }
 
 
-// MaxBase is the largest number base accepted for string conversions.
-const MaxBase = 'z' - 'a' + 10 + 1 // = hexValue('z') + 1
-
-
-func hexValue(ch int) Word {
-	d := MaxBase + 1 // illegal base
+func hexValue(ch byte) int {
+	var d byte
 	switch {
 	case '0' <= ch && ch <= '9':
 		d = ch - '0'
-	case 'a' <= ch && ch <= 'z':
+	case 'a' <= ch && ch <= 'f':
 		d = ch - 'a' + 10
-	case 'A' <= ch && ch <= 'Z':
+	case 'A' <= ch && ch <= 'F':
 		d = ch - 'A' + 10
+	default:
+		return -1
 	}
-	return Word(d)
+	return int(d)
 }
 
 
-// scan sets z to the natural number corresponding to the longest possible prefix
-// read from r representing an unsigned integer in a given conversion base.
-// It returns z, the actual conversion base used, and an error, if any. In the
-// error case, the value of z is undefined. The syntax follows the syntax of
-// unsigned integer literals in Go.
+// scan returns the natural number corresponding to the
+// longest possible prefix of s representing a natural number in a
+// given conversion base, the actual conversion base used, and the
+// prefix length. The syntax of natural numbers follows the syntax
+// of unsigned integer literals in Go.
 //
-// The base argument must be 0 or a value from 2 through MaxBase. If the base
-// is 0, the string prefix determines the actual conversion base. A prefix of
-// ``0x'' or ``0X'' selects base 16; the ``0'' prefix selects base 8, and a
-// ``0b'' or ``0B'' prefix selects base 2. Otherwise the selected base is 10.
+// If the base argument is 0, the string prefix determines the actual
+// conversion base. A prefix of ``0x'' or ``0X'' selects base 16; the
+// ``0'' prefix selects base 8, and a ``0b'' or ``0B'' prefix selects
+// base 2. Otherwise the selected base is 10.
 //
-func (z nat) scan(r io.RuneScanner, base int) (nat, int, os.Error) {
-	// reject illegal bases
-	if base < 0 || base == 1 || MaxBase < base {
-		return z, 0, os.NewError("illegal number base")
-	}
-
-	// one char look-ahead
-	ch, _, err := r.ReadRune()
-	if err != nil {
-		return z, 0, err
-	}
-
+func (z nat) scan(s string, base int) (nat, int, int) {
 	// determine base if necessary
-	b := Word(base)
+	i, n := 0, len(s)
 	if base == 0 {
-		b = 10
-		if ch == '0' {
-			switch ch, _, err = r.ReadRune(); err {
-			case nil:
-				b = 8
-				switch ch {
+		base = 10
+		if n > 0 && s[0] == '0' {
+			base, i = 8, 1
+			if n > 1 {
+				switch s[1] {
 				case 'x', 'X':
-					b = 16
+					base, i = 16, 2
 				case 'b', 'B':
-					b = 2
+					base, i = 2, 2
 				}
-				if b == 2 || b == 16 {
-					if ch, _, err = r.ReadRune(); err != nil {
-						return z, 0, err
-					}
-				}
-			case os.EOF:
-				return z, 10, nil
-			default:
-				return z, 10, err
 			}
 		}
+	}
+
+	// reject illegal bases or strings consisting only of prefix
+	if base < 2 || 16 < base || (base != 8 && i >= n) {
+		return z, 0, 0
 	}
 
 	// convert string
-	// - group as many digits d as possible together into a "super-digit" dd with "super-base" bb
-	// - only when bb does not fit into a word anymore, do a full number mulAddWW using bb and dd
 	z = z.make(0)
-	bb := Word(1)
-	dd := Word(0)
-	for max := _M / b; ; {
-		d := hexValue(ch)
-		if d >= b {
-			r.UnreadRune() // ch does not belong to number anymore
-			break
-		}
-
-		if bb <= max {
-			bb *= b
-			dd = dd*b + d
+	for ; i < n; i++ {
+		d := hexValue(s[i])
+		if 0 <= d && d < base {
+			z = z.mulAddWW(z, Word(base), Word(d))
 		} else {
-			// bb * b would overflow
-			z = z.mulAddWW(z, bb, dd)
-			bb = b
-			dd = d
-		}
-
-		if ch, _, err = r.ReadRune(); err != nil {
-			if err != os.EOF {
-				return z, int(b), err
-			}
 			break
 		}
 	}
 
-	switch {
-	case bb > 1:
-		// there was at least one mantissa digit
-		z = z.mulAddWW(z, bb, dd)
-	case base == 0 && b == 8:
-		// there was only the octal prefix 0 (possibly followed by digits > 7);
-		// return base 10, not 8
-		return z, 10, nil
-	case base != 0 || b != 8:
-		// there was neither a mantissa digit nor the octal prefix 0
-		return z, int(b), os.NewError("syntax error scanning number")
+	return z.norm(), base, i
+}
+
+
+// string converts x to a string for a given base, with 2 <= base <= 16.
+// TODO(gri) in the style of the other routines, perhaps this should take
+//           a []byte buffer and return it
+func (x nat) string(base int) string {
+	if base < 2 || 16 < base {
+		panic("illegal base")
 	}
 
-	return z.norm(), int(b), nil
-}
-
-
-// Character sets for string conversion.
-const (
-	lowercaseDigits = "0123456789abcdefghijklmnopqrstuvwxyz"
-	uppercaseDigits = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-)
-
-
-// decimalString returns a decimal representation of x.
-// It calls x.string with the charset "0123456789".
-func (x nat) decimalString() string {
-	return x.string(lowercaseDigits[0:10])
-}
-
-
-// string converts x to a string using digits from a charset; a digit with
-// value d is represented by charset[d]. The conversion base is determined
-// by len(charset), which must be >= 2.
-func (x nat) string(charset string) string {
-	b := Word(len(charset))
-
-	// special cases
-	switch {
-	case b < 2 || b > 256:
-		panic("illegal base")
-	case len(x) == 0:
-		return string(charset[0])
+	if len(x) == 0 {
+		return "0"
 	}
 
 	// allocate buffer for conversion
-	i := x.bitLen()/log2(b) + 1 // +1: round up
+	i := x.bitLen()/log2(Word(base)) + 1 // +1: round up
 	s := make([]byte, i)
 
-	// special case: power of two bases can avoid divisions completely
-	if b == b&-b {
-		// shift is base-b digit size in bits
-		shift := uint(trailingZeroBits(b)) // shift > 0 because b >= 2
-		mask := Word(1)<<shift - 1
-		w := x[0]
-		nbits := uint(_W) // number of unprocessed bits in w
-
-		// convert less-significant words
-		for k := 1; k < len(x); k++ {
-			// convert full digits
-			for nbits >= shift {
-				i--
-				s[i] = charset[w&mask]
-				w >>= shift
-				nbits -= shift
-			}
-
-			// convert any partial leading digit and advance to next word
-			if nbits == 0 {
-				// no partial digit remaining, just advance
-				w = x[k]
-				nbits = _W
-			} else {
-				// partial digit in current (k-1) and next (k) word
-				w |= x[k] << nbits
-				i--
-				s[i] = charset[w&mask]
-
-				// advance
-				w = x[k] >> (shift - nbits)
-				nbits = _W - (shift - nbits)
-			}
-		}
-
-		// convert digits of most-significant word (omit leading zeros)
-		for nbits >= 0 && w != 0 {
-			i--
-			s[i] = charset[w&mask]
-			w >>= shift
-			nbits -= shift
-		}
-
-		return string(s[i:])
-	}
-
-	// general case: extract groups of digits by multiprecision division
-
-	// maximize ndigits where b**ndigits < 2^_W; bb (big base) is b**ndigits
-	bb := Word(1)
-	ndigits := 0
-	for max := Word(_M / b); bb <= max; bb *= b {
-		ndigits++
-	}
-
-	// preserve x, create local copy for use in repeated divisions
+	// don't destroy x
 	q := nat(nil).set(x)
-	var r Word
 
 	// convert
-	if b == 10 { // hard-coding for 10 here speeds this up by 1.25x
-		for len(q) > 0 {
-			// extract least significant, base bb "digit"
-			q, r = q.divW(q, bb) // N.B. >82% of time is here. Optimize divW
-			if len(q) == 0 {
-				// skip leading zeros in most-significant group of digits
-				for j := 0; j < ndigits && r != 0; j++ {
-					i--
-					s[i] = charset[r%10]
-					r /= 10
-				}
-			} else {
-				for j := 0; j < ndigits; j++ {
-					i--
-					s[i] = charset[r%10]
-					r /= 10
-				}
-			}
-		}
-	} else {
-		for len(q) > 0 {
-			// extract least significant group of digits
-			q, r = q.divW(q, bb) // N.B. >82% of time is here. Optimize divW
-			if len(q) == 0 {
-				// skip leading zeros in most-significant group of digits
-				for j := 0; j < ndigits && r != 0; j++ {
-					i--
-					s[i] = charset[r%b]
-					r /= b
-				}
-			} else {
-				for j := 0; j < ndigits; j++ {
-					i--
-					s[i] = charset[r%b]
-					r /= b
-				}
-			}
-		}
+	for len(q) > 0 {
+		i--
+		var r Word
+		q, r = q.divW(q, Word(base))
+		s[i] = "0123456789abcdef"[r]
 	}
 
 	return string(s[i:])
@@ -880,14 +715,13 @@ var deBruijn64Lookup = []byte{
 	54, 26, 40, 15, 34, 20, 31, 10, 25, 14, 19, 9, 13, 8, 7, 6,
 }
 
-
 // trailingZeroBits returns the number of consecutive zero bits on the right
 // side of the given Word.
 // See Knuth, volume 4, section 7.3.1
 func trailingZeroBits(x Word) int {
 	// x & -x leaves only the right-most bit set in the word. Let k be the
 	// index of that bit. Since only a single bit is set, the value is two
-	// to the power of k. Multiplying by a power of two is equivalent to
+	// to the power of k. Multipling by a power of two is equivalent to
 	// left shifting, in this case by k bits.  The de Bruijn constant is
 	// such that all six bit, consecutive substrings are distinct.
 	// Therefore, if we have a left shifted version of this constant we can
@@ -916,7 +750,7 @@ func (z nat) shl(x nat, s uint) nat {
 
 	n := m + int(s/_W)
 	z = z.make(n + 1)
-	z[n] = shlVU(z[n-m:n], x, s%_W)
+	z[n] = shlVW(z[n-m:n], x, Word(s%_W))
 	z[0 : n-m].clear()
 
 	return z.norm()
@@ -933,46 +767,9 @@ func (z nat) shr(x nat, s uint) nat {
 	// n > 0
 
 	z = z.make(n)
-	shrVU(z, x[m-n:], s%_W)
+	shrVW(z, x[m-n:], Word(s%_W))
 
 	return z.norm()
-}
-
-
-func (z nat) setBit(x nat, i uint, b uint) nat {
-	j := int(i / _W)
-	m := Word(1) << (i % _W)
-	n := len(x)
-	switch b {
-	case 0:
-		z = z.make(n)
-		copy(z, x)
-		if j >= n {
-			// no need to grow
-			return z
-		}
-		z[j] &^= m
-		return z.norm()
-	case 1:
-		if j >= n {
-			n = j + 1
-		}
-		z = z.make(n)
-		copy(z, x)
-		z[j] |= m
-		// no need to normalize
-		return z
-	}
-	panic("set bit is not 0 or 1")
-}
-
-
-func (z nat) bit(i uint) uint {
-	j := int(i / _W)
-	if j >= len(z) {
-		return 0
-	}
-	return uint(z[j] >> (i % _W) & 1)
 }
 
 
@@ -1052,9 +849,7 @@ func (z nat) xor(x, y nat) nat {
 
 
 // greaterThan returns true iff (x1<<_W + x2) > (y1<<_W + y2)
-func greaterThan(x1, x2, y1, y2 Word) bool {
-	return x1 > y1 || x1 == y1 && x2 > y2
-}
+func greaterThan(x1, x2, y1, y2 Word) bool { return x1 > y1 || x1 == y1 && x2 > y2 }
 
 
 // modW returns x % d.
@@ -1066,26 +861,25 @@ func (x nat) modW(d Word) (r Word) {
 }
 
 
-// powersOfTwoDecompose finds q and k with x = q * 1<<k and q is odd, or q and k are 0.
-func (x nat) powersOfTwoDecompose() (q nat, k int) {
-	if len(x) == 0 {
-		return x, 0
+// powersOfTwoDecompose finds q and k such that q * 1<<k = n and q is odd.
+func (n nat) powersOfTwoDecompose() (q nat, k Word) {
+	if len(n) == 0 {
+		return n, 0
 	}
 
-	// One of the words must be non-zero by definition,
-	// so this loop will terminate with i < len(x), and
-	// i is the number of 0 words.
-	i := 0
-	for x[i] == 0 {
-		i++
+	zeroWords := 0
+	for n[zeroWords] == 0 {
+		zeroWords++
 	}
-	n := trailingZeroBits(x[i]) // x[i] != 0
+	// One of the words must be non-zero by invariant, therefore
+	// zeroWords < len(n).
+	x := trailingZeroBits(n[zeroWords])
 
-	q = make(nat, len(x)-i)
-	shrVU(q, x[i:], uint(n))
-
+	q = q.make(len(n) - zeroWords)
+	shrVW(q, n[zeroWords:], Word(x))
 	q = q.norm()
-	k = i*_W + n
+
+	k = Word(_W*zeroWords + x)
 	return
 }
 
@@ -1256,7 +1050,7 @@ NextRandom:
 		if y.cmp(natOne) == 0 || y.cmp(nm1) == 0 {
 			continue
 		}
-		for j := 1; j < k; j++ {
+		for j := Word(1); j < k; j++ {
 			y = y.mul(y, y)
 			quotient, y = quotient.div(y, y, n)
 			if y.cmp(nm1) == 0 {
@@ -1270,51 +1064,4 @@ NextRandom:
 	}
 
 	return true
-}
-
-
-// bytes writes the value of z into buf using big-endian encoding.
-// len(buf) must be >= len(z)*_S. The value of z is encoded in the
-// slice buf[i:]. The number i of unused bytes at the beginning of
-// buf is returned as result.
-func (z nat) bytes(buf []byte) (i int) {
-	i = len(buf)
-	for _, d := range z {
-		for j := 0; j < _S; j++ {
-			i--
-			buf[i] = byte(d)
-			d >>= 8
-		}
-	}
-
-	for i < len(buf) && buf[i] == 0 {
-		i++
-	}
-
-	return
-}
-
-
-// setBytes interprets buf as the bytes of a big-endian unsigned
-// integer, sets z to that value, and returns z.
-func (z nat) setBytes(buf []byte) nat {
-	z = z.make((len(buf) + _S - 1) / _S)
-
-	k := 0
-	s := uint(0)
-	var d Word
-	for i := len(buf); i > 0; i-- {
-		d |= Word(buf[i-1]) << s
-		if s += 8; s == _S*8 {
-			z[k] = d
-			k++
-			s = 0
-			d = 0
-		}
-	}
-	if k < len(z) {
-		z[k] = d
-	}
-
-	return z.norm()
 }

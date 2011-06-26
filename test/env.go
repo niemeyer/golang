@@ -6,10 +6,7 @@
 
 package main
 
-import (
-	"os"
-	"runtime"
-)
+import os "os"
 
 func main() {
 	ga, e0 := os.Getenverror("GOARCH")
@@ -17,8 +14,8 @@ func main() {
 		print("$GOARCH: ", e0.String(), "\n")
 		os.Exit(1)
 	}
-	if ga != runtime.GOARCH {
-		print("$GOARCH=", ga, "!= runtime.GOARCH=", runtime.GOARCH, "\n")
+	if ga != "amd64" && ga != "386" && ga != "arm" {
+		print("$GOARCH=", ga, "\n")
 		os.Exit(1)
 	}
 	xxx, e1 := os.Getenverror("DOES_NOT_EXIST")

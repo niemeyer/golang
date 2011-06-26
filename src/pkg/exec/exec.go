@@ -2,374 +2,182 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package exec runs external commands. It wraps os.StartProcess to make it
-// easier to remap stdin and stdout, connect I/O with pipes, and do other
-// adjustments.
+// The exec package runs external commands.
 package exec
 
 import (
-	"bytes"
-	"io"
 	"os"
-	"strconv"
-	"syscall"
 )
 
-// Error records the name of a binary that failed to be be executed
-// and the reason it failed.
-type Error struct {
-	Name  string
-	Error os.Error
-}
+// Arguments to Run.
+const (
+	DevNull = iota
+	PassThrough
+	Pipe
+	MergeWithStdout
+)
 
-func (e *Error) String() string {
-	return "exec: " + strconv.Quote(e.Name) + ": " + e.Error.String()
-}
-
-// Cmd represents an external command being prepared or run.
+// A Cmd represents a running command.
+// Stdin, Stdout, and Stderr are Files representing pipes
+// connected to the running command's standard input, output, and error,
+// or else nil, depending on the arguments to Run.
+// Pid is the running command's operating system process ID.
 type Cmd struct {
-	// Path is the path of the command to run.
-	//
-	// This is the only field that must be set to a non-zero
-	// value.
-	Path string
-
-	// Args holds command line arguments, including the command as Args[0].
-	// If the Args field is empty or nil, Run uses {Path}.
-	// 
-	// In typical use, both Path and Args are set by calling Command.
-	Args []string
-
-	// Env specifies the environment of the process.
-	// If Env is nil, Run uses the current process's environment.
-	Env []string
-
-	// Dir specifies the working directory of the command.
-	// If Dir is the empty string, Run runs the command in the
-	// calling process's current directory.
-	Dir string
-
-	// Stdin specifies the process's standard input.
-	// If Stdin is nil, the process reads from DevNull.
-	Stdin io.Reader
-
-	// Stdout and Stderr specify the process's standard output and error.
-	//
-	// If either is nil, Run connects the
-	// corresponding file descriptor to /dev/null.
-	//
-	// If Stdout and Stderr are are the same writer, at most one
-	// goroutine at a time will call Write.
-	Stdout io.Writer
-	Stderr io.Writer
-
-	// SysProcAttr holds optional, operating system-specific attributes.
-	// Run passes it to os.StartProcess as the os.ProcAttr's Sys field.
-	SysProcAttr *syscall.SysProcAttr
-
-	// Process is the underlying process, once started.
-	Process *os.Process
-
-	err             os.Error // last error (from LookPath, stdin, stdout, stderr)
-	finished        bool     // when Wait was called
-	childFiles      []*os.File
-	closeAfterStart []io.Closer
-	closeAfterWait  []io.Closer
-	goroutine       []func() os.Error
-	errch           chan os.Error // one send per goroutine
+	Stdin  *os.File
+	Stdout *os.File
+	Stderr *os.File
+	Pid    int
 }
 
-// Command returns the Cmd struct to execute the named program with
-// the given arguments.
+// Given mode (DevNull, etc), return file for child
+// and file to record in Cmd structure.
+func modeToFiles(mode, fd int) (*os.File, *os.File, os.Error) {
+	switch mode {
+	case DevNull:
+		rw := os.O_WRONLY
+		if fd == 0 {
+			rw = os.O_RDONLY
+		}
+		f, err := os.Open(os.DevNull, rw, 0)
+		return f, nil, err
+	case PassThrough:
+		switch fd {
+		case 0:
+			return os.Stdin, nil, nil
+		case 1:
+			return os.Stdout, nil, nil
+		case 2:
+			return os.Stderr, nil, nil
+		}
+	case Pipe:
+		r, w, err := os.Pipe()
+		if err != nil {
+			return nil, nil, err
+		}
+		if fd == 0 {
+			return r, w, nil
+		}
+		return w, r, nil
+	}
+	return nil, nil, os.EINVAL
+}
+
+// Run starts the named binary running with
+// arguments argv and environment envv.
+// It returns a pointer to a new Cmd representing
+// the command or an error.
 //
-// It sets Path and Args in the returned structure and zeroes the
-// other fields.
-//
-// If name contains no path separators, Command uses LookPath to
-// resolve the path to a complete name if possible. Otherwise it uses
-// name directly.
-//
-// The returned Cmd's Args field is constructed from the command name
-// followed by the elements of arg, so arg should not include the
-// command name itself. For example, Command("echo", "hello")
-func Command(name string, arg ...string) *Cmd {
-	aname, err := LookPath(name)
+// The parameters stdin, stdout, and stderr
+// specify how to handle standard input, output, and error.
+// The choices are DevNull (connect to /dev/null),
+// PassThrough (connect to the current process's standard stream),
+// Pipe (connect to an operating system pipe), and
+// MergeWithStdout (only for standard error; use the same
+// file descriptor as was used for standard output).
+// If a parameter is Pipe, then the corresponding field (Stdin, Stdout, Stderr)
+// of the returned Cmd is the other end of the pipe.
+// Otherwise the field in Cmd is nil.
+func Run(name string, argv, envv []string, dir string, stdin, stdout, stderr int) (p *Cmd, err os.Error) {
+	p = new(Cmd)
+	var fd [3]*os.File
+
+	if fd[0], p.Stdin, err = modeToFiles(stdin, 0); err != nil {
+		goto Error
+	}
+	if fd[1], p.Stdout, err = modeToFiles(stdout, 1); err != nil {
+		goto Error
+	}
+	if stderr == MergeWithStdout {
+		fd[2] = fd[1]
+	} else if fd[2], p.Stderr, err = modeToFiles(stderr, 2); err != nil {
+		goto Error
+	}
+
+	// Run command.
+	p.Pid, err = os.ForkExec(name, argv, envv, dir, fd[0:])
 	if err != nil {
-		aname = name
+		goto Error
 	}
-	return &Cmd{
-		Path: aname,
-		Args: append([]string{name}, arg...),
-		err:  err,
+	if fd[0] != os.Stdin {
+		fd[0].Close()
 	}
+	if fd[1] != os.Stdout {
+		fd[1].Close()
+	}
+	if fd[2] != os.Stderr && fd[2] != fd[1] {
+		fd[2].Close()
+	}
+	return p, nil
+
+Error:
+	if fd[0] != os.Stdin && fd[0] != nil {
+		fd[0].Close()
+	}
+	if fd[1] != os.Stdout && fd[1] != nil {
+		fd[1].Close()
+	}
+	if fd[2] != os.Stderr && fd[2] != nil && fd[2] != fd[1] {
+		fd[2].Close()
+	}
+	if p.Stdin != nil {
+		p.Stdin.Close()
+	}
+	if p.Stdout != nil {
+		p.Stdout.Close()
+	}
+	if p.Stderr != nil {
+		p.Stderr.Close()
+	}
+	return nil, err
 }
 
-// interfaceEqual protects against panics from doing equality tests on
-// two interfaces with non-comparable underlying types
-func interfaceEqual(a, b interface{}) bool {
-	defer func() {
-		recover()
-	}()
-	return a == b
+// Wait waits for the running command p,
+// returning the Waitmsg returned by os.Wait and an error.
+// The options are passed through to os.Wait.
+// Setting options to 0 waits for p to exit;
+// other options cause Wait to return for other
+// process events; see package os for details.
+func (p *Cmd) Wait(options int) (*os.Waitmsg, os.Error) {
+	if p.Pid <= 0 {
+		return nil, os.ErrorString("exec: invalid use of Cmd.Wait")
+	}
+	w, err := os.Wait(p.Pid, options)
+	if w != nil && (w.Exited() || w.Signaled()) {
+		p.Pid = -1
+	}
+	return w, err
 }
 
-func (c *Cmd) envv() []string {
-	if c.Env != nil {
-		return c.Env
-	}
-	return os.Environ()
-}
-
-func (c *Cmd) argv() []string {
-	if len(c.Args) > 0 {
-		return c.Args
-	}
-	return []string{c.Path}
-}
-
-func (c *Cmd) stdin() (f *os.File, err os.Error) {
-	if c.Stdin == nil {
-		f, err = os.Open(os.DevNull)
-		c.closeAfterStart = append(c.closeAfterStart, f)
-		return
+// Close waits for the running command p to exit,
+// if it hasn't already, and then closes the non-nil file descriptors
+// p.Stdin, p.Stdout, and p.Stderr.
+func (p *Cmd) Close() os.Error {
+	if p.Pid > 0 {
+		// Loop on interrupt, but
+		// ignore other errors -- maybe
+		// caller has already waited for pid.
+		_, err := p.Wait(0)
+		for err == os.EINTR {
+			_, err = p.Wait(0)
+		}
 	}
 
-	if f, ok := c.Stdin.(*os.File); ok {
-		return f, nil
-	}
-
-	pr, pw, err := os.Pipe()
-	if err != nil {
-		return
-	}
-
-	c.closeAfterStart = append(c.closeAfterStart, pr)
-	c.closeAfterWait = append(c.closeAfterWait, pw)
-	c.goroutine = append(c.goroutine, func() os.Error {
-		_, err := io.Copy(pw, c.Stdin)
-		if err1 := pw.Close(); err == nil {
+	// Close the FDs that are still open.
+	var err os.Error
+	if p.Stdin != nil && p.Stdin.Fd() >= 0 {
+		if err1 := p.Stdin.Close(); err1 != nil {
 			err = err1
 		}
-		return err
-	})
-	return pr, nil
-}
-
-func (c *Cmd) stdout() (f *os.File, err os.Error) {
-	return c.writerDescriptor(c.Stdout)
-}
-
-func (c *Cmd) stderr() (f *os.File, err os.Error) {
-	if c.Stderr != nil && interfaceEqual(c.Stderr, c.Stdout) {
-		return c.childFiles[1], nil
 	}
-	return c.writerDescriptor(c.Stderr)
-}
-
-func (c *Cmd) writerDescriptor(w io.Writer) (f *os.File, err os.Error) {
-	if w == nil {
-		f, err = os.OpenFile(os.DevNull, os.O_WRONLY, 0)
-		c.closeAfterStart = append(c.closeAfterStart, f)
-		return
-	}
-
-	if f, ok := w.(*os.File); ok {
-		return f, nil
-	}
-
-	pr, pw, err := os.Pipe()
-	if err != nil {
-		return
-	}
-
-	c.closeAfterStart = append(c.closeAfterStart, pw)
-	c.closeAfterWait = append(c.closeAfterWait, pr)
-	c.goroutine = append(c.goroutine, func() os.Error {
-		_, err := io.Copy(w, pr)
-		return err
-	})
-	return pw, nil
-}
-
-// Run starts the specified command and waits for it to complete.
-//
-// The returned error is nil if the command runs, has no problems
-// copying stdin, stdout, and stderr, and exits with a zero exit
-// status.
-//
-// If the command fails to run or doesn't complete successfully, the
-// error is of type *os.Waitmsg. Other error types may be
-// returned for I/O problems.
-func (c *Cmd) Run() os.Error {
-	if err := c.Start(); err != nil {
-		return err
-	}
-	return c.Wait()
-}
-
-// Start starts the specified command but does not wait for it to complete.
-func (c *Cmd) Start() os.Error {
-	if c.err != nil {
-		return c.err
-	}
-	if c.Process != nil {
-		return os.NewError("exec: already started")
-	}
-
-	type F func(*Cmd) (*os.File, os.Error)
-	for _, setupFd := range []F{(*Cmd).stdin, (*Cmd).stdout, (*Cmd).stderr} {
-		fd, err := setupFd(c)
-		if err != nil {
-			return err
-		}
-		c.childFiles = append(c.childFiles, fd)
-	}
-
-	var err os.Error
-	c.Process, err = os.StartProcess(c.Path, c.argv(), &os.ProcAttr{
-		Dir:   c.Dir,
-		Files: c.childFiles,
-		Env:   c.envv(),
-		Sys:   c.SysProcAttr,
-	})
-	if err != nil {
-		return err
-	}
-
-	for _, fd := range c.closeAfterStart {
-		fd.Close()
-	}
-
-	c.errch = make(chan os.Error, len(c.goroutine))
-	for _, fn := range c.goroutine {
-		go func(fn func() os.Error) {
-			c.errch <- fn()
-		}(fn)
-	}
-
-	return nil
-}
-
-// Wait waits for the command to exit.
-// It must have been started by Start.
-//
-// The returned error is nil if the command runs, has no problems
-// copying stdin, stdout, and stderr, and exits with a zero exit
-// status.
-//
-// If the command fails to run or doesn't complete successfully, the
-// error is of type *os.Waitmsg. Other error types may be
-// returned for I/O problems.
-func (c *Cmd) Wait() os.Error {
-	if c.Process == nil {
-		return os.NewError("exec: not started")
-	}
-	if c.finished {
-		return os.NewError("exec: Wait was already called")
-	}
-	c.finished = true
-	msg, err := c.Process.Wait(0)
-
-	var copyError os.Error
-	for _ = range c.goroutine {
-		if err := <-c.errch; err != nil && copyError == nil {
-			copyError = err
+	if p.Stdout != nil && p.Stdout.Fd() >= 0 {
+		if err1 := p.Stdout.Close(); err1 != nil && err != nil {
+			err = err1
 		}
 	}
-
-	for _, fd := range c.closeAfterWait {
-		fd.Close()
+	if p.Stderr != nil && p.Stderr != p.Stdout && p.Stderr.Fd() >= 0 {
+		if err1 := p.Stderr.Close(); err1 != nil && err != nil {
+			err = err1
+		}
 	}
-
-	if err != nil {
-		return err
-	} else if !msg.Exited() || msg.ExitStatus() != 0 {
-		return msg
-	}
-
-	return copyError
-}
-
-// Output runs the command and returns its standard output.
-func (c *Cmd) Output() ([]byte, os.Error) {
-	if c.Stdout != nil {
-		return nil, os.NewError("exec: Stdout already set")
-	}
-	var b bytes.Buffer
-	c.Stdout = &b
-	err := c.Run()
-	return b.Bytes(), err
-}
-
-// CombinedOutput runs the command and returns its combined standard
-// output and standard error.
-func (c *Cmd) CombinedOutput() ([]byte, os.Error) {
-	if c.Stdout != nil {
-		return nil, os.NewError("exec: Stdout already set")
-	}
-	if c.Stderr != nil {
-		return nil, os.NewError("exec: Stderr already set")
-	}
-	var b bytes.Buffer
-	c.Stdout = &b
-	c.Stderr = &b
-	err := c.Run()
-	return b.Bytes(), err
-}
-
-// StdinPipe returns a pipe that will be connected to the command's
-// standard input when the command starts.
-func (c *Cmd) StdinPipe() (io.WriteCloser, os.Error) {
-	if c.Stdin != nil {
-		return nil, os.NewError("exec: Stdin already set")
-	}
-	if c.Process != nil {
-		return nil, os.NewError("exec: StdinPipe after process started")
-	}
-	pr, pw, err := os.Pipe()
-	if err != nil {
-		return nil, err
-	}
-	c.Stdin = pr
-	c.closeAfterStart = append(c.closeAfterStart, pr)
-	c.closeAfterWait = append(c.closeAfterStart, pw)
-	return pw, nil
-}
-
-// StdoutPipe returns a pipe that will be connected to the command's
-// standard output when the command starts.
-func (c *Cmd) StdoutPipe() (io.Reader, os.Error) {
-	if c.Stdout != nil {
-		return nil, os.NewError("exec: Stdout already set")
-	}
-	if c.Process != nil {
-		return nil, os.NewError("exec: StdoutPipe after process started")
-	}
-	pr, pw, err := os.Pipe()
-	if err != nil {
-		return nil, err
-	}
-	c.Stdout = pw
-	c.closeAfterStart = append(c.closeAfterStart, pw)
-	c.closeAfterWait = append(c.closeAfterStart, pr)
-	return pr, nil
-}
-
-// StderrPipe returns a pipe that will be connected to the command's
-// standard error when the command starts.
-func (c *Cmd) StderrPipe() (io.Reader, os.Error) {
-	if c.Stderr != nil {
-		return nil, os.NewError("exec: Stderr already set")
-	}
-	if c.Process != nil {
-		return nil, os.NewError("exec: StderrPipe after process started")
-	}
-	pr, pw, err := os.Pipe()
-	if err != nil {
-		return nil, err
-	}
-	c.Stderr = pw
-	c.closeAfterStart = append(c.closeAfterStart, pw)
-	c.closeAfterWait = append(c.closeAfterStart, pr)
-	return pr, nil
+	return err
 }

@@ -8,17 +8,10 @@
 package net
 
 import (
-	"runtime"
 	"testing"
 )
 
-var avoidMacFirewall = runtime.GOOS == "darwin"
-
 func TestGoogleSRV(t *testing.T) {
-	if testing.Short() || avoidMacFirewall {
-		t.Logf("skipping test to avoid external network")
-		return
-	}
 	_, addrs, err := LookupSRV("xmpp-server", "tcp", "google.com")
 	if err != nil {
 		t.Errorf("failed: %s", err)

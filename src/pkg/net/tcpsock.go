@@ -7,7 +7,6 @@
 package net
 
 import (
-	"io"
 	"os"
 	"syscall"
 )
@@ -35,14 +34,14 @@ func (a *TCPAddr) String() string {
 	if a == nil {
 		return "<nil>"
 	}
-	return JoinHostPort(a.IP.String(), itoa(a.Port))
+	return joinHostPort(a.IP.String(), itoa(a.Port))
 }
 
 func (a *TCPAddr) family() int {
 	if a == nil || len(a.IP) <= 4 {
 		return syscall.AF_INET
 	}
-	if a.IP.To4() != nil {
+	if ip := a.IP.To4(); ip != nil {
 		return syscall.AF_INET
 	}
 	return syscall.AF_INET6
@@ -61,11 +60,10 @@ func (a *TCPAddr) toAddr() sockaddr {
 
 // ResolveTCPAddr parses addr as a TCP address of the form
 // host:port and resolves domain names or port names to
-// numeric addresses on the network net, which must be "tcp",
-// "tcp4" or "tcp6".  A literal IPv6 host address must be
+// numeric addresses.  A literal IPv6 host address must be
 // enclosed in square brackets, as in "[::]:80".
-func ResolveTCPAddr(net, addr string) (*TCPAddr, os.Error) {
-	ip, port, err := hostPortToIP(net, addr)
+func ResolveTCPAddr(addr string) (*TCPAddr, os.Error) {
+	ip, port, err := hostPortToIP("tcp", addr)
 	if err != nil {
 		return nil, err
 	}
@@ -94,14 +92,6 @@ func (c *TCPConn) Read(b []byte) (n int, err os.Error) {
 		return 0, os.EINVAL
 	}
 	return c.fd.Read(b)
-}
-
-// ReadFrom implements the io.ReaderFrom ReadFrom method.
-func (c *TCPConn) ReadFrom(r io.Reader) (int64, os.Error) {
-	if n, err, handled := sendFile(c.fd, r); handled {
-		return n, err
-	}
-	return genericReadFrom(c, r)
 }
 
 // Write implements the net.Conn Write method.
@@ -223,9 +213,8 @@ func (c *TCPConn) SetNoDelay(noDelay bool) os.Error {
 // Closing c does not affect f, and closing f does not affect c.
 func (c *TCPConn) File() (f *os.File, err os.Error) { return c.fd.dup() }
 
-// DialTCP connects to the remote address raddr on the network net,
-// which must be "tcp", "tcp4", or "tcp6".  If laddr is not nil, it is used
-// as the local address for the connection.
+// DialTCP is like Dial but can only connect to TCP networks
+// and returns a TCPConn structure.
 func DialTCP(net string, laddr, raddr *TCPAddr) (c *TCPConn, err os.Error) {
 	if raddr == nil {
 		return nil, &OpError{"dial", "tcp", nil, errMissingAddress}

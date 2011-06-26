@@ -40,7 +40,7 @@ static char *kwd[] =
 	"_byte",
 	"_case",
 	"_chan",
-	"_complex128",
+	"_complex32",
 	"_complex64",
 	"_const",
 	"_continue",
@@ -66,7 +66,6 @@ static char *kwd[] =
 	"_intptr",
 	"_map",
 	"_package",
-	"_panic",
 	"_range",
 	"_return",
 	"_select",
@@ -88,52 +87,31 @@ static char*
 pmap(char *s)
 {
 	int i, bot, top, mid;
+	char *n;
 
-	bot = -1;
-	top = nelem(kwd);
-	while(top - bot > 1){
-		mid = (bot + top) / 2;
-		i = strcmp(kwd[mid]+1, s);
-		if(i == 0)
-			return kwd[mid];
-		if(i < 0)
-			bot = mid;
-		else
-			top = mid;
+	if (!upper) {
+		bot = -1;
+		top = nelem(kwd);
+		while(top - bot > 1){
+			mid = (bot + top) / 2;
+			i = strcmp(kwd[mid]+1, s);
+			if(i == 0)
+				return kwd[mid];
+
+			if(i < 0)
+				bot = mid;
+			else
+				top = mid;
+		}
 	}
-
-	return s;
-}
-
-
-int
-Uconv(Fmt *fp)
-{
-	char str[STRINGSZ+1];
-	char *s, *n;
-	int i;
-
-	str[0] = 0;
-	s = va_arg(fp->args, char*);
 
 	// strip package name
 	n = strrchr(s, '.');
 	if(n != nil)
 		s = n + 1;
 
-	if(s && *s) {
-		if(upper)
-			str[0] = toupper(*s);
-		else
-			str[0] = tolower(*s);
-		for(i = 1; i < STRINGSZ && s[i] != 0; i++)
-			str[i] = tolower(s[i]);
-		str[i] = 0;
-	}
-
-	return fmtstrcpy(fp, pmap(str));
+	return s;
 }
-
 
 static Sym*
 findsue(Type *t)
@@ -227,7 +205,7 @@ printtypename(Type *t)
 		s = findsue(t->link);
 		n = "bad";
 		if(s != S)
-			n = s->name;
+			n = pmap(s->name);
 		else if(t->tag)
 			n = t->tag->name;
 		if(strcmp(n, "String") == 0){
@@ -277,7 +255,29 @@ dontrun(void)
 	}
 
 	upper = debug['Q'];
+
 	return 0;
+}
+
+int
+Uconv(Fmt *fp)
+{
+	char str[STRINGSZ+1];
+	char *s;
+	int i;
+
+	str[0] = 0;
+	s = va_arg(fp->args, char*);
+	if(s && *s) {
+		if(upper)
+			str[0] = toupper(*s);
+		else
+			str[0] = tolower(*s);
+		for(i = 1; i < STRINGSZ && s[i] != 0; i++)
+			str[i] = tolower(s[i]);
+		str[i] = 0;
+	}
+	return fmtstrcpy(fp, str);
 }
 
 void
@@ -285,6 +285,7 @@ godeftype(Type *t)
 {
 	Sym *s;
 	Type *l;
+	char *an;
 	int gotone;
 
 	if(dontrun())
@@ -295,12 +296,13 @@ godeftype(Type *t)
 	case TSTRUCT:
 		s = findsue(t->link);
 		if(s == S) {
-			Bprint(&outbuf, "/* can't find %T */\n\n", t);
+			Bprint(&outbuf, "/* can't find Sue for %T */\n\n", t);
 			return;
 		}
-
+		an = pmap(s->name);
 		gotone = 0; // for unions, take first member of size equal to union
-		Bprint(&outbuf, "type %U struct {\n", s->name);
+
+		Bprint(&outbuf, "type %U struct {\n", an);
 		for(l = t->link; l != T; l = l->down) {
 			Bprint(&outbuf, "\t");
 			if(t->etype == TUNION) {
@@ -310,13 +312,12 @@ godeftype(Type *t)
 					Bprint(&outbuf, "// (union)\t");
 			}
 			if(l->sym != nil)  // not anonymous field
-				Bprint(&outbuf, "%U\t", l->sym->name);
+				Bprint(&outbuf, "%U\t", pmap(l->sym->name));
 			printtypename(l);
 			Bprint(&outbuf, "\n");
 		}
 		Bprint(&outbuf, "}\n\n");
 		break;
-
 	default:
 		Bprint(&outbuf, "/* %T */\n\n", t);
 		break;
@@ -339,13 +340,13 @@ godefvar(Sym *s)
 	switch(t->etype) {
 	case TENUM:
 		if(!typefd[t->etype])
-			Bprint(&outbuf, "const %U = %lld\n", s->name, s->vconst);
+			Bprint(&outbuf, "const %U = %lld\n", pmap(s->name), s->vconst);
 		else
-			Bprint(&outbuf, "const %U = %f\n;", s->name, s->fconst);
+			Bprint(&outbuf, "const %U = %f\n;", pmap(s->name), s->fconst);
 		break;
 
 	case TFUNC:
-		Bprint(&outbuf, "func %U(", s->name);
+		Bprint(&outbuf, "func %U(", pmap(s->name));
 		n = 'a';
 		for(t1 = t->down; t1 != T; t1 = t1->down) {
 			if(t1->etype == TVOID)
@@ -367,7 +368,7 @@ godefvar(Sym *s)
 		switch(s->class) {
 		case CTYPEDEF:
 			if(!typesu[t->etype]) {
-				Bprint(&outbuf, "// type %U\t", s->name);
+				Bprint(&outbuf, "// type %U\t", pmap(s->name));
 				printtypename(t);
 				Bprint(&outbuf, "\n");
 			}
@@ -377,7 +378,7 @@ godefvar(Sym *s)
 		case CGLOBL:
 			if(strchr(s->name, '$') != nil)	 // TODO(lvd)
 			    break;
-			Bprint(&outbuf, "var %U\t", s->name);
+			Bprint(&outbuf, "var %U\t", pmap(s->name));
 			printtypename(t);
 			Bprint(&outbuf, "\n");
 			break;

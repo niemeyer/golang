@@ -105,7 +105,7 @@ hcrash(void)
 		flusherrors();
 		if(outfile)
 			unlink(outfile);
-		*(volatile int*)0 = 0;
+		*(int*)0 = 0;
 	}
 }
 
@@ -135,7 +135,6 @@ yyerror(char *fmt, ...)
 	int i;
 	static int lastsyntax;
 	va_list arg;
-	char buf[512], *p;
 
 	if(strncmp(fmt, "syntax error", 12) == 0) {
 		nsyntaxerrors++;
@@ -147,16 +146,6 @@ yyerror(char *fmt, ...)
 		if(lastsyntax == lexlineno)
 			return;
 		lastsyntax = lexlineno;
-		
-		if(strstr(fmt, "{ or {")) {
-			// The grammar has { and LBRACE but both show up as {.
-			// Rewrite syntax error referring to "{ or {" to say just "{".
-			strecpy(buf, buf+sizeof buf, fmt);
-			p = strstr(buf, "{ or {");
-			if(p)
-				memmove(p+1, p+6, strlen(p+6)+1);
-			fmt = buf;
-		}
 		
 		// look for parse state-specific errors in list (see go.errors).
 		for(i=0; i<nelem(yymsg); i++) {
@@ -224,7 +213,7 @@ fatal(char *fmt, ...)
 	if(strncmp(getgoversion(), "release", 7) == 0) {
 		print("\n");
 		print("Please file a bug report including a short program that triggers the error.\n");
-		print("http://code.google.com/p/go/issues/entry?template=compilerbug\n");
+		print("http://code.google.com/p/go/issues/entry?template=compilerbug");
 	}
 	hcrash();
 	errorexit();
@@ -480,7 +469,6 @@ nod(int op, Node *nleft, Node *nright)
 	n->right = nright;
 	n->lineno = parserline();
 	n->xoffset = BADWIDTH;
-	n->orig = n;
 	return n;
 }
 
@@ -489,7 +477,7 @@ algtype(Type *t)
 {
 	int a;
 
-	if(issimple[t->etype] || isptr[t->etype] ||
+	if(issimple[t->etype] || isptr[t->etype] || iscomplex[t->etype] ||
 		t->etype == TCHAN || t->etype == TFUNC || t->etype == TMAP) {
 		if(t->width == widthptr)
 			a = AMEMWORD;
@@ -661,10 +649,12 @@ nodbool(int b)
 Type*
 aindex(Node *b, Type *t)
 {
+	NodeList *init;
 	Type *r;
 	int bound;
 
 	bound = -1;	// open bound
+	init = nil;
 	typecheck(&b, Erv);
 	if(b != nil) {
 		switch(consttype(b)) {
@@ -844,6 +834,7 @@ goopnames[] =
 	[OCALL]	= "function call",
 	[OCAP]		= "cap",
 	[OCASE]		= "case",
+	[OCLOSED]	= "closed",
 	[OCLOSE]	= "close",
 	[OCOMPLEX]	= "complex",
 	[OCOM]		= "^",
@@ -1032,21 +1023,10 @@ Econv(Fmt *fp)
 	return fmtstrcpy(fp, etnames[et]);
 }
 
-static const char* classnames[] = {
-	"Pxxx",
-	"PEXTERN",
-	"PAUTO",
-	"PPARAM",
-	"PPARAMOUT",
-	"PPARAMREF",
-	"PFUNC",
-};
-
 int
 Jconv(Fmt *fp)
 {
 	Node *n;
-	char *s;
 
 	n = va_arg(fp->args, Node*);
 	if(n->ullman != 0)
@@ -1061,18 +1041,12 @@ Jconv(Fmt *fp)
 	if(n->lineno != 0)
 		fmtprint(fp, " l(%d)", n->lineno);
 
-	if(n->xoffset != BADWIDTH)
-		fmtprint(fp, " x(%lld%+d)", n->xoffset, n->stkdelta);
+	if(n->xoffset != 0)
+		fmtprint(fp, " x(%lld)", n->xoffset);
 
-	if(n->class != 0) {
-		s = "";
-		if (n->class & PHEAP) s = ",heap";
-		if ((n->class & ~PHEAP) < nelem(classnames))
-			fmtprint(fp, " class(%s%s)", classnames[n->class&~PHEAP], s);
-		else
-			fmtprint(fp, " class(%d?%s)", n->class&~PHEAP, s);
-	}
- 
+	if(n->class != 0)
+		fmtprint(fp, " class(%d)", n->class);
+
 	if(n->colas != 0)
 		fmtprint(fp, " colas(%d)", n->colas);
 
@@ -1091,11 +1065,6 @@ Jconv(Fmt *fp)
 	if(n->implicit != 0)
 		fmtprint(fp, " implicit(%d)", n->implicit);
 
-	if(n->pun != 0)
-		fmtprint(fp, " pun(%d)", n->pun);
-
-	if(n->used != 0)
-		fmtprint(fp, " used(%d)", n->used);
 	return 0;
 }
 
@@ -1164,7 +1133,7 @@ Tpretty(Fmt *fp, Type *t)
 	Type *t1;
 	Sym *s;
 	
-	if(0 && debug['r']) {
+	if(debug['r']) {
 		debug['r'] = 0;
 		fmtprint(fp, "%T (orig=%T)", t, t->orig);
 		debug['r'] = 1;
@@ -1175,7 +1144,7 @@ Tpretty(Fmt *fp, Type *t)
 	&& t->sym != S
 	&& !(fp->flags&FmtLong)) {
 		s = t->sym;
-		if(t == types[t->etype] && t->etype != TUNSAFEPTR)
+		if(t == types[t->etype])
 			return fmtprint(fp, "%s", s->name);
 		if(exporting) {
 			if(fp->flags & FmtShort)
@@ -1287,12 +1256,7 @@ Tpretty(Fmt *fp, Type *t)
 	case TINTER:
 		fmtprint(fp, "interface {");
 		for(t1=t->type; t1!=T; t1=t1->down) {
-			fmtprint(fp, " ");
-			if(exportname(t1->sym->name))
-				fmtprint(fp, "%hS", t1->sym);
-			else
-				fmtprint(fp, "%S", t1->sym);
-			fmtprint(fp, "%hhT", t1->type);
+			fmtprint(fp, " %hS%hhT", t1->sym, t1->type);
 			if(t1->down)
 				fmtprint(fp, ";");
 		}
@@ -1340,11 +1304,6 @@ Tpretty(Fmt *fp, Type *t)
 		if(t->sym)
 			return fmtprint(fp, "undefined %S", t->sym);
 		return fmtprint(fp, "undefined");
-	
-	case TUNSAFEPTR:
-		if(exporting)
-			return fmtprint(fp, "\"unsafe\".Pointer");
-		return fmtprint(fp, "unsafe.Pointer");
 	}
 
 	// Don't know how to handle - fall back to detailed prints.
@@ -1386,9 +1345,6 @@ Tconv(Fmt *fp)
 			return 0;
 		}
 	}
-
-	if(sharp || exporting)
-		fatal("missing %E case during export", t->etype);
 
 	et = t->etype;
 	fmtprint(fp, "%E ", et);
@@ -1477,8 +1433,6 @@ Nconv(Fmt *fp)
 	}
 
 	if(fp->flags & FmtSharp) {
-		if(n->orig != N)
-			n = n->orig;
 		exprfmt(fp, n, 0);
 		goto out;
 	}
@@ -1709,9 +1663,6 @@ isselect(Node *n)
 	s = pkglookup("selectrecv", runtimepkg);
 	if(s == n->sym)
 		return 1;
-	s = pkglookup("selectrecv2", runtimepkg);
-	if(s == n->sym)
-		return 1;
 	s = pkglookup("selectdefault", runtimepkg);
 	if(s == n->sym)
 		return 1;
@@ -1756,13 +1707,17 @@ isideal(Type *t)
 Type*
 methtype(Type *t)
 {
+	int ptr;
+
 	if(t == T)
 		return T;
 
 	// strip away pointer if it's there
+	ptr = 0;
 	if(isptr[t->etype]) {
 		if(t->sym != S)
 			return T;
+		ptr = 1;
 		t = t->type;
 		if(t == T)
 			return T;
@@ -1909,7 +1864,7 @@ assignop(Type *src, Type *dst, char **why)
 	if(why != nil)
 		*why = "";
 
-	if(safemode && src != T && src->etype == TUNSAFEPTR) {
+	if(safemode && (isptrto(src, TANY) || isptrto(dst, TANY))) {
 		yyerror("cannot use unsafe.Pointer");
 		errorexit();
 	}
@@ -1924,9 +1879,8 @@ assignop(Type *src, Type *dst, char **why)
 		return OCONVNOP;
 	
 	// 2. src and dst have identical underlying types
-	// and either src or dst is not a named type or
-	// both are interface types.
-	if(eqtype(src->orig, dst->orig) && (src->sym == S || dst->sym == S || src->etype == TINTER))
+	// and either src or dst is not a named type.
+	if(eqtype(src->orig, dst->orig) && (src->sym == S || dst->sym == S))
 		return OCONVNOP;
 
 	// 3. dst is an interface type and src implements dst.
@@ -1951,11 +1905,6 @@ assignop(Type *src, Type *dst, char **why)
 				*why = smprint(":\n\t%T does not implement %T (missing %S method)",
 					src, dst, missing->sym);
 		}
-		return 0;
-	}
-	if(isptrto(dst, TINTER)) {
-		if(why != nil)
-			*why = smprint(":\n\t%T is pointer to interface, not interface", dst);
 		return 0;
 	}
 	if(src->etype == TINTER && dst->etype != TBLANK) {
@@ -2075,11 +2024,11 @@ convertop(Type *src, Type *dst, char **why)
 	}
 	
 	// 8. src is a pointer or uintptr and dst is unsafe.Pointer.
-	if((isptr[src->etype] || src->etype == TUINTPTR) && dst->etype == TUNSAFEPTR)
+	if((isptr[src->etype] || src->etype == TUINTPTR) && isptrto(dst, TANY))
 		return OCONVNOP;
 
 	// 9. src is unsafe.Pointer and dst is a pointer or uintptr.
-	if(src->etype == TUNSAFEPTR && (isptr[dst->etype] || dst->etype == TUINTPTR))
+	if(isptrto(src, TANY) && (isptr[dst->etype] || dst->etype == TUINTPTR))
 		return OCONVNOP;
 
 	return 0;
@@ -2090,16 +2039,13 @@ Node*
 assignconv(Node *n, Type *t, char *context)
 {
 	int op;
-	Node *r, *old;
+	Node *r;
 	char *why;
 	
 	if(n == N || n->type == T)
 		return n;
 
-	old = n;
-	old->diag++;  // silence errors about n; we'll issue one below
 	defaultlit(&n, t);
-	old->diag--;
 	if(t->etype == TBLANK)
 		return n;
 
@@ -2318,7 +2264,7 @@ syslook(char *name, int copy)
 
 	s = pkglookup(name, runtimepkg);
 	if(s == S || s->def == N)
-		fatal("syslook: can't find runtime.%s", name);
+		fatal("looksys: cant find runtime.%s", name);
 
 	if(!copy)
 		return s->def;
@@ -3131,7 +3077,6 @@ genwrapper(Type *rcvr, Type *method, Sym *newnam, int iface)
 	NodeList *l, *args, *in, *out;
 	Type *tpad;
 	int isddd;
-	Val v;
 
 	if(debug['r'])
 		print("genwrapper rcvrtype=%T method=%T newnam=%S\n",
@@ -3175,47 +3120,23 @@ genwrapper(Type *rcvr, Type *method, Sym *newnam, int iface)
 		args = list(args, l->n->left);
 		isddd = l->n->left->isddd;
 	}
-	
-	// generate nil pointer check for better error
-	if(isptr[rcvr->etype] && rcvr->type == getthisx(method->type)->type->type) {
-		// generating wrapper from *T to T.
-		n = nod(OIF, N, N);
-		n->ntest = nod(OEQ, this->left, nodnil());
-		// these strings are already in the reflect tables,
-		// so no space cost to use them here.
-		l = nil;
-		v.ctype = CTSTR;
-		v.u.sval = strlit(rcvr->type->sym->pkg->name);  // package name
-		l = list(l, nodlit(v));
-		v.u.sval = strlit(rcvr->type->sym->name);  // type name
-		l = list(l, nodlit(v));
-		v.u.sval = strlit(method->sym->name);
-		l = list(l, nodlit(v));  // method name
-		call = nod(OCALL, syslook("panicwrap", 0), N);
-		call->list = l;
-		n->nbody = list1(call);
-		fn->nbody = list(fn->nbody, n);
-	}
 
 	// generate call
 	call = nod(OCALL, adddot(nod(OXDOT, this->left, newname(method->sym))), N);
 	call->list = args;
 	call->isddd = isddd;
+	fn->nbody = list1(call);
 	if(method->type->outtuple > 0) {
 		n = nod(ORETURN, N, N);
-		n->list = list1(call);
-		call = n;
+		n->list = fn->nbody;
+		fn->nbody = list1(n);
 	}
-	fn->nbody = list(fn->nbody, call);
 
-	if(0 && debug['r'])
+	if(debug['r'])
 		dumplist("genwrapper body", fn->nbody);
 
 	funcbody(fn);
-	curfn = fn;
 	typecheck(&fn, Etop);
-	typechecklist(fn->nbody, Etop);
-	curfn = nil;
 	funccompile(fn, 0);
 }
 
@@ -3306,9 +3227,8 @@ implements(Type *t, Type *iface, Type **m, Type **samename, int *ptr)
 		// the method does not exist for value types.
 		rcvr = getthisx(tm->type)->type->type;
 		if(isptr[rcvr->etype] && !isptr[t0->etype] && !followptr && !isifacemethod(tm->type)) {
-			if(0 && debug['r'])
+			if(debug['r'])
 				yyerror("interface pointer mismatch");
-
 			*m = im;
 			*samename = nil;
 			*ptr = 1;
@@ -3379,64 +3299,6 @@ NodeList*
 list(NodeList *l, Node *n)
 {
 	return concat(l, list1(n));
-}
-
-void
-listsort(NodeList** l, int(*f)(Node*, Node*))
-{
-	NodeList *l1, *l2, *le;
-
-	if(*l == nil || (*l)->next == nil)
-		return;
-
-	l1 = *l;
-	l2 = *l;
-	for(;;) {
-		l2 = l2->next;
-		if(l2 == nil)
-			break;
-		l2 = l2->next;
-		if(l2 == nil)
-			break;
-		l1 = l1->next;
-	}
-
-	l2 = l1->next;
-	l1->next = nil;
-	l2->end = (*l)->end;
-	(*l)->end = l1;
-
-	l1 = *l;
-	listsort(&l1, f);
-	listsort(&l2, f);
-
-	if ((*f)(l1->n, l2->n) < 0) {
-		*l = l1;
-	} else {
-		*l = l2;
-		l2 = l1;
-		l1 = *l;
-	}
-
-	// now l1 == *l; and l1 < l2
-
-	while ((l1 != nil) && (l2 != nil)) {
-		while ((l1->next != nil) && (*f)(l1->next->n, l2->n) < 0)
-			l1 = l1->next;
-		
-		// l1 is last one from l1 that is < l2
-		le = l1->next;		// le is the rest of l1, first one that is >= l2
-		if (le != nil)
-			le->end = (*l)->end;
-
-		(*l)->end = l1;		// cut *l at l1
-		*l = concat(*l, l2);	// glue l2 to *l's tail
-
-		l1 = l2;		// l1 is the first element of *l that is < the new l2
-		l2 = le;		// ... because l2 now is the old tail of l1
-	}
-
-	*l = concat(*l, l2);		// any remainder 
 }
 
 NodeList*

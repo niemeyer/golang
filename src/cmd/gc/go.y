@@ -66,7 +66,7 @@ static void fixlbrace(int);
 %type	<node>	switch_stmt uexpr
 %type	<node>	xfndcl typedcl
 
-%type	<list>	xdcl fnbody fnres loop_body dcl_name_list
+%type	<list>	xdcl fnbody fnres switch_body loop_body dcl_name_list
 %type	<list>	new_name_list expr_list keyval_list braced_keyval_list expr_or_type_list xdcl_list
 %type	<list>	oexpr_list caseblock_list stmt_list oarg_type_list_ocomma arg_type_list
 %type	<list>	interfacedcl_list vardcl vardcl_list structdcl structdcl_list
@@ -93,10 +93,9 @@ static void fixlbrace(int);
 %type	<type>	hidden_type_func
 %type	<type>	hidden_type_recv_chan hidden_type_non_recv_chan
 
-%left		LCOMM	/* outside the usual hierarchy; here for good error messages */
-
 %left		LOROR
 %left		LANDAND
+%left		LCOMM
 %left		LEQ LNE LLE LGE LLT LGT
 %left		'+' '-' '|' '^'
 %left		'*' '/' '%' '&' LLSH LRSH LANDNOT
@@ -242,6 +241,14 @@ import_package:
 		
 		if(safemode && !curio.importsafe)
 			yyerror("cannot import unsafe package %Z", importpkg->path);
+
+		// NOTE(rsc): This is no longer a technical restriction:
+		// the 6g tool chain would work just fine without giving
+		// special meaning to a package being named main.
+		// Other implementations might need the restriction
+		// (gccgo does), so it stays in the language and the compiler.
+		if(strcmp($2->name, "main") == 0)
+			yyerror("cannot import package main");
 	}
 
 import_safety:
@@ -414,18 +421,11 @@ simple_stmt:
 |	expr_list LCOLAS expr_list
 	{
 		if($3->n->op == OTYPESW) {
-			Node *n;
-			
-			n = N;
 			if($3->next != nil)
 				yyerror("expr.(type) must be alone in list");
-			if($1->next != nil)
+			else if($1->next != nil)
 				yyerror("argument count mismatch: %d = %d", count($1), 1);
-			else if($1->n->op != ONAME && $1->n->op != OTYPE && $1->n->op != ONONAME)
-				yyerror("invalid variable name %#N in type switch", $1->n);
-			else
-				n = $1->n;
-			$$ = nod(OTYPESW, n, $3->n->right);
+			$$ = nod(OTYPESW, $1->n, $3->n->right);
 			break;
 		}
 		$$ = colas($1, $3);
@@ -449,7 +449,7 @@ case:
 		// will be converted to OCASE
 		// right will point to next case
 		// done in casebody()
-		markdcl();
+		poptodcl();
 		$$ = nod(OXCASE, N, N);
 		$$->list = $2;
 		if(typesw != N && typesw->right != N && (n=typesw->right->left) != N) {
@@ -461,38 +461,29 @@ case:
 		}
 		break;
 	}
-|	LCASE expr_or_type_list '=' expr ':'
+|	LCASE expr '=' expr ':'
 	{
-		Node *n;
-
 		// will be converted to OCASE
 		// right will point to next case
 		// done in casebody()
-		markdcl();
+		poptodcl();
 		$$ = nod(OXCASE, N, N);
-		if($2->next == nil)
-			n = nod(OAS, $2->n, $4);
-		else {
-			n = nod(OAS2, N, N);
-			n->list = $2;
-			n->rlist = list1($4);
-		}
-		$$->list = list1(n);
+		$$->list = list1(nod(OAS, $2, $4));
 	}
-|	LCASE expr_or_type_list LCOLAS expr ':'
+|	LCASE name LCOLAS expr ':'
 	{
 		// will be converted to OCASE
 		// right will point to next case
 		// done in casebody()
-		markdcl();
+		poptodcl();
 		$$ = nod(OXCASE, N, N);
-		$$->list = list1(colas($2, list1($4)));
+		$$->list = list1(colas(list1($2), list1($4)));
 	}
 |	LDEFAULT ':'
 	{
 		Node *n;
 
-		markdcl();
+		poptodcl();
 		$$ = nod(OXCASE, N, N);
 		if(typesw != N && typesw->right != N && (n=typesw->right->left) != N) {
 			// type switch - declare variable
@@ -511,6 +502,17 @@ compound_stmt:
 	stmt_list '}'
 	{
 		$$ = liststmt($3);
+		popdcl();
+	}
+
+switch_body:
+	LBODY
+	{
+		markdcl();
+	}
+	caseblock_list '}'
+	{
+		$$ = $3;
 		popdcl();
 	}
 
@@ -542,7 +544,6 @@ caseblock:
 			yyerror("missing statement after label");
 		$$ = $1;
 		$$->nbody = $3;
-		popdcl();
 	}
 
 caseblock_list:
@@ -639,15 +640,10 @@ if_stmt:
 	{
 		markdcl();
 	}
-	if_header
-	{
-		if($3->ntest == N)
-			yyerror("missing condition in if statement");
-	}
-	loop_body
+	if_header loop_body
 	{
 		$$ = $3;
-		$$->nbody = $5;
+		$$->nbody = $4;
 		// no popdcl; maybe there's an LELSE
 	}
 
@@ -664,11 +660,11 @@ switch_stmt:
 			n = N;
 		typesw = nod(OXXX, typesw, n);
 	}
-	LBODY caseblock_list '}'
+	switch_body
 	{
 		$$ = $3;
 		$$->op = OSWITCH;
-		$$->list = $6;
+		$$->list = $5;
 		typesw = typesw->left;
 		popdcl();
 	}
@@ -676,13 +672,15 @@ switch_stmt:
 select_stmt:
 	LSELECT
 	{
+		markdcl();
 		typesw = nod(OXXX, typesw, N);
 	}
-	LBODY caseblock_list '}'
+	switch_body
 	{
 		$$ = nod(OSELECT, N, N);
-		$$->list = $4;
+		$$->list = $3;
 		typesw = typesw->left;
+		popdcl();
 	}
 
 /*
@@ -766,7 +764,6 @@ expr:
 	{
 		$$ = nod(ORSH, $1, $3);
 	}
-	/* not an expression anymore, but left in so we can give a good error */
 |	expr LCOMM expr
 	{
 		$$ = nod(OSEND, $1, $3);
@@ -1227,10 +1224,9 @@ fnlitdcl:
 	}
 
 fnliteral:
-	fnlitdcl lbrace stmt_list '}'
+	fnlitdcl '{' stmt_list '}'
 	{
 		$$ = closurebody($3);
-		fixlbrace($2);
 	}
 
 
@@ -1368,7 +1364,6 @@ interfacedcl:
 	new_name indcl
 	{
 		$$ = nod(ODCLFIELD, $1, $2);
-		ifacedcl($$);
 	}
 |	packname
 	{
@@ -1462,19 +1457,13 @@ non_dcl_stmt:
 		$$ = $1;
 		$$->nelse = list1($3);
 	}
-|	labelname ':'
-	{
-		$1 = nod(OLABEL, $1, N);
-		$1->sym = dclstack;  // context, for goto restrictions
-	}
-	stmt
+|	labelname ':' stmt
 	{
 		NodeList *l;
 
-		$1->right = $4;
-		l = list1($1);
-		if($4)
-			l = list(l, $4);
+		l = list1(nod(OLABEL, $1, $3));
+		if($3)
+			l = list(l, $3);
 		$$ = liststmt(l);
 	}
 |	LFALL
@@ -1501,7 +1490,6 @@ non_dcl_stmt:
 |	LGOTO new_name
 	{
 		$$ = nod(OGOTO, $2, N);
-		$$->sym = dclstack;  // context, for goto restrictions
 	}
 |	LRETURN oexpr_list
 	{
@@ -1787,12 +1775,24 @@ hidden_opt_sym:
 	}
 
 hidden_dcl:
-	hidden_opt_sym hidden_type hidden_tag
+	hidden_opt_sym hidden_type
 	{
 		$$ = nod(ODCLFIELD, $1, typenod($2));
-		$$->val = $3;
 	}
-|	hidden_opt_sym LDDD hidden_type hidden_tag
+|	hidden_opt_sym LDDD
+	{
+		Type *t;
+
+		yyerror("invalid variadic function type in import - recompile import");
+		
+		t = typ(TARRAY);
+		t->bound = -1;
+		t->type = typ(TINTER);
+		$$ = nod(ODCLFIELD, $1, typenod(t));
+		$$->isddd = 1;
+	}
+
+|	hidden_opt_sym LDDD hidden_type
 	{
 		Type *t;
 		
@@ -1801,7 +1801,6 @@ hidden_dcl:
 		t->type = $3;
 		$$ = nod(ODCLFIELD, $1, typenod(t));
 		$$->isddd = 1;
-		$$->val = $4;
 	}
 
 hidden_structdcl:
@@ -1835,10 +1834,6 @@ hidden_tag:
 
 hidden_interfacedcl:
 	sym '(' ohidden_funarg_list ')' ohidden_funres
-	{
-		$$ = nod(ODCLFIELD, newname($1), typenod(functype(fakethis(), $3, $5)));
-	}
-|	hidden_importsym '(' ohidden_funarg_list ')' ohidden_funres
 	{
 		$$ = nod(ODCLFIELD, newname($1), typenod(functype(fakethis(), $3, $5)));
 	}

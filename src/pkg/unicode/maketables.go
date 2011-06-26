@@ -24,20 +24,15 @@ import (
 func main() {
 	flag.Parse()
 	loadChars() // always needed
-	loadCasefold()
 	printCategories()
 	printScriptOrProperty(false)
 	printScriptOrProperty(true)
 	printCases()
-	printLatinProperties()
-	printCasefold()
-	printSizes()
 }
 
 var dataURL = flag.String("data", "", "full URL for UnicodeData.txt; defaults to --url/UnicodeData.txt")
-var casefoldingURL = flag.String("casefolding", "", "full URL for CaseFolding.txt; defaults to --url/CaseFolding.txt")
 var url = flag.String("url",
-	"http://www.unicode.org/Public/6.0.0/ucd/",
+	"http://www.unicode.org/Public/5.2.0/ucd/",
 	"URL of Unicode database directory")
 var tablelist = flag.String("tables",
 	"all",
@@ -55,20 +50,10 @@ var test = flag.Bool("test",
 	false,
 	"test existing tables; can be used to compare web data with package data")
 
-var scriptRe = regexp.MustCompile(`^([0-9A-F]+)(\.\.[0-9A-F]+)? *; ([A-Za-z_]+)$`)
-var logger = log.New(os.Stderr, "", log.Lshortfile)
+var scriptRe = regexp.MustCompile(`([0-9A-F]+)(\.\.[0-9A-F]+)? *; ([A-Za-z_]+)`)
+var die = log.New(os.Stderr, nil, "", log.Lexit|log.Lshortfile)
 
-var category = map[string]bool{
-	// Nd Lu etc.
-	// We use one-character names to identify merged categories
-	"L": true, // Lu Ll Lt Lm Lo
-	"P": true, // Pc Pd Ps Pe Pu Pf Po
-	"M": true, // Mn Mc Me
-	"N": true, // Nd Nl No
-	"S": true, // Sm Sc Sk So
-	"Z": true, // Zs Zl Zp
-	"C": true, // Cc Cf Cs Co Cn
-}
+var category = map[string]bool{"letter": true} // Nd Lu etc. letter is a special case
 
 // UnicodeData.txt has form:
 //	0037;DIGIT SEVEN;Nd;0;EN;;7;7;7;N;;;;;
@@ -122,8 +107,6 @@ type Char struct {
 	upperCase int
 	lowerCase int
 	titleCase int
-	foldCase  int // simple case folding
-	caseOrbit int // next in simple case folding orbit
 }
 
 // Scripts.txt has form:
@@ -158,11 +141,11 @@ const (
 func parseCategory(line string) (state State) {
 	field := strings.Split(line, ";", -1)
 	if len(field) != NumField {
-		logger.Fatalf("%5s: %d fields (expected %d)\n", line, len(field), NumField)
+		die.Logf("%5s: %d fields (expected %d)\n", line, len(field), NumField)
 	}
 	point, err := strconv.Btoui64(field[FCodePoint], 16)
 	if err != nil {
-		logger.Fatalf("%.5s...: %s", line, err)
+		die.Log("%.5s...:", err)
 	}
 	lastChar = uint32(point)
 	if point == 0 {
@@ -174,7 +157,7 @@ func parseCategory(line string) (state State) {
 	char := &chars[point]
 	char.field = field
 	if char.codePoint != 0 {
-		logger.Fatalf("point %U reused", point)
+		die.Logf("point %U reused\n")
 	}
 	char.codePoint = lastChar
 	char.category = field[FGeneralCategory]
@@ -184,7 +167,7 @@ func parseCategory(line string) (state State) {
 		// Decimal digit
 		_, err := strconv.Atoi(field[FNumericValue])
 		if err != nil {
-			logger.Fatalf("%U: bad numeric field: %s", point, err)
+			die.Log("%U: bad numeric field: %s", point, err)
 		}
 	case "Lu":
 		char.letter(field[FCodePoint], field[FSimpleLowercaseMapping], field[FSimpleTitlecaseMapping])
@@ -225,7 +208,7 @@ func (char *Char) letterValue(s string, cas string) int {
 	v, err := strconv.Btoui64(s, 16)
 	if err != nil {
 		char.dump(cas)
-		logger.Fatalf("%U: bad letter(%s): %s", char.codePoint, s, err)
+		die.Logf("%U: bad letter(%s): %s", char.codePoint, s, err)
 	}
 	return int(v)
 }
@@ -259,25 +242,28 @@ func version() string {
 			return f
 		}
 	}
-	logger.Fatal("unknown version")
+	die.Log("unknown version")
 	return "Unknown"
 }
 
-func categoryOp(code int, class uint8) bool {
-	category := chars[code].category
-	return len(category) > 0 && category[0] == class
+func letterOp(code int) bool {
+	switch chars[code].category {
+	case "Lu", "Ll", "Lt", "Lm", "Lo":
+		return true
+	}
+	return false
 }
 
 func loadChars() {
 	if *dataURL == "" {
 		flag.Set("data", *url+"UnicodeData.txt")
 	}
-	resp, err := http.Get(*dataURL)
+	resp, _, err := http.Get(*dataURL)
 	if err != nil {
-		logger.Fatal(err)
+		die.Log(err)
 	}
 	if resp.StatusCode != 200 {
-		logger.Fatal("bad GET status for UnicodeData.txt", resp.Status)
+		die.Log("bad GET status for UnicodeData.txt", resp.Status)
 	}
 	input := bufio.NewReader(resp.Body)
 	var first uint32 = 0
@@ -287,21 +273,21 @@ func loadChars() {
 			if err == os.EOF {
 				break
 			}
-			logger.Fatal(err)
+			die.Log(err)
 		}
 		switch parseCategory(line[0 : len(line)-1]) {
 		case SNormal:
 			if first != 0 {
-				logger.Fatalf("bad state normal at %U", lastChar)
+				die.Logf("bad state normal at U+%04X", lastChar)
 			}
 		case SFirst:
 			if first != 0 {
-				logger.Fatalf("bad state first at %U", lastChar)
+				die.Logf("bad state first at U+%04X", lastChar)
 			}
 			first = lastChar
 		case SLast:
 			if first == 0 {
-				logger.Fatalf("bad state last at %U", lastChar)
+				die.Logf("bad state last at U+%04X", lastChar)
 			}
 			for i := first + 1; i <= lastChar; i++ {
 				chars[i] = chars[first]
@@ -312,60 +298,6 @@ func loadChars() {
 	}
 	resp.Body.Close()
 }
-
-func loadCasefold() {
-	if *casefoldingURL == "" {
-		flag.Set("casefolding", *url+"CaseFolding.txt")
-	}
-	resp, err := http.Get(*casefoldingURL)
-	if err != nil {
-		logger.Fatal(err)
-	}
-	if resp.StatusCode != 200 {
-		logger.Fatal("bad GET status for CaseFolding.txt", resp.Status)
-	}
-	input := bufio.NewReader(resp.Body)
-	for {
-		line, err := input.ReadString('\n')
-		if err != nil {
-			if err == os.EOF {
-				break
-			}
-			logger.Fatal(err)
-		}
-		if line[0] == '#' {
-			continue
-		}
-		field := strings.Split(line, "; ", -1)
-		if len(field) != 4 {
-			logger.Fatalf("CaseFolding.txt %.5s...: %d fields (expected %d)\n", line, len(field), 4)
-		}
-		kind := field[1]
-		if kind != "C" && kind != "S" {
-			// Only care about 'common' and 'simple' foldings.
-			continue
-		}
-		p1, err := strconv.Btoui64(field[0], 16)
-		if err != nil {
-			logger.Fatalf("CaseFolding.txt %.5s...: %s", line, err)
-		}
-		p2, err := strconv.Btoui64(field[2], 16)
-		if err != nil {
-			logger.Fatalf("CaseFolding.txt %.5s...: %s", line, err)
-		}
-		chars[p1].foldCase = int(p2)
-	}
-	resp.Body.Close()
-}
-
-const progHeader = `// Generated by running
-//	maketables --tables=%s --data=%s --casefolding=%s
-// DO NOT EDIT
-
-package unicode
-
-`
-
 
 func printCategories() {
 	if *tablelist == "" {
@@ -380,25 +312,31 @@ func printCategories() {
 		fullCategoryTest(list)
 		return
 	}
-	fmt.Printf(progHeader, *tablelist, *dataURL, *casefoldingURL)
+	fmt.Printf(
+		"// Generated by running\n"+
+			"//	maketables --tables=%s --data=%s\n"+
+			"// DO NOT EDIT\n\n"+
+			"package unicode\n\n",
+		*tablelist,
+		*dataURL)
 
 	fmt.Println("// Version is the Unicode edition from which the tables are derived.")
 	fmt.Printf("const Version = %q\n\n", version())
 
 	if *tablelist == "all" {
 		fmt.Println("// Categories is the set of Unicode data tables.")
-		fmt.Println("var Categories = map[string] *RangeTable {")
+		fmt.Println("var Categories = map[string] []Range {")
 		for k := range category {
 			fmt.Printf("\t%q: %s,\n", k, k)
 		}
 		fmt.Print("}\n\n")
 	}
 
-	decl := make(sort.StringSlice, len(list))
+	decl := make(sort.StringArray, len(list))
 	ndecl := 0
 	for _, name := range list {
 		if _, ok := category[name]; !ok {
-			logger.Fatal("unknown category", name)
+			die.Log("unknown category", name)
 		}
 		// We generate an UpperCase name to serve as concise documentation and an _UnderScored
 		// name to store the data.  This stops godoc dumping all the tables but keeps them
@@ -406,27 +344,8 @@ func printCategories() {
 		// Cases deserving special comments
 		varDecl := ""
 		switch name {
-		case "C":
-			varDecl = "\tOther = _C;	// Other/C is the set of Unicode control and special characters, category C.\n"
-			varDecl += "\tC = _C\n"
-		case "L":
-			varDecl = "\tLetter = _L;	// Letter/L is the set of Unicode letters, category L.\n"
-			varDecl += "\tL = _L\n"
-		case "M":
-			varDecl = "\tMark = _M;	// Mark/M is the set of Unicode mark characters, category  M.\n"
-			varDecl += "\tM = _M\n"
-		case "N":
-			varDecl = "\tNumber = _N;	// Number/N is the set of Unicode number characters, category N.\n"
-			varDecl += "\tN = _N\n"
-		case "P":
-			varDecl = "\tPunct = _P;	// Punct/P is the set of Unicode punctuation characters, category P.\n"
-			varDecl += "\tP = _P\n"
-		case "S":
-			varDecl = "\tSymbol = _S;	// Symbol/S is the set of Unicode symbol characters, category S.\n"
-			varDecl += "\tS = _S\n"
-		case "Z":
-			varDecl = "\tSpace = _Z;	// Space/Z is the set of Unicode space characters, category Z.\n"
-			varDecl += "\tZ = _Z\n"
+		case "letter":
+			varDecl = "\tLetter = letter;	// Letter is the set of Unicode letters.\n"
 		case "Nd":
 			varDecl = "\tDigit = _Nd;	// Digit is the set of Unicode characters with the \"decimal digit\" property.\n"
 		case "Lu":
@@ -436,22 +355,21 @@ func printCategories() {
 		case "Lt":
 			varDecl = "\tTitle = _Lt;	// Title is the set of Unicode title case letters.\n"
 		}
-		if len(name) > 1 {
+		if name != "letter" {
 			varDecl += fmt.Sprintf(
 				"\t%s = _%s;	// %s is the set of Unicode characters in category %s.\n",
 				name, name, name, name)
 		}
 		decl[ndecl] = varDecl
 		ndecl++
-		if len(name) == 1 { // unified categories
-			decl := fmt.Sprintf("var _%s = &RangeTable{\n", name)
+		if name == "letter" { // special case
 			dumpRange(
-				decl,
-				func(code int) bool { return categoryOp(code, name[0]) })
+				"var letter = []Range {\n",
+				letterOp)
 			continue
 		}
 		dumpRange(
-			fmt.Sprintf("var _%s = &RangeTable{\n", name),
+			fmt.Sprintf("var _%s = []Range {\n", name),
 			func(code int) bool { return chars[code].category == name })
 	}
 	decl.Sort()
@@ -464,15 +382,12 @@ func printCategories() {
 
 type Op func(code int) bool
 
-const format = "\t\t{0x%04x, 0x%04x, %d},\n"
+const format = "\tRange{0x%04x, 0x%04x, %d},\n"
 
 func dumpRange(header string, inCategory Op) {
 	fmt.Print(header)
 	next := 0
-	fmt.Print("\tR16: []Range16{\n")
 	// one Range for each iteration
-	count := &range16Count
-	size := 16
 	for {
 		// look for start of range
 		for next < len(chars) && !inCategory(next) {
@@ -512,49 +427,24 @@ func dumpRange(header string, inCategory Op) {
 				break
 			}
 		}
-		size, count = printRange(uint32(lo), uint32(hi), uint32(stride), size, count)
+		fmt.Printf(format, lo, hi, stride)
 		// next range: start looking where this range ends
 		next = hi + 1
 	}
-	fmt.Print("\t},\n")
 	fmt.Print("}\n\n")
-}
-
-func printRange(lo, hi, stride uint32, size int, count *int) (int, *int) {
-	if size == 16 && hi >= 1<<16 {
-		if lo < 1<<16 {
-			if lo+stride != hi {
-				logger.Fatalf("unexpected straddle: %U %U %d", lo, hi, stride)
-			}
-			// No range contains U+FFFF as an instance, so split
-			// the range into two entries. That way we can maintain
-			// the invariant that R32 contains only >= 1<<16.
-			fmt.Printf(format, lo, lo, 1)
-			lo = hi
-			stride = 1
-			*count++
-		}
-		fmt.Print("\t},\n")
-		fmt.Print("\tR32: []Range32{\n")
-		size = 32
-		count = &range32Count
-	}
-	fmt.Printf(format, lo, hi, stride)
-	*count++
-	return size, count
 }
 
 func fullCategoryTest(list []string) {
 	for _, name := range list {
 		if _, ok := category[name]; !ok {
-			logger.Fatal("unknown category", name)
+			die.Log("unknown category", name)
 		}
 		r, ok := unicode.Categories[name]
-		if !ok && len(name) > 1 {
-			logger.Fatalf("unknown table %q", name)
+		if !ok {
+			die.Log("unknown table", name)
 		}
-		if len(name) == 1 {
-			verifyRange(name, func(code int) bool { return categoryOp(code, name[0]) }, r)
+		if name == "letter" {
+			verifyRange(name, letterOp, r)
 		} else {
 			verifyRange(
 				name,
@@ -564,17 +454,12 @@ func fullCategoryTest(list []string) {
 	}
 }
 
-func verifyRange(name string, inCategory Op, table *unicode.RangeTable) {
-	count := 0
+func verifyRange(name string, inCategory Op, table []unicode.Range) {
 	for i := range chars {
 		web := inCategory(i)
 		pkg := unicode.Is(table, i)
 		if web != pkg {
-			fmt.Fprintf(os.Stderr, "%s: %U: web=%t pkg=%t\n", name, i, web, pkg)
-			count++
-			if count > 10 {
-				break
-			}
+			fmt.Fprintf(os.Stderr, "%s: U+%04X: web=%t pkg=%t\n", name, i, web, pkg)
 		}
 	}
 }
@@ -590,21 +475,21 @@ func parseScript(line string, scripts map[string][]Script) {
 	}
 	field := strings.Split(line, ";", -1)
 	if len(field) != 2 {
-		logger.Fatalf("%s: %d fields (expected 2)\n", line, len(field))
+		die.Logf("%s: %d fields (expected 2)\n", line, len(field))
 	}
-	matches := scriptRe.FindStringSubmatch(line)
+	matches := scriptRe.MatchStrings(line)
 	if len(matches) != 4 {
-		logger.Fatalf("%s: %d matches (expected 3)\n", line, len(matches))
+		die.Logf("%s: %d matches (expected 3)\n", line, len(matches))
 	}
 	lo, err := strconv.Btoui64(matches[1], 16)
 	if err != nil {
-		logger.Fatalf("%.5s...: %s", line, err)
+		die.Log("%.5s...:", err)
 	}
 	hi := lo
 	if len(matches[2]) > 2 { // ignore leading ..
 		hi, err = strconv.Btoui64(matches[2][2:], 16)
 		if err != nil {
-			logger.Fatalf("%.5s...: %s", line, err)
+			die.Log("%.5s...:", err)
 		}
 	}
 	name := matches[3]
@@ -612,34 +497,34 @@ func parseScript(line string, scripts map[string][]Script) {
 }
 
 // The script tables have a lot of adjacent elements. Fold them together.
-func foldAdjacent(r []Script) []unicode.Range32 {
-	s := make([]unicode.Range32, 0, len(r))
+func foldAdjacent(r []Script) []unicode.Range {
+	s := make([]unicode.Range, 0, len(r))
 	j := 0
 	for i := 0; i < len(r); i++ {
-		if j > 0 && r[i].lo == s[j-1].Hi+1 {
-			s[j-1].Hi = r[i].hi
+		if j > 0 && int(r[i].lo) == s[j-1].Hi+1 {
+			s[j-1].Hi = int(r[i].hi)
 		} else {
 			s = s[0 : j+1]
-			s[j] = unicode.Range32{uint32(r[i].lo), uint32(r[i].hi), 1}
+			s[j] = unicode.Range{int(r[i].lo), int(r[i].hi), 1}
 			j++
 		}
 	}
 	return s
 }
 
-func fullScriptTest(list []string, installed map[string]*unicode.RangeTable, scripts map[string][]Script) {
+func fullScriptTest(list []string, installed map[string][]unicode.Range, scripts map[string][]Script) {
 	for _, name := range list {
 		if _, ok := scripts[name]; !ok {
-			logger.Fatal("unknown script", name)
+			die.Log("unknown script", name)
 		}
 		_, ok := installed[name]
 		if !ok {
-			logger.Fatal("unknown table", name)
+			die.Log("unknown table", name)
 		}
 		for _, script := range scripts[name] {
 			for r := script.lo; r <= script.hi; r++ {
 				if !unicode.Is(installed[name], int(r)) {
-					fmt.Fprintf(os.Stderr, "%U: not in script %s\n", r, name)
+					fmt.Fprintf(os.Stderr, "U+%04X: not in script %s\n", r, name)
 				}
 			}
 		}
@@ -664,12 +549,12 @@ func printScriptOrProperty(doProps bool) {
 		return
 	}
 	var err os.Error
-	resp, err := http.Get(*url + file)
+	resp, _, err := http.Get(*url + file)
 	if err != nil {
-		logger.Fatal(err)
+		die.Log(err)
 	}
 	if resp.StatusCode != 200 {
-		logger.Fatal("bad GET status for ", file, ":", resp.Status)
+		die.Log("bad GET status for ", file, ":", resp.Status)
 	}
 	input := bufio.NewReader(resp.Body)
 	for {
@@ -678,7 +563,7 @@ func printScriptOrProperty(doProps bool) {
 			if err == os.EOF {
 				break
 			}
-			logger.Fatal(err)
+			die.Log(err)
 		}
 		parseScript(line[0:len(line)-1], table)
 	}
@@ -704,10 +589,10 @@ func printScriptOrProperty(doProps bool) {
 	if flaglist == "all" {
 		if doProps {
 			fmt.Println("// Properties is the set of Unicode property tables.")
-			fmt.Println("var Properties = map[string] *RangeTable{")
+			fmt.Println("var Properties = map[string] []Range {")
 		} else {
 			fmt.Println("// Scripts is the set of Unicode script tables.")
-			fmt.Println("var Scripts = map[string] *RangeTable{")
+			fmt.Println("var Scripts = map[string] []Range {")
 		}
 		for k := range table {
 			fmt.Printf("\t%q: %s,\n", k, k)
@@ -715,7 +600,7 @@ func printScriptOrProperty(doProps bool) {
 		fmt.Print("}\n\n")
 	}
 
-	decl := make(sort.StringSlice, len(list))
+	decl := make(sort.StringArray, len(list))
 	ndecl := 0
 	for _, name := range list {
 		if doProps {
@@ -728,15 +613,11 @@ func printScriptOrProperty(doProps bool) {
 				name, name, name, name)
 		}
 		ndecl++
-		fmt.Printf("var _%s = &RangeTable {\n", name)
-		fmt.Print("\tR16: []Range16{\n")
+		fmt.Printf("var _%s = []Range {\n", name)
 		ranges := foldAdjacent(table[name])
-		size := 16
-		count := &range16Count
 		for _, s := range ranges {
-			size, count = printRange(s.Lo, s.Hi, s.Stride, size, count)
+			fmt.Printf(format, s.Lo, s.Hi, s.Stride)
 		}
-		fmt.Print("\t},\n")
 		fmt.Print("}\n\n")
 	}
 	decl.Sort()
@@ -887,13 +768,13 @@ func printCases() {
 	}
 	fmt.Printf(
 		"// Generated by running\n"+
-			"//	maketables --data=%s --casefolding=%s\n"+
+			"//	maketables --data=%s\n"+
 			"// DO NOT EDIT\n\n"+
 			"// CaseRanges is the table describing case mappings for all letters with\n"+
 			"// non-self mappings.\n"+
 			"var CaseRanges = _CaseRanges\n"+
 			"var _CaseRanges = []CaseRange {\n",
-		*dataURL, *casefoldingURL)
+		*dataURL)
 
 	var startState *caseState    // the start of a run; nil for not active
 	var prevState = &caseState{} // the state of the previous character
@@ -924,14 +805,14 @@ func printCaseRange(lo, hi *caseState) {
 	}
 	switch {
 	case hi.point > lo.point && lo.isUpperLower():
-		fmt.Printf("\t{0x%04X, 0x%04X, d{UpperLower, UpperLower, UpperLower}},\n",
+		fmt.Printf("\tCaseRange{0x%04X, 0x%04X, d{UpperLower, UpperLower, UpperLower}},\n",
 			lo.point, hi.point)
 	case hi.point > lo.point && lo.isLowerUpper():
-		logger.Fatalf("LowerUpper sequence: should not happen: %U.  If it's real, need to fix To()", lo.point)
-		fmt.Printf("\t{0x%04X, 0x%04X, d{LowerUpper, LowerUpper, LowerUpper}},\n",
+		die.Log("LowerUpper sequence: should not happen: U+%04X.  If it's real, need to fix To()", lo.point)
+		fmt.Printf("\tCaseRange{0x%04X, 0x%04X, d{LowerUpper, LowerUpper, LowerUpper}},\n",
 			lo.point, hi.point)
 	default:
-		fmt.Printf("\t{0x%04X, 0x%04X, d{%d, %d, %d}},\n",
+		fmt.Printf("\tCaseRange{0x%04X, 0x%04X, d{%d, %d, %d}},\n",
 			lo.point, hi.point,
 			lo.deltaToUpper, lo.deltaToLower, lo.deltaToTitle)
 	}
@@ -950,302 +831,17 @@ func fullCaseTest() {
 		lower := unicode.ToLower(i)
 		want := caseIt(i, c.lowerCase)
 		if lower != want {
-			fmt.Fprintf(os.Stderr, "lower %U should be %U is %U\n", i, want, lower)
+			fmt.Fprintf(os.Stderr, "lower U+%04X should be U+%04X is U+%04X\n", i, want, lower)
 		}
 		upper := unicode.ToUpper(i)
 		want = caseIt(i, c.upperCase)
 		if upper != want {
-			fmt.Fprintf(os.Stderr, "upper %U should be %U is %U\n", i, want, upper)
+			fmt.Fprintf(os.Stderr, "upper U+%04X should be U+%04X is U+%04X\n", i, want, upper)
 		}
 		title := unicode.ToTitle(i)
 		want = caseIt(i, c.titleCase)
 		if title != want {
-			fmt.Fprintf(os.Stderr, "title %U should be %U is %U\n", i, want, title)
+			fmt.Fprintf(os.Stderr, "title U+%04X should be U+%04X is U+%04X\n", i, want, title)
 		}
 	}
-}
-
-func printLatinProperties() {
-	if *test {
-		return
-	}
-	fmt.Println("var properties = [MaxLatin1+1]uint8{")
-	for code := 0; code <= unicode.MaxLatin1; code++ {
-		var property string
-		switch chars[code].category {
-		case "Cc", "": // NUL has no category.
-			property = "pC"
-		case "Cf": // soft hyphen, unique category, not printable.
-			property = "0"
-		case "Ll":
-			property = "pLl | pp"
-		case "Lu":
-			property = "pLu | pp"
-		case "Nd", "No":
-			property = "pN | pp"
-		case "Pc", "Pd", "Pe", "Pf", "Pi", "Po", "Ps":
-			property = "pP | pp"
-		case "Sc", "Sk", "Sm", "So":
-			property = "pS | pp"
-		case "Zs":
-			property = "pZ"
-		default:
-			logger.Fatalf("%U has unknown category %q", code, chars[code].category)
-		}
-		// Special case
-		if code == ' ' {
-			property = "pZ | pp"
-		}
-		fmt.Printf("\t0x%02X: %s, // %q\n", code, property, code)
-	}
-	fmt.Printf("}\n\n")
-}
-
-func printCasefold() {
-	// Build list of case-folding groups attached to each canonical folded char (typically lower case).
-	var caseOrbit = make([][]int, MaxChar+1)
-	for i := range chars {
-		c := &chars[i]
-		if c.foldCase == 0 {
-			continue
-		}
-		orb := caseOrbit[c.foldCase]
-		if orb == nil {
-			orb = append(orb, c.foldCase)
-		}
-		caseOrbit[c.foldCase] = append(orb, i)
-	}
-
-	// Insert explicit 1-element groups when assuming [lower, upper] would be wrong.
-	for i := range chars {
-		c := &chars[i]
-		f := c.foldCase
-		if f == 0 {
-			f = i
-		}
-		orb := caseOrbit[f]
-		if orb == nil && (c.upperCase != 0 && c.upperCase != i || c.lowerCase != 0 && c.lowerCase != i) {
-			// Default assumption of [upper, lower] is wrong.
-			caseOrbit[i] = []int{i}
-		}
-	}
-
-	// Delete the groups for which assuming [lower, upper] is right.
-	for i, orb := range caseOrbit {
-		if len(orb) == 2 && chars[orb[0]].upperCase == orb[1] && chars[orb[1]].lowerCase == orb[0] {
-			caseOrbit[i] = nil
-		}
-	}
-
-	// Record orbit information in chars.
-	for _, orb := range caseOrbit {
-		if orb == nil {
-			continue
-		}
-		sort.SortInts(orb)
-		c := orb[len(orb)-1]
-		for _, d := range orb {
-			chars[c].caseOrbit = d
-			c = d
-		}
-	}
-
-	printCaseOrbit()
-
-	// Tables of category and script folding exceptions: code points
-	// that must be added when interpreting a particular category/script
-	// in a case-folding context.
-	cat := make(map[string]map[int]bool)
-	for name := range category {
-		if x := foldExceptions(inCategory(name)); len(x) > 0 {
-			cat[name] = x
-		}
-	}
-
-	scr := make(map[string]map[int]bool)
-	for name := range scripts {
-		if x := foldExceptions(inScript(name)); len(x) > 0 {
-			cat[name] = x
-		}
-	}
-
-	printCatFold("FoldCategory", cat)
-	printCatFold("FoldScript", scr)
-}
-
-// inCategory returns a list of all the runes in the category.
-func inCategory(name string) []int {
-	var x []int
-	for i := range chars {
-		c := &chars[i]
-		if c.category == name || len(name) == 1 && len(c.category) > 1 && c.category[0] == name[0] {
-			x = append(x, i)
-		}
-	}
-	return x
-}
-
-// inScript returns a list of all the runes in the script.
-func inScript(name string) []int {
-	var x []int
-	for _, s := range scripts[name] {
-		for c := s.lo; c <= s.hi; c++ {
-			x = append(x, int(c))
-		}
-	}
-	return x
-}
-
-// foldExceptions returns a list of all the runes fold-equivalent
-// to runes in class but not in class themselves.
-func foldExceptions(class []int) map[int]bool {
-	// Create map containing class and all fold-equivalent chars.
-	m := make(map[int]bool)
-	for _, r := range class {
-		c := &chars[r]
-		if c.caseOrbit == 0 {
-			// Just upper and lower.
-			if u := c.upperCase; u != 0 {
-				m[u] = true
-			}
-			if l := c.lowerCase; l != 0 {
-				m[l] = true
-			}
-			m[r] = true
-			continue
-		}
-		// Otherwise walk orbit.
-		r0 := r
-		for {
-			m[r] = true
-			r = chars[r].caseOrbit
-			if r == r0 {
-				break
-			}
-		}
-	}
-
-	// Remove class itself.
-	for _, r := range class {
-		m[r] = false, false
-	}
-
-	// What's left is the exceptions.
-	return m
-}
-
-var comment = map[string]string{
-	"FoldCategory": "// FoldCategory maps a category name to a table of\n" +
-		"// code points outside the category that are equivalent under\n" +
-		"// simple case folding to code points inside the category.\n" +
-		"// If there is no entry for a category name, there are no such points.\n",
-
-	"FoldScript": "// FoldScript maps a script name to a table of\n" +
-		"// code points outside the script that are equivalent under\n" +
-		"// simple case folding to code points inside the script.\n" +
-		"// If there is no entry for a script name, there are no such points.\n",
-}
-
-func printCaseOrbit() {
-	if *test {
-		for i := range chars {
-			c := &chars[i]
-			f := c.caseOrbit
-			if f == 0 {
-				if c.lowerCase != i && c.lowerCase != 0 {
-					f = c.lowerCase
-				} else if c.upperCase != i && c.upperCase != 0 {
-					f = c.upperCase
-				} else {
-					f = i
-				}
-			}
-			if g := unicode.SimpleFold(i); g != f {
-				fmt.Fprintf(os.Stderr, "unicode.SimpleFold(%#U) = %#U, want %#U\n", i, g, f)
-			}
-		}
-		return
-	}
-
-	fmt.Printf("var caseOrbit = []foldPair{\n")
-	for i := range chars {
-		c := &chars[i]
-		if c.caseOrbit != 0 {
-			fmt.Printf("\t{0x%04X, 0x%04X},\n", i, c.caseOrbit)
-			foldPairCount++
-		}
-	}
-	fmt.Printf("}\n\n")
-}
-
-func printCatFold(name string, m map[string]map[int]bool) {
-	if *test {
-		var pkgMap map[string]*unicode.RangeTable
-		if name == "FoldCategory" {
-			pkgMap = unicode.FoldCategory
-		} else {
-			pkgMap = unicode.FoldScript
-		}
-		if len(pkgMap) != len(m) {
-			fmt.Fprintf(os.Stderr, "unicode.%s has %d elements, want %d\n", name, len(pkgMap), len(m))
-			return
-		}
-		for k, v := range m {
-			t, ok := pkgMap[k]
-			if !ok {
-				fmt.Fprintf(os.Stderr, "unicode.%s[%q] missing\n", name, k)
-				continue
-			}
-			n := 0
-			for _, r := range t.R16 {
-				for c := int(r.Lo); c <= int(r.Hi); c += int(r.Stride) {
-					if !v[c] {
-						fmt.Fprintf(os.Stderr, "unicode.%s[%q] contains %#U, should not\n", name, k, c)
-					}
-					n++
-				}
-			}
-			for _, r := range t.R32 {
-				for c := int(r.Lo); c <= int(r.Hi); c += int(r.Stride) {
-					if !v[c] {
-						fmt.Fprintf(os.Stderr, "unicode.%s[%q] contains %#U, should not\n", name, k, c)
-					}
-					n++
-				}
-			}
-			if n != len(v) {
-				fmt.Fprintf(os.Stderr, "unicode.%s[%q] has %d code points, want %d\n", name, k, n, len(v))
-			}
-		}
-		return
-	}
-
-	fmt.Print(comment[name])
-	fmt.Printf("var %s = map[string]*RangeTable{\n", name)
-	for name := range m {
-		fmt.Printf("\t%q: fold%s,\n", name, name)
-	}
-	fmt.Printf("}\n\n")
-	for name, class := range m {
-		dumpRange(
-			fmt.Sprintf("var fold%s = &RangeTable{\n", name),
-			func(code int) bool { return class[code] })
-	}
-}
-
-var range16Count = 0  // Number of entries in the 16-bit range tables.
-var range32Count = 0  // Number of entries in the 32-bit range tables.
-var foldPairCount = 0 // Number of fold pairs in the exception tables.
-
-func printSizes() {
-	if *test {
-		return
-	}
-	fmt.Println()
-	fmt.Printf("// Range entries: %d 16-bit, %d 32-bit, %d total.\n", range16Count, range32Count, range16Count+range32Count)
-	range16Bytes := range16Count * 3 * 2
-	range32Bytes := range32Count * 3 * 4
-	fmt.Printf("// Range bytes: %d 16-bit, %d 32-bit, %d total.\n", range16Bytes, range32Bytes, range16Bytes+range32Bytes)
-	fmt.Println()
-	fmt.Printf("// Fold orbit bytes: %d pairs, %d bytes\n", foldPairCount, foldPairCount*2*2)
 }

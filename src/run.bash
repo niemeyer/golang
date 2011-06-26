@@ -30,43 +30,66 @@ xcd() {
 	builtin cd "$GOROOT"/src/$1
 }
 
-if $rebuild; then
-	(xcd pkg
-		gomake clean
-		time gomake install
-	) || exit $i
-fi
+maketest() {
+	for i
+	do
+		(
+			xcd $i
+			if $rebuild; then
+				gomake clean
+				time gomake
+				gomake install
+			fi
+			gomake test
+		) || exit $?
+	done
+}
 
-(xcd pkg
-gomake testshort
-) || exit $?
+maketest \
+	pkg \
+
+# all of these are subtly different
+# from what maketest does.
 
 (xcd pkg/sync;
-GOMAXPROCS=10 gomake testshort
+if $rebuild; then
+	gomake clean;
+	time gomake
+fi
+GOMAXPROCS=10 gomake test
+) || exit $?
+
+[ "$GOARCH" == arm ] ||
+(xcd cmd/gofmt
+if $rebuild; then
+	gomake clean;
+	time gomake
+fi
+time gomake smoketest
 ) || exit $?
 
 (xcd cmd/ebnflint
+if $rebuild; then
+	gomake clean;
+	time gomake
+fi
 time gomake test
 ) || exit $?
 
 [ "$GOARCH" == arm ] ||
-[ "$GOHOSTOS" == windows ] ||
 (xcd ../misc/cgo/stdio
-gomake clean
-./test.bash
+if [[ $(uname | tr A-Z a-z | sed 's/mingw/windows/') != *windows* ]]; then
+	gomake clean
+	./test.bash
+fi
 ) || exit $?
 
 [ "$GOARCH" == arm ] ||
 (xcd ../misc/cgo/life
-gomake clean
-./test.bash
-) || exit $?
-
-[ "$GOARCH" == arm ] ||
-[ "$GOHOSTOS" == windows ] ||
-(xcd ../misc/cgo/test
-gomake clean
-gotest
+if [[ $(uname | tr A-Z a-z | sed 's/mingw/windows/') != *windows* ]]; then
+	gomake clean
+	./test.bash
+fi
 ) || exit $?
 
 (xcd pkg/exp/ogle
@@ -75,15 +98,13 @@ time gomake ogle
 ) || exit $?
 
 (xcd ../doc/progs
-time ./run
+if [[ $(uname | tr A-Z a-z | sed 's/mingw/windows/') != *windows* ]]; then
+	time ./run
+fi
 ) || exit $?
 
-[ "$GOARCH" == arm ] ||  # uses network, fails under QEMU
 (xcd ../doc/codelab/wiki
-gomake clean
-gomake
-gomake test
-) || exit $?
+gomake test) || exit $?
 
 for i in ../misc/dashboard/builder ../misc/goplay
 do
@@ -95,13 +116,14 @@ done
 
 [ "$GOARCH" == arm ] ||
 (xcd ../test/bench
-./timing.sh -test
+if [[ $(uname | tr A-Z a-z | sed 's/mingw/windows/') != *windows* ]]; then
+	./timing.sh -test
+fi
 ) || exit $?
 
-[ "$GOHOSTOS" == windows ] ||
 (xcd ../test
-./run
+if [[ $(uname | tr A-Z a-z | sed 's/mingw/windows/') != *windows* ]]; then
+	./run
+fi
 ) || exit $?
 
-echo
-echo ALL TESTS PASSED

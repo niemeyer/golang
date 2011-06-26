@@ -5,7 +5,6 @@
 package tls
 
 import (
-	"crypto"
 	"crypto/rsa"
 	"crypto/subtle"
 	"crypto/x509"
@@ -57,7 +56,6 @@ Curves:
 
 	var suite *cipherSuite
 	var suiteId uint16
-FindCipherSuite:
 	for _, id := range clientHello.cipherSuites {
 		for _, supported := range config.cipherSuites() {
 			if id == supported {
@@ -68,7 +66,7 @@ FindCipherSuite:
 					continue
 				}
 				suiteId = id
-				break FindCipherSuite
+				break
 			}
 		}
 	}
@@ -103,9 +101,6 @@ FindCipherSuite:
 		hello.nextProtoNeg = true
 		hello.nextProtos = config.NextProtos
 	}
-	if clientHello.ocspStapling && len(config.Certificates[0].OCSPStaple) > 0 {
-		hello.ocspStapling = true
-	}
 
 	finishedHash.Write(hello.marshal())
 	c.writeRecord(recordTypeHandshake, hello.marshal())
@@ -118,14 +113,6 @@ FindCipherSuite:
 	certMsg.certificates = config.Certificates[0].Certificate
 	finishedHash.Write(certMsg.marshal())
 	c.writeRecord(recordTypeHandshake, certMsg.marshal())
-
-	if hello.ocspStapling {
-		certStatus := new(certificateStatusMsg)
-		certStatus.statusType = statusTypeOCSP
-		certStatus.response = config.Certificates[0].OCSPStaple
-		finishedHash.Write(certStatus.marshal())
-		c.writeRecord(recordTypeHandshake, certStatus.marshal())
-	}
 
 	keyAgreement := suite.ka()
 
@@ -173,7 +160,7 @@ FindCipherSuite:
 			cert, err := x509.ParseCertificate(asn1Data)
 			if err != nil {
 				c.sendAlert(alertBadCertificate)
-				return os.NewError("could not parse client's certificate: " + err.String())
+				return os.ErrorString("could not parse client's certificate: " + err.String())
 			}
 			certs[i] = cert
 		}
@@ -182,7 +169,7 @@ FindCipherSuite:
 		for i := 1; i < len(certs); i++ {
 			if err := certs[i-1].CheckSignatureFrom(certs[i]); err != nil {
 				c.sendAlert(alertBadCertificate)
-				return os.NewError("could not validate certificate signature: " + err.String())
+				return os.ErrorString("could not validate certificate signature: " + err.String())
 			}
 		}
 
@@ -209,10 +196,10 @@ FindCipherSuite:
 
 	// If we received a client cert in response to our certificate request message,
 	// the client will send us a certificateVerifyMsg immediately after the
-	// clientKeyExchangeMsg.  This message is a MD5SHA1 digest of all preceding
+	// clientKeyExchangeMsg.  This message is a MD5SHA1 digest of all preceeding
 	// handshake-layer messages that is signed using the private key corresponding
 	// to the client's certificate. This allows us to verify that the client is in
-	// possession of the private key of the certificate.
+	// posession of the private key of the certificate.
 	if len(c.peerCertificates) > 0 {
 		msg, err = c.readHandshake()
 		if err != nil {
@@ -226,10 +213,10 @@ FindCipherSuite:
 		digest := make([]byte, 36)
 		copy(digest[0:16], finishedHash.serverMD5.Sum())
 		copy(digest[16:36], finishedHash.serverSHA1.Sum())
-		err = rsa.VerifyPKCS1v15(pub, crypto.MD5SHA1, digest, certVerify.signature)
+		err = rsa.VerifyPKCS1v15(pub, rsa.HashMD5SHA1, digest, certVerify.signature)
 		if err != nil {
 			c.sendAlert(alertBadCertificate)
-			return os.NewError("could not validate signature of connection nonces: " + err.String())
+			return os.ErrorString("could not validate signature of connection nonces: " + err.String())
 		}
 
 		finishedHash.Write(certVerify.marshal())

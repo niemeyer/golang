@@ -8,7 +8,6 @@
 package rand
 
 import (
-	"bufio"
 	"crypto/aes"
 	"io"
 	"os"
@@ -24,7 +23,7 @@ func init() { Reader = &devReader{name: "/dev/urandom"} }
 // A devReader satisfies reads by reading the file named name.
 type devReader struct {
 	name string
-	f    io.Reader
+	f    *os.File
 	mu   sync.Mutex
 }
 
@@ -32,11 +31,11 @@ func (r *devReader) Read(b []byte) (n int, err os.Error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.f == nil {
-		f, err := os.Open(r.name)
+		f, err := os.Open(r.name, os.O_RDONLY, 0)
 		if f == nil {
 			return 0, err
 		}
-		r.f = bufio.NewReader(f)
+		r.f = f
 	}
 	return r.f.Read(b)
 }

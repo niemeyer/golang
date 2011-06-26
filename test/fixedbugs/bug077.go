@@ -7,8 +7,7 @@
 package main
 
 func main() {
-	var exit int
+	var exit int;
 exit:
-	_ = exit
-	goto exit
+	_ = exit;
 }

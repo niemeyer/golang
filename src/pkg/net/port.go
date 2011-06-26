@@ -50,8 +50,8 @@ func readServices() {
 	file.close()
 }
 
-// goLookupPort is the native Go implementation of LookupPort.
-func goLookupPort(network, service string) (port int, err os.Error) {
+// LookupPort looks up the port for the given network and service.
+func LookupPort(network, service string) (port int, err os.Error) {
 	onceReadServices.Do(readServices)
 
 	switch network {

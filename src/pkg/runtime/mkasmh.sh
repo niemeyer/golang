@@ -14,6 +14,7 @@ EOF
 case "$GOARCH" in
 386)
 	# The offsets 0 and 4 are also known to:
+	#	nacl/thread.c:/^newosproc
 	#	../../cmd/8l/pass.c:/D_GS
 	#	../../libcgo/linux_386.c:/^threadentry
 	#	../../libcgo/darwin_386.c:/^threadentry
@@ -24,9 +25,9 @@ case "$GOARCH" in
 		echo '#define	m(r)	4(r)'
 		;;
 	plan9)
-		echo '#define	get_tls(r)	MOVL _tos(SB), r '
-		echo '#define	g(r)	-8(r)'
-		echo '#define	m(r)	-4(r)'
+		echo '#define	get_tls(r)'
+		echo '#define	g(r)	0xdfffefc0'
+		echo '#define	m(r)	0xdfffefc4'
 		;;
 	linux)
 		# On Linux systems, what we call 0(GS) and 4(GS) for g and m
@@ -83,7 +84,6 @@ esac
 echo
 
 awk '
-{ gsub(/\r/, ""); }
 /^aggr G$/ { aggr="g" }
 /^aggr M$/ { aggr = "m" }
 /^aggr Gobuf$/ { aggr = "gobuf" }

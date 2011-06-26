@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package doc extracts source code documentation from a Go AST.
+// The doc package extracts source code documentation from a Go AST.
 package doc
 
 import (
@@ -66,7 +66,7 @@ func (doc *docReader) addDoc(comments *ast.CommentGroup) {
 	n2 := len(comments.List)
 	list := make([]*ast.Comment, n1+1+n2) // + 1 for separator line
 	copy(list, doc.doc.List)
-	list[n1] = &ast.Comment{token.NoPos, "//"} // separator line
+	list[n1] = &ast.Comment{token.NoPos, []byte("//")} // separator line
 	copy(list[n1+1:], comments.List)
 	doc.doc = &ast.CommentGroup{list}
 }
@@ -105,7 +105,7 @@ func baseTypeName(typ ast.Expr) string {
 		// if the type is not exported, the effect to
 		// a client is as if there were no type name
 		if t.IsExported() {
-			return t.Name
+			return string(t.Name)
 		}
 	case *ast.StarExpr:
 		return baseTypeName(t.X)
@@ -300,9 +300,9 @@ func (doc *docReader) addFile(src *ast.File) {
 	// collect BUG(...) comments
 	for _, c := range src.Comments {
 		text := c.List[0].Text
-		if m := bug_markers.FindStringIndex(text); m != nil {
+		if m := bug_markers.FindIndex(text); m != nil {
 			// found a BUG comment; maybe empty
-			if btxt := text[m[1]:]; bug_content.MatchString(btxt) {
+			if btxt := text[m[1]:]; bug_content.Match(btxt) {
 				// non-empty BUG comment; collect comment without BUG prefix
 				list := copyCommentList(c.List)
 				list[0].Text = text[m[1]:]
@@ -572,20 +572,6 @@ func (doc *docReader) newDoc(importpath string, filenames []string) *PackageDoc 
 type Filter func(string) bool
 
 
-func matchFields(fields *ast.FieldList, f Filter) bool {
-	if fields != nil {
-		for _, field := range fields.List {
-			for _, name := range field.Names {
-				if f(name.Name) {
-					return true
-				}
-			}
-		}
-	}
-	return false
-}
-
-
 func matchDecl(d *ast.GenDecl, f Filter) bool {
 	for _, d := range d.Specs {
 		switch v := d.(type) {
@@ -598,16 +584,6 @@ func matchDecl(d *ast.GenDecl, f Filter) bool {
 		case *ast.TypeSpec:
 			if f(v.Name.Name) {
 				return true
-			}
-			switch t := v.Type.(type) {
-			case *ast.StructType:
-				if matchFields(t.Fields, f) {
-					return true
-				}
-			case *ast.InterfaceType:
-				if matchFields(t.Methods, f) {
-					return true
-				}
 			}
 		}
 	}

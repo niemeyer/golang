@@ -2,19 +2,17 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package json implements encoding and decoding of JSON objects as defined in
-// RFC 4627.
+// The json package implements encoding and decoding of JSON objects as
+// defined in RFC 4627.
 package json
 
 import (
-	"bytes"
-	"encoding/base64"
 	"os"
+	"bytes"
 	"reflect"
 	"runtime"
 	"sort"
 	"strconv"
-	"unicode"
 	"utf8"
 )
 
@@ -33,14 +31,13 @@ import (
 // String values encode as JSON strings, with each invalid UTF-8 sequence
 // replaced by the encoding of the Unicode replacement character U+FFFD.
 //
-// Array and slice values encode as JSON arrays, except that
-// []byte encodes as a base64-encoded string.
+// Array and slice values encode as JSON arrays.
 //
 // Struct values encode as JSON objects.  Each struct field becomes
 // a member of the object.  By default the object's key name is the
-// struct field name.  If the struct field has a non-empty tag consisting
-// of only Unicode letters, digits, and underscores, that tag will be used
-// as the name instead.  Only exported fields will be encoded.
+// struct field name converted to lower case.  If the struct field
+// has a tag, that tag will be used as the name instead.
+// Only exported fields will be encoded.
 //
 // Map values encode as JSON objects.
 // The map's key type must be string; the object keys are used directly
@@ -172,7 +169,7 @@ func (e *encodeState) marshal(v interface{}) (err os.Error) {
 			err = r.(os.Error)
 		}
 	}()
-	e.reflectValue(reflect.ValueOf(v))
+	e.reflectValue(reflect.NewValue(v))
 	return nil
 }
 
@@ -180,10 +177,8 @@ func (e *encodeState) error(err os.Error) {
 	panic(err)
 }
 
-var byteSliceType = reflect.TypeOf([]byte(nil))
-
 func (e *encodeState) reflectValue(v reflect.Value) {
-	if !v.IsValid() {
+	if v == nil {
 		e.WriteString("null")
 		return
 	}
@@ -200,30 +195,30 @@ func (e *encodeState) reflectValue(v reflect.Value) {
 		return
 	}
 
-	switch v.Kind() {
-	case reflect.Bool:
-		x := v.Bool()
+	switch v := v.(type) {
+	case *reflect.BoolValue:
+		x := v.Get()
 		if x {
 			e.WriteString("true")
 		} else {
 			e.WriteString("false")
 		}
 
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		e.WriteString(strconv.Itoa64(v.Int()))
+	case *reflect.IntValue:
+		e.WriteString(strconv.Itoa64(v.Get()))
 
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		e.WriteString(strconv.Uitoa64(v.Uint()))
+	case *reflect.UintValue:
+		e.WriteString(strconv.Uitoa64(v.Get()))
 
-	case reflect.Float32, reflect.Float64:
-		e.WriteString(strconv.FtoaN(v.Float(), 'g', -1, v.Type().Bits()))
+	case *reflect.FloatValue:
+		e.WriteString(strconv.FtoaN(v.Get(), 'g', -1, v.Type().Bits()))
 
-	case reflect.String:
-		e.string(v.String())
+	case *reflect.StringValue:
+		e.string(v.Get())
 
-	case reflect.Struct:
+	case *reflect.StructValue:
 		e.WriteByte('{')
-		t := v.Type()
+		t := v.Type().(*reflect.StructType)
 		n := v.NumField()
 		first := true
 		for i := 0; i < n; i++ {
@@ -236,7 +231,7 @@ func (e *encodeState) reflectValue(v reflect.Value) {
 			} else {
 				e.WriteByte(',')
 			}
-			if isValidTag(f.Tag) {
+			if f.Tag != "" {
 				e.string(f.Tag)
 			} else {
 				e.string(f.Name)
@@ -246,8 +241,8 @@ func (e *encodeState) reflectValue(v reflect.Value) {
 		}
 		e.WriteByte('}')
 
-	case reflect.Map:
-		if v.Type().Key().Kind() != reflect.String {
+	case *reflect.MapValue:
+		if _, ok := v.Type().(*reflect.MapType).Key().(*reflect.StringType); !ok {
 			e.error(&UnsupportedTypeError{v.Type()})
 		}
 		if v.IsNil() {
@@ -255,48 +250,30 @@ func (e *encodeState) reflectValue(v reflect.Value) {
 			break
 		}
 		e.WriteByte('{')
-		var sv stringValues = v.MapKeys()
+		var sv stringValues = v.Keys()
 		sort.Sort(sv)
 		for i, k := range sv {
 			if i > 0 {
 				e.WriteByte(',')
 			}
-			e.string(k.String())
+			e.string(k.(*reflect.StringValue).Get())
 			e.WriteByte(':')
-			e.reflectValue(v.MapIndex(k))
+			e.reflectValue(v.Elem(k))
 		}
 		e.WriteByte('}')
 
-	case reflect.Array, reflect.Slice:
-		if v.Type() == byteSliceType {
-			e.WriteByte('"')
-			s := v.Interface().([]byte)
-			if len(s) < 1024 {
-				// for small buffers, using Encode directly is much faster.
-				dst := make([]byte, base64.StdEncoding.EncodedLen(len(s)))
-				base64.StdEncoding.Encode(dst, s)
-				e.Write(dst)
-			} else {
-				// for large buffers, avoid unnecessary extra temporary
-				// buffer space.
-				enc := base64.NewEncoder(base64.StdEncoding, e)
-				enc.Write(s)
-				enc.Close()
-			}
-			e.WriteByte('"')
-			break
-		}
+	case reflect.ArrayOrSliceValue:
 		e.WriteByte('[')
 		n := v.Len()
 		for i := 0; i < n; i++ {
 			if i > 0 {
 				e.WriteByte(',')
 			}
-			e.reflectValue(v.Index(i))
+			e.reflectValue(v.Elem(i))
 		}
 		e.WriteByte(']')
 
-	case reflect.Interface, reflect.Ptr:
+	case interfaceOrPtrValue:
 		if v.IsNil() {
 			e.WriteString("null")
 			return
@@ -309,18 +286,6 @@ func (e *encodeState) reflectValue(v reflect.Value) {
 	return
 }
 
-func isValidTag(s string) bool {
-	if s == "" {
-		return false
-	}
-	for _, c := range s {
-		if c != '_' && !unicode.IsLetter(c) && !unicode.IsDigit(c) {
-			return false
-		}
-	}
-	return true
-}
-
 // stringValues is a slice of reflect.Value holding *reflect.StringValue.
 // It implements the methods to sort by string.
 type stringValues []reflect.Value
@@ -328,7 +293,7 @@ type stringValues []reflect.Value
 func (sv stringValues) Len() int           { return len(sv) }
 func (sv stringValues) Swap(i, j int)      { sv[i], sv[j] = sv[j], sv[i] }
 func (sv stringValues) Less(i, j int) bool { return sv.get(i) < sv.get(j) }
-func (sv stringValues) get(i int) string   { return sv[i].String() }
+func (sv stringValues) get(i int) string   { return sv[i].(*reflect.StringValue).Get() }
 
 func (e *encodeState) string(s string) {
 	e.WriteByte('"')

@@ -160,9 +160,9 @@ is the package's default name for imports.
 Go's convention is that the package name is the last element of the
 import path: the package imported as <code>"crypto/rot13"</code>
 should be named <code>rot13</code>.
-There is no requirement that package names be unique
-across all packages linked into a single binary,
-only that the import paths (their full file names) be unique.
+At the moment, the Go tools impose a restriction that package names are unique
+across all packages linked into a single binary, but that restriction
+will be lifted soon.
 </p>
 
 <p>
@@ -229,7 +229,7 @@ run <code>gotest one_test.go</code>.
 <p>
 If your change affects performance, add a <code>Benchmark</code> function 
 (see the <a href="/cmd/gotest/">gotest command documentation</a>)
-and run it using <code>gotest -test.bench=.</code>.
+and run it using <code>gotest -benchmarks=.</code>.
 </p>
 
 <p>
@@ -322,47 +322,3 @@ reported.
 See the <a href="/cmd/gotest/">gotest documentation</a> and the 
 <a href="/pkg/testing/">testing package</a> for more detail.
 </p>
-
-<h2 id="arch_os_specific">Architecture- and operating system-specific code</h2>
-
-<p>First, a disclaimer: very few Go packages should need to know about the
-hardware and operating system they run on.  In the vast majority of cases the
-language and standard library handle most portability issues.  This section is
-a guide for experienced systems programmers who have a good reason to write
-platform-specific code, such as assembly-language support for fast
-trigonometric functions or code that implements a common interface above
-different operating systems.</p>
-
-<p>To compile such code, use the <code>$GOOS</code> and <code>$GOARCH</code>
-<a href="/doc/install.html#environment">environment variables</a> in your
-source file names and <code>Makefile</code>.</p>
-
-<p>For example, this <code>Makefile</code> describes a package that builds on
-different operating systems by parameterizing the file name with
-<code>$GOOS</code>.</p>
-
-<pre>
-include $(GOROOT)/src/Make.inc
-
-TARG=mypackage
-GOFILES=\
-	my.go\
-	my_$(GOOS).go\
-
-include $(GOROOT)/src/Make.pkg
-</pre>
-
-<p>The OS-specific code goes in <code>my_linux.go</code>,
-<code>my_darwin.go</code>, and so on.</p>
-
-<p>If you follow these conventional parameterizations, tools such as
-<a href="/cmd/goinstall/">goinstall</a> will work seamlessly with your package:
-</p>
-
-<pre>
-my_$(GOOS).go
-my_$(GOARCH).go
-my_$(GOOS)_$(GOARCH).go
-</pre>
-
-<p>The same holds for <code>.s</code> (assembly) files.</p>

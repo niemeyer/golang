@@ -58,7 +58,7 @@ func getKeyNumber(s string) (r uint32) {
 
 // ServeHTTP implements the http.Handler interface for a Web Socket
 func (f Handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	rwc, buf, err := w.(http.Hijacker).Hijack()
+	rwc, buf, err := w.Hijack()
 	if err != nil {
 		panic("Hijack failed: " + err.String())
 		return
@@ -73,23 +73,23 @@ func (f Handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	// HTTP version can be safely ignored.
 
-	if strings.ToLower(req.Header.Get("Upgrade")) != "websocket" ||
-		strings.ToLower(req.Header.Get("Connection")) != "upgrade" {
+	if strings.ToLower(req.Header["Upgrade"]) != "websocket" ||
+		strings.ToLower(req.Header["Connection"]) != "upgrade" {
 		return
 	}
 
 	// TODO(ukai): check Host
-	origin := req.Header.Get("Origin")
-	if origin == "" {
+	origin, found := req.Header["Origin"]
+	if !found {
 		return
 	}
 
-	key1 := req.Header.Get("Sec-Websocket-Key1")
-	if key1 == "" {
+	key1, found := req.Header["Sec-Websocket-Key1"]
+	if !found {
 		return
 	}
-	key2 := req.Header.Get("Sec-Websocket-Key2")
-	if key2 == "" {
+	key2, found := req.Header["Sec-Websocket-Key2"]
+	if !found {
 		return
 	}
 	key3 := make([]byte, 8)
@@ -98,7 +98,7 @@ func (f Handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	var location string
-	if req.TLS != nil {
+	if w.UsingTLS() {
 		location = "wss://" + req.Host + req.URL.RawPath
 	} else {
 		location = "ws://" + req.Host + req.URL.RawPath
@@ -124,7 +124,7 @@ func (f Handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	part1 := keyNumber1 / space1
 	part2 := keyNumber2 / space2
 
-	// Step 8. let challenge be concatenation of part1, part2 and key3.
+	// Step 8. let challenge to be concatination of part1, part2 and key3.
 	// Step 9. get MD5 fingerprint of challenge.
 	response, err := getChallengeResponse(part1, part2, key3)
 	if err != nil {
@@ -138,8 +138,8 @@ func (f Handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	buf.WriteString("Connection: Upgrade\r\n")
 	buf.WriteString("Sec-WebSocket-Location: " + location + "\r\n")
 	buf.WriteString("Sec-WebSocket-Origin: " + origin + "\r\n")
-	protocol := strings.TrimSpace(req.Header.Get("Sec-Websocket-Protocol"))
-	if protocol != "" {
+	protocol, found := req.Header["Sec-Websocket-Protocol"]
+	if found {
 		buf.WriteString("Sec-WebSocket-Protocol: " + protocol + "\r\n")
 	}
 	// Step 12. send CRLF.
@@ -150,7 +150,6 @@ func (f Handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	ws := newConn(origin, location, protocol, buf, rwc)
-	ws.Request = req
 	f(ws)
 }
 
@@ -168,24 +167,24 @@ func (f Draft75Handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		io.WriteString(w, "Unexpected request")
 		return
 	}
-	if req.Header.Get("Upgrade") != "WebSocket" {
+	if req.Header["Upgrade"] != "WebSocket" {
 		w.WriteHeader(http.StatusBadRequest)
 		io.WriteString(w, "missing Upgrade: WebSocket header")
 		return
 	}
-	if req.Header.Get("Connection") != "Upgrade" {
+	if req.Header["Connection"] != "Upgrade" {
 		w.WriteHeader(http.StatusBadRequest)
 		io.WriteString(w, "missing Connection: Upgrade header")
 		return
 	}
-	origin := strings.TrimSpace(req.Header.Get("Origin"))
-	if origin == "" {
+	origin, found := req.Header["Origin"]
+	if !found {
 		w.WriteHeader(http.StatusBadRequest)
 		io.WriteString(w, "missing Origin header")
 		return
 	}
 
-	rwc, buf, err := w.(http.Hijacker).Hijack()
+	rwc, buf, err := w.Hijack()
 	if err != nil {
 		panic("Hijack failed: " + err.String())
 		return
@@ -193,7 +192,7 @@ func (f Draft75Handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	defer rwc.Close()
 
 	var location string
-	if req.TLS != nil {
+	if w.UsingTLS() {
 		location = "wss://" + req.Host + req.URL.RawPath
 	} else {
 		location = "ws://" + req.Host + req.URL.RawPath
@@ -206,9 +205,9 @@ func (f Draft75Handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	buf.WriteString("Connection: Upgrade\r\n")
 	buf.WriteString("WebSocket-Origin: " + origin + "\r\n")
 	buf.WriteString("WebSocket-Location: " + location + "\r\n")
-	protocol := strings.TrimSpace(req.Header.Get("Websocket-Protocol"))
+	protocol, found := req.Header["Websocket-Protocol"]
 	// canonical header key of WebSocket-Protocol.
-	if protocol != "" {
+	if found {
 		buf.WriteString("WebSocket-Protocol: " + protocol + "\r\n")
 	}
 	buf.WriteString("\r\n")

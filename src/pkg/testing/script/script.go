@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package script aids in the testing of code that uses channels.
+// This package aids in the testing of code that uses channels.
 package script
 
 import (
@@ -134,19 +134,19 @@ type empty struct {
 }
 
 func newEmptyInterface(e empty) reflect.Value {
-	return reflect.ValueOf(e).Field(0)
+	return reflect.NewValue(e).(*reflect.StructValue).Field(0)
 }
 
 func (s Send) send() {
 	// With reflect.ChanValue.Send, we must match the types exactly. So, if
 	// s.Channel is a chan interface{} we convert s.Value to an interface{}
 	// first.
-	c := reflect.ValueOf(s.Channel)
+	c := reflect.NewValue(s.Channel).(*reflect.ChanValue)
 	var v reflect.Value
-	if iface := c.Type().Elem(); iface.Kind() == reflect.Interface && iface.NumMethod() == 0 {
+	if iface, ok := c.Type().(*reflect.ChanType).Elem().(*reflect.InterfaceType); ok && iface.NumMethod() == 0 {
 		v = newEmptyInterface(empty{s.Value})
 	} else {
-		v = reflect.ValueOf(s.Value)
+		v = reflect.NewValue(s.Value)
 	}
 	c.Send(v)
 }
@@ -162,7 +162,7 @@ func (s Close) getSend() sendAction { return s }
 
 func (s Close) getChannel() interface{} { return s.Channel }
 
-func (s Close) send() { reflect.ValueOf(s.Channel).Close() }
+func (s Close) send() { reflect.NewValue(s.Channel).(*reflect.ChanValue).Close() }
 
 // A ReceivedUnexpected error results if no active Events match a value
 // received from a channel.
@@ -278,7 +278,7 @@ func getChannels(events []*Event) ([]interface{}, os.Error) {
 			continue
 		}
 		c := event.action.getChannel()
-		if reflect.ValueOf(c).Kind() != reflect.Chan {
+		if _, ok := reflect.NewValue(c).(*reflect.ChanValue); !ok {
 			return nil, SetupError("one of the channel values is not a channel")
 		}
 
@@ -303,11 +303,11 @@ func getChannels(events []*Event) ([]interface{}, os.Error) {
 // channel repeatedly, wrapping them up as either a channelRecv or
 // channelClosed structure, and forwards them to the multiplex channel.
 func recvValues(multiplex chan<- interface{}, channel interface{}) {
-	c := reflect.ValueOf(channel)
+	c := reflect.NewValue(channel).(*reflect.ChanValue)
 
 	for {
-		v, ok := c.Recv()
-		if !ok {
+		v := c.Recv()
+		if c.Closed() {
 			multiplex <- channelClosed{channel}
 			return
 		}

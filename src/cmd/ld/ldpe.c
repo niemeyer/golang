@@ -125,13 +125,10 @@ ldpe(Biobuf *f, char *pkg, int64 len, char *pn)
 	Sym *s;
 	Reloc *r, *rp;
 	PeSym *sym;
-
-	USED(len);
-	USED(pkg);
+	
 	if(debug['v'])
 		Bprint(&bso, "%5.2f ldpe %s\n", cputime(), pn);
 	
-	sect = nil;
 	version++;
 	base = Boffset(f);
 	
@@ -150,7 +147,7 @@ ldpe(Biobuf *f, char *pkg, int64 len, char *pn)
 			goto bad;
 		obj->sect[i].size = obj->sect[i].sh.SizeOfRawData;
 		obj->sect[i].name = (char*)obj->sect[i].sh.Name;
-		// TODO return error if found .cormeta
+		// TODO return error if found .cormeta .rsrc
 	}
 	// load string table
 	Bseek(f, base+obj->fh.PointerToSymbolTable+18*obj->fh.NumberOfSymbols, 0);
@@ -173,10 +170,8 @@ ldpe(Biobuf *f, char *pkg, int64 len, char *pn)
 			 (symbuf[2] == 0) && (symbuf[3] == 0)) {
 			l = le32(&symbuf[4]);
 			obj->pesym[i].name = (char*)&obj->snames[l];
-		} else { // sym name length <= 8
-			obj->pesym[i].name = mal(9);
-			strncpy(obj->pesym[i].name, (char*)symbuf, 8);
-			obj->pesym[i].name[8] = 0;
+		} else {
+			obj->pesym[i].name = strdup((char*)symbuf);
 		}
 		obj->pesym[i].value = le32(&symbuf[8]);
 		obj->pesym[i].sectnum = le16(&symbuf[12]);
@@ -225,8 +220,6 @@ ldpe(Biobuf *f, char *pkg, int64 len, char *pn)
 			etextp = s;
 		}
 		sect->sym = s;
-		if(strcmp(sect->name, ".rsrc") == 0)
-			setpersrc(sect->sym);
 	}
 	
 	// load relocations
@@ -264,7 +257,6 @@ ldpe(Biobuf *f, char *pkg, int64 len, char *pn)
 					rp->type = D_PCREL;
 					rp->add = 0;
 					break;
-				case IMAGE_REL_I386_DIR32NB:
 				case IMAGE_REL_I386_DIR32:
 					rp->type = D_ADDR;
 					// load addend from image
@@ -307,8 +299,6 @@ ldpe(Biobuf *f, char *pkg, int64 len, char *pn)
 			diag("%s: %s sectnum <0!", pn, s->name, sym->sectnum);
 		}
 
-		if(sect == nil) 
-			return;
 		s->sub = sect->sym->sub;
 		sect->sym->sub = s;
 		s->type = sect->sym->type | SSUB;
@@ -371,11 +361,12 @@ readsym(PeObj *obj, int i, PeSym **y)
 
 	sym = &obj->pesym[i];
 	*y = sym;
+	s = nil;
 	
 	name = sym->name;
 	if(sym->sclass == IMAGE_SYM_CLASS_STATIC && sym->value == 0) // section
 		name = obj->sect[sym->sectnum-1].sym->name;
-	if(strncmp(sym->name, "__imp__", 7) == 0)
+	if(strncmp(sym->name, "__imp__", 6) == 0)
 		name = &sym->name[7]; // __imp__Name => Name
 	else if(sym->name[0] == '_') 
 		name = &sym->name[1]; // _Name => Name
@@ -407,8 +398,6 @@ readsym(PeObj *obj, int i, PeSym **y)
 
 	if(s != nil && s->type == 0 && !(sym->sclass == IMAGE_SYM_CLASS_STATIC && sym->value == 0))
 		s->type = SXREF;
-	if(strncmp(sym->name, "__imp__", 7) == 0)
-		s->got = -2; // flag for __imp__
 	sym->sym = s;
 
 	return 0;

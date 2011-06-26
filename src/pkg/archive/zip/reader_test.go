@@ -52,15 +52,6 @@ var tests = []ZipTest{
 	},
 	{Name: "readme.zip"},
 	{Name: "readme.notzip", Error: FormatError},
-	{
-		Name: "dd.zip",
-		File: []ZipTestFile{
-			{
-				Name:    "filename",
-				Content: []byte("This is a test textfile.\n"),
-			},
-		},
-	},
 }
 
 func TestReader(t *testing.T) {
@@ -75,12 +66,6 @@ func readTestZip(t *testing.T, zt ZipTest) {
 		t.Errorf("error=%v, want %v", err, zt.Error)
 		return
 	}
-
-	// bail if file is not zip
-	if err == FormatError {
-		return
-	}
-	defer z.Close()
 
 	// bail here if no Files expected to be tested
 	// (there may actually be files in the zip, but we don't care)
@@ -117,18 +102,16 @@ func readTestZip(t *testing.T, zt ZipTest) {
 	}
 
 	// test invalid checksum
-	if !z.File[0].hasDataDescriptor() { // skip test when crc32 in dd
-		z.File[0].CRC32++ // invalidate
-		r, err := z.File[0].Open()
-		if err != nil {
-			t.Error(err)
-			return
-		}
-		var b bytes.Buffer
-		_, err = io.Copy(&b, r)
-		if err != ChecksumError {
-			t.Errorf("%s: copy error=%v, want %v", z.File[0].Name, err, ChecksumError)
-		}
+	z.File[0].CRC32++ // invalidate
+	r, err := z.File[0].Open()
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	var b bytes.Buffer
+	_, err = io.Copy(&b, r)
+	if err != ChecksumError {
+		t.Errorf("%s: copy error=%v, want %v", z.File[0].Name, err, ChecksumError)
 	}
 }
 

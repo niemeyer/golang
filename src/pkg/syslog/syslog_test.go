@@ -28,26 +28,14 @@ func runSyslog(c net.PacketConn, done chan<- string) {
 func startServer(done chan<- string) {
 	c, e := net.ListenPacket("udp", "127.0.0.1:0")
 	if e != nil {
-		log.Fatalf("net.ListenPacket failed udp :0 %v", e)
+		log.Exitf("net.ListenPacket failed udp :0 %v", e)
 	}
 	serverAddr = c.LocalAddr().String()
 	c.SetReadTimeout(100e6) // 100ms
 	go runSyslog(c, done)
 }
 
-func skipNetTest(t *testing.T) bool {
-	if testing.Short() {
-		// Depends on syslog daemon running, and sometimes it's not.
-		t.Logf("skipping syslog test during -short")
-		return true
-	}
-	return false
-}
-
 func TestNew(t *testing.T) {
-	if skipNetTest(t) {
-		return
-	}
 	s, err := New(LOG_INFO, "")
 	if err != nil {
 		t.Fatalf("New() failed: %s", err)
@@ -57,9 +45,6 @@ func TestNew(t *testing.T) {
 }
 
 func TestNewLogger(t *testing.T) {
-	if skipNetTest(t) {
-		return
-	}
 	f := NewLogger(LOG_INFO, 0)
 	if f == nil {
 		t.Error("NewLogger() failed")
@@ -67,9 +52,6 @@ func TestNewLogger(t *testing.T) {
 }
 
 func TestDial(t *testing.T) {
-	if skipNetTest(t) {
-		return
-	}
 	l, err := Dial("", "", LOG_ERR, "syslog_test")
 	if err != nil {
 		t.Fatalf("Dial() failed: %s", err)

@@ -4,9 +4,15 @@
 
 include ../../Make.inc
 
-TARG=gotest
-GOFILES=\
-	flag.go\
-	gotest.go\
+TARG=install
 
-include ../../Make.cmd
+clean:
+	@true
+
+install: install-gotest install-gotry
+
+install-%: %
+	! test -f "$(GOBIN)"/$* || chmod u+w "$(GOBIN)"/$*
+	sed 's`@@GOROOT@@`$(GOROOT_FINAL)`' $* >"$(GOBIN)"/$*
+	chmod +x "$(GOBIN)"/$*
+

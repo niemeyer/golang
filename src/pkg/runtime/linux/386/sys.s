@@ -30,31 +30,6 @@ TEXT runtime·write(SB),7,$0
 	INT	$0x80
 	RET
 
-TEXT runtime·raisesigpipe(SB),7,$12
-	MOVL	$224, AX	// syscall - gettid
-	INT	$0x80
-	MOVL	AX, 0(SP)	// arg 1 tid
-	MOVL	$13, 4(SP)	// arg 2 SIGPIPE
-	MOVL	$238, AX	// syscall - tkill
-	INT	$0x80
-	RET
-
-TEXT runtime·setitimer(SB),7,$0-24
-	MOVL	$104, AX			// syscall - setitimer
-	MOVL	4(SP), BX
-	MOVL	8(SP), CX
-	MOVL	12(SP), DX
-	INT	$0x80
-	RET
-
-TEXT runtime·mincore(SB),7,$0-24
-	MOVL	$218, AX			// syscall - mincore
-	MOVL	4(SP), BX
-	MOVL	8(SP), CX
-	MOVL	12(SP), DX
-	INT	$0x80
-	RET
-
 TEXT runtime·gettime(SB), 7, $32
 	MOVL	$78, AX			// syscall - gettimeofday
 	LEAL	8(SP), BX
@@ -81,12 +56,12 @@ TEXT runtime·rt_sigaction(SB),7,$0
 	INT	$0x80
 	RET
 
-TEXT runtime·sigtramp(SB),7,$44
+TEXT runtime·sigtramp(SB),7,$40
 	get_tls(CX)
 	
 	// save g
-	MOVL	g(CX), DI
-	MOVL	DI, 20(SP)
+	MOVL	g(CX), BX
+	MOVL	BX, 20(SP)
 	
 	// g = m->gsignal
 	MOVL	m(CX), BX
@@ -100,7 +75,6 @@ TEXT runtime·sigtramp(SB),7,$44
 	MOVL	BX, 4(SP)
 	MOVL	context+8(FP), BX
 	MOVL	BX, 8(SP)
-	MOVL	DI, 12(SP)
 
 	CALL	runtime·sighandler(SB)
 	

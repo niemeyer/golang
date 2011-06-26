@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// ASN.1 objects have metadata preceding them:
+// ASN.1 objects have metadata preceeding them:
 //   the tag: the type of the object
 //   a flag denoting if this object is compound or not
 //   the class type: the namespace of the tag
@@ -32,7 +32,6 @@ const (
 	tagIA5String       = 22
 	tagUTCTime         = 23
 	tagGeneralizedTime = 24
-	tagGeneralString   = 27
 )
 
 const (
@@ -68,8 +67,7 @@ type tagAndLength struct {
 // fieldParameters is the parsed representation of tag string from a structure field.
 type fieldParameters struct {
 	optional     bool   // true iff the field is OPTIONAL
-	explicit     bool   // true iff an EXPLICIT tag is in use.
-	application  bool   // true iff an APPLICATION tag is in use.
+	explicit     bool   // true iff and EXPLICIT tag is in use.
 	defaultValue *int64 // a default value for INTEGER typed fields (maybe nil).
 	tag          *int   // the EXPLICIT or IMPLICIT tag (maybe nil).
 	stringType   int    // the string tag to use when marshaling.
@@ -91,6 +89,7 @@ func parseFieldParameters(str string) (ret fieldParameters) {
 			ret.explicit = true
 			if ret.tag == nil {
 				ret.tag = new(int)
+				*ret.tag = 0
 			}
 		case part == "ia5":
 			ret.stringType = tagIA5String
@@ -110,11 +109,6 @@ func parseFieldParameters(str string) (ret fieldParameters) {
 			}
 		case part == "set":
 			ret.set = true
-		case part == "application":
-			ret.application = true
-			if ret.tag == nil {
-				ret.tag = new(int)
-			}
 		}
 	}
 	return
@@ -132,17 +126,15 @@ func getUniversalType(t reflect.Type) (tagNumber int, isCompound, ok bool) {
 		return tagUTCTime, false, true
 	case enumeratedType:
 		return tagEnum, false, true
-	case bigIntType:
-		return tagInteger, false, true
 	}
-	switch t.Kind() {
-	case reflect.Bool:
+	switch t := t.(type) {
+	case *reflect.BoolType:
 		return tagBoolean, false, true
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+	case *reflect.IntType:
 		return tagInteger, false, true
-	case reflect.Struct:
+	case *reflect.StructType:
 		return tagSequence, true, true
-	case reflect.Slice:
+	case *reflect.SliceType:
 		if t.Elem().Kind() == reflect.Uint8 {
 			return tagOctetString, false, true
 		}
@@ -150,7 +142,7 @@ func getUniversalType(t reflect.Type) (tagNumber int, isCompound, ok bool) {
 			return tagSet, true, true
 		}
 		return tagSequence, true, true
-	case reflect.String:
+	case *reflect.StringType:
 		return tagPrintableString, false, true
 	}
 	return 0, false, false

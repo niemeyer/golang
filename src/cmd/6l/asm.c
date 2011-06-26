@@ -63,6 +63,52 @@ entryvalue(void)
 	return s->value;
 }
 
+void
+wputl(uint16 w)
+{
+	cput(w);
+	cput(w>>8);
+}
+
+void
+wputb(uint16 w)
+{
+	cput(w>>8);
+	cput(w);
+}
+
+void
+lputb(int32 l)
+{
+	cput(l>>24);
+	cput(l>>16);
+	cput(l>>8);
+	cput(l);
+}
+
+void
+vputb(uint64 v)
+{
+	lputb(v>>32);
+	lputb(v);
+}
+
+void
+lputl(int32 l)
+{
+	cput(l);
+	cput(l>>8);
+	cput(l>>16);
+	cput(l>>24);
+}
+
+void
+vputl(uint64 v)
+{
+	lputl(v);
+	lputl(v>>32);
+}
+
 vlong
 datoff(vlong addr)
 {
@@ -95,8 +141,6 @@ enum {
 	ElfStrStrtab,
 	ElfStrRelaPlt,
 	ElfStrPlt,
-	ElfStrGnuVersion,
-	ElfStrGnuVersionR,
 	NElfStr
 };
 
@@ -107,9 +151,6 @@ needlib(char *name)
 {
 	char *p;
 	Sym *s;
-
-	if(*name == '\0')
-		return 0;
 
 	/* reuse hash code in symbol table */
 	p = smprint(".elfload.%s", name);
@@ -165,16 +206,15 @@ adddynrel(Sym *s, Reloc *r)
 	case 256 + R_X86_64_GOTPCREL:
 		if(targ->dynimpname == nil || targ->dynexport) {
 			// have symbol
-			if(r->off >= 2 && s->p[r->off-2] == 0x8b) {
-				// turn MOVQ of GOT entry into LEAQ of symbol itself
-				s->p[r->off-2] = 0x8d;
-				r->type = D_PCREL;
-				r->add += 4;
+			// turn MOVQ of GOT entry into LEAQ of symbol itself
+			if(r->off < 2 || s->p[r->off-2] != 0x8b) {
+				diag("unexpected GOT_LOAD reloc for non-dynamic symbol %s", targ->name);
 				return;
 			}
-			// fall back to using GOT and hope for the best (CMOV*)
-			// TODO: just needs relocation, no need to put in .dynsym
-			targ->dynimpname = targ->name;
+			s->p[r->off-2] = 0x8d;
+			r->type = D_PCREL;
+			r->add += 4;
+			return;
 		}
 		addgotsym(targ);
 		r->type = D_PCREL;
@@ -267,7 +307,7 @@ adddynrel(Sym *s, Reloc *r)
 			r->type = 256;	// ignore during relocsym
 			return;
 		}
-		if(HEADTYPE == Hdarwin && s->size == PtrSize && r->off == 0) {
+		if(HEADTYPE == 6 && s->size == PtrSize && r->off == 0) {
 			// Mach-O relocations are a royal pain to lay out.
 			// They use a compact stateful bytecode representation
 			// that is too much bother to deal with.
@@ -370,7 +410,7 @@ addpltsym(Sym *s)
 		adduint64(rela, 0);
 		
 		s->plt = plt->size - 16;
-	} else if(HEADTYPE == Hdarwin) {
+	} else if(HEADTYPE == 6) {	// Mach-O
 		// To do lazy symbol lookup right, we're supposed
 		// to tell the dynamic loader which library each 
 		// symbol comes from and format the link info
@@ -417,7 +457,7 @@ addgotsym(Sym *s)
 		addaddrplus(rela, got, s->got);
 		adduint64(rela, ELF64_R_INFO(s->dynid, R_X86_64_GLOB_DAT));
 		adduint64(rela, 0);
-	} else if(HEADTYPE == Hdarwin) {
+	} else if(HEADTYPE == 6) {	// Mach-O
 		adduint32(lookup(".linkedit.got", 0), s->dynid);
 	} else {
 		diag("addgotsym: unsupported binary format");
@@ -441,7 +481,6 @@ adddynsym(Sym *s)
 		s->dynid = nelfsym++;
 
 		d = lookup(".dynsym", 0);
-
 		name = s->dynimpname;
 		if(name == nil)
 			name = s->name;
@@ -492,7 +531,7 @@ adddynsym(Sym *s)
 			elfwritedynent(lookup(".dynamic", 0), DT_NEEDED,
 				addstring(lookup(".dynstr", 0), s->dynimplib));
 		}
-	} else if(HEADTYPE == Hdarwin) {
+	} else if(HEADTYPE == 6) {
 		// Mach-o symbol nlist64
 		d = lookup(".dynsym", 0);
 		name = s->dynimpname;
@@ -545,7 +584,7 @@ adddynlib(char *lib)
 		if(s->size == 0)
 			addstring(s, "");
 		elfwritedynent(lookup(".dynamic", 0), DT_NEEDED, addstring(s, lib));
-	} else if(HEADTYPE == Hdarwin) {
+	} else if(HEADTYPE == 6) {	// Mach-O
 		machoadddynlib(lib);
 	} else {
 		diag("adddynlib: unsupported binary format");
@@ -557,7 +596,7 @@ doelf(void)
 {
 	Sym *s, *shstrtab, *dynstr;
 
-	if(HEADTYPE != Hlinux && HEADTYPE != Hfreebsd)
+	if(HEADTYPE != 7 && HEADTYPE != 9)
 		return;
 
 	/* predefine strings we need for section headers */
@@ -592,8 +631,6 @@ doelf(void)
 		elfstr[ElfStrRela] = addstring(shstrtab, ".rela");
 		elfstr[ElfStrRelaPlt] = addstring(shstrtab, ".rela.plt");
 		elfstr[ElfStrPlt] = addstring(shstrtab, ".plt");
-		elfstr[ElfStrGnuVersion] = addstring(shstrtab, ".gnu.version");
-		elfstr[ElfStrGnuVersionR] = addstring(shstrtab, ".gnu.version_r");
 
 		/* dynamic symbol table - first entry all zeros */
 		s = lookup(".dynsym", 0);
@@ -637,14 +674,6 @@ doelf(void)
 		s = lookup(".rela.plt", 0);
 		s->reachable = 1;
 		s->type = SELFDATA;
-		
-		s = lookup(".gnu.version", 0);
-		s->reachable = 1;
-		s->type = SELFDATA;
-		
-		s = lookup(".gnu.version_r", 0);
-		s->reachable = 1;
-		s->type = SELFDATA;
 
 		/* define dynamic elf table */
 		s = lookup(".dynamic", 0);
@@ -669,8 +698,7 @@ doelf(void)
 		elfwritedynent(s, DT_PLTREL, DT_RELA);
 		elfwritedynentsymsize(s, DT_PLTRELSZ, lookup(".rela.plt", 0));
 		elfwritedynentsym(s, DT_JMPREL, lookup(".rela.plt", 0));
-		
-		// Do not write DT_NULL.  elfdynhash will finish it.
+		elfwritedynent(s, DT_NULL, 0);
 	}
 }
 
@@ -698,7 +726,7 @@ asmb(void)
 {
 	int32 magic;
 	int a, dynsym;
-	vlong vl, startva, symo, machlink;
+	vlong vl, va, startva, fo, w, symo, elfsymo, elfstro, elfsymsize, machlink;
 	ElfEhdr *eh;
 	ElfPhdr *ph, *pph;
 	ElfShdr *sh;
@@ -709,6 +737,9 @@ asmb(void)
 	Bflush(&bso);
 
 	elftextsh = 0;
+	elfsymsize = 0;
+	elfstro = 0;
+	elfsymo = 0;
 	
 	if(debug['v'])
 		Bprint(&bso, "%5.2f codeblk\n", cputime());
@@ -731,31 +762,28 @@ asmb(void)
 	datblk(segdata.vaddr, segdata.filelen);
 
 	machlink = 0;
-	if(HEADTYPE == Hdarwin)
+	if(HEADTYPE == 6)
 		machlink = domacholink();
 
 	switch(HEADTYPE) {
 	default:
 		diag("unknown header type %d", HEADTYPE);
-	case Hplan9x32:
-	case Helf:
+	case 2:
+	case 5:
 		break;
-	case Hdarwin:
+	case 6:
 		debug['8'] = 1;	/* 64-bit addresses */
 		break;
-	case Hlinux:
-	case Hfreebsd:
+	case 7:
+	case 9:
 		debug['8'] = 1;	/* 64-bit addresses */
 		/* index of elf text section; needed by asmelfsym, double-checked below */
 		/* !debug['d'] causes extra sections before the .text section */
 		elftextsh = 1;
-		if(!debug['d']) {
+		if(!debug['d'])
 			elftextsh += 10;
-			if(elfverneed)
-				elftextsh += 2;
-		}
 		break;
-	case Hwindows:
+	case 10:
 		break;
 	}
 
@@ -769,46 +797,58 @@ asmb(void)
 		Bflush(&bso);
 		switch(HEADTYPE) {
 		default:
-		case Hplan9x32:
-		case Helf:
+		case 2:
+		case 5:
 			debug['s'] = 1;
 			symo = HEADR+segtext.len+segdata.filelen;
 			break;
-		case Hdarwin:
+		case 6:
 			symo = rnd(HEADR+segtext.len, INITRND)+rnd(segdata.filelen, INITRND)+machlink;
 			break;
-		case Hlinux:
-		case Hfreebsd:
+		case 7:
+		case 9:
 			symo = rnd(HEADR+segtext.len, INITRND)+segdata.filelen;
 			symo = rnd(symo, INITRND);
 			break;
-		case Hwindows:
+		case 10:
 			symo = rnd(HEADR+segtext.filelen, PEFILEALIGN)+segdata.filelen;
 			symo = rnd(symo, PEFILEALIGN);
 			break;
 		}
+		/*
+		 * the symbol information is stored as
+		 *	32-bit symbol table size
+		 *	32-bit line number table size
+		 *	symbol table
+		 *	line number table
+		 */
+		seek(cout, symo+8, 0);
+		if(debug['v'])
+			Bprint(&bso, "%5.2f sp\n", cputime());
+		Bflush(&bso);
+		if(debug['v'])
+			Bprint(&bso, "%5.2f pc\n", cputime());
+		Bflush(&bso);
+		if(!debug['s'])
+			strnput("", INITRND-(8+symsize+lcsize)%INITRND);
+		cflush();
 		seek(cout, symo, 0);
-		switch(HEADTYPE) {
-		default:
-			if(iself) {
-				seek(cout, symo, 0);
-				asmelfsym();
-				cflush();
-				ewrite(cout, elfstrdat, elfstrsize);
+		lputl(symsize);
+		lputl(lcsize);
+		cflush();
+		if(HEADTYPE != 10 && !debug['s']) {
+			elfsymo = symo+8+symsize+lcsize;
+			seek(cout, elfsymo, 0);
+			asmelfsym64();
+			cflush();
+			elfstro = seek(cout, 0, 1);
+			elfsymsize = elfstro - elfsymo;
+			ewrite(cout, elfstrdat, elfstrsize);
 
-				if(debug['v'])
-				       Bprint(&bso, "%5.2f dwarf\n", cputime());
-
-				dwarfemitdebugsections();
-			}
-			break;
-		case Hdarwin:
-		case Hwindows:
 			if(debug['v'])
 			       Bprint(&bso, "%5.2f dwarf\n", cputime());
 
 			dwarfemitdebugsections();
-			break;
 		}
 	}
 
@@ -818,7 +858,7 @@ asmb(void)
 	seek(cout, 0L, 0);
 	switch(HEADTYPE) {
 	default:
-	case Hplan9x32:	/* plan9 */
+	case 2:	/* plan9 */
 		magic = 4*26*26+7;
 		magic |= 0x00008000;		/* fat header */
 		lputb(magic);			/* magic */
@@ -832,7 +872,7 @@ asmb(void)
 		lputb(lcsize);			/* line offsets */
 		vputb(vl);			/* va of entry */
 		break;
-	case Hplan9x64:	/* plan9 */
+	case 3:	/* plan9 */
 		magic = 4*26*26+7;
 		lputb(magic);			/* magic */
 		lputb(segtext.filelen);		/* sizes */
@@ -843,15 +883,18 @@ asmb(void)
 		lputb(spsize);			/* sp offsets */
 		lputb(lcsize);			/* line offsets */
 		break;
-	case Hdarwin:
+	case 6:
 		asmbmacho();
 		break;
-	case Hlinux:
-	case Hfreebsd:
+	case 7:
+	case 9:
 		/* elf amd-64 */
 
 		eh = getElfEhdr();
+		fo = HEADR;
 		startva = INITTEXT - HEADR;
+		va = startva + fo;
+		w = segtext.filelen;
 
 		/* This null SHdr must appear before all others */
 		sh = newElfShdr(elfstr[ElfStrEmpty]);
@@ -871,17 +914,14 @@ asmb(void)
 			sh->type = SHT_PROGBITS;
 			sh->flags = SHF_ALLOC;
 			sh->addralign = 1;
-			if(interpreter == nil) {
-				switch(HEADTYPE) {
-				case Hlinux:
-					interpreter = linuxdynld;
-					break;
-				case Hfreebsd:
-					interpreter = freebsddynld;
-					break;
-				}
+			switch(HEADTYPE) {
+			case 7:
+				elfinterp(sh, startva, linuxdynld);
+				break;
+			case 9:
+				elfinterp(sh, startva, freebsddynld);
+				break;
 			}
-			elfinterp(sh, startva, interpreter);
 
 			ph = newElfPhdr();
 			ph->type = PT_INTERP;
@@ -924,24 +964,6 @@ asmb(void)
 			sh->flags = SHF_ALLOC;
 			sh->addralign = 1;
 			shsym(sh, lookup(".dynstr", 0));
-
-			if(elfverneed) {
-				sh = newElfShdr(elfstr[ElfStrGnuVersion]);
-				sh->type = SHT_GNU_VERSYM;
-				sh->flags = SHF_ALLOC;
-				sh->addralign = 2;
-				sh->link = dynsym;
-				sh->entsize = 2;
-				shsym(sh, lookup(".gnu.version", 0));
-				
-				sh = newElfShdr(elfstr[ElfStrGnuVersionR]);
-				sh->type = SHT_GNU_VERNEED;
-				sh->flags = SHF_ALLOC;
-				sh->addralign = 8;
-				sh->info = elfverneed;
-				sh->link = dynsym+1;  // dynstr
-				shsym(sh, lookup(".gnu.version_r", 0));
-			}
 
 			sh = newElfShdr(elfstr[ElfStrRelaPlt]);
 			sh->type = SHT_RELA;
@@ -1027,15 +1049,15 @@ asmb(void)
 
 			sh = newElfShdr(elfstr[ElfStrSymtab]);
 			sh->type = SHT_SYMTAB;
-			sh->off = symo;
-			sh->size = symsize;
+			sh->off = elfsymo;
+			sh->size = elfsymsize;
 			sh->addralign = 8;
 			sh->entsize = 24;
 			sh->link = eh->shnum;	// link to strtab
 
 			sh = newElfShdr(elfstr[ElfStrStrtab]);
 			sh->type = SHT_STRTAB;
-			sh->off = symo+symsize;
+			sh->off = elfstro;
 			sh->size = elfstrsize;
 			sh->addralign = 1;
 
@@ -1052,7 +1074,7 @@ asmb(void)
 		eh->ident[EI_MAG1] = 'E';
 		eh->ident[EI_MAG2] = 'L';
 		eh->ident[EI_MAG3] = 'F';
-		if(HEADTYPE == Hfreebsd)
+		if(HEADTYPE == 9)
 			eh->ident[EI_OSABI] = 9;
 		eh->ident[EI_CLASS] = ELFCLASS64;
 		eh->ident[EI_DATA] = ELFDATA2LSB;
@@ -1075,7 +1097,7 @@ asmb(void)
 		if(a+elfwriteinterp() > ELFRESERVE)
 			diag("ELFRESERVE too small: %d > %d", a, ELFRESERVE);
 		break;
-	case Hwindows:
+	case 10:
 		asmbpe();
 		break;
 	}
@@ -1121,38 +1143,32 @@ genasmsym(void (*put)(Sym*, char*, int, vlong, vlong, int, Sym*))
 {
 	Auto *a;
 	Sym *s;
+	int h;
 
-	s = lookup("etext", 0);
-	if(s->type == STEXT)
-		put(s, s->name, 'T', s->value, s->size, s->version, 0);
-
-	for(s=allsym; s!=S; s=s->allsym) {
-		if(s->hide)
-			continue;
-		switch(s->type&~SSUB) {
-		case SCONST:
-		case SRODATA:
-		case SDATA:
-		case SELFDATA:
-		case SMACHOGOT:
-		case STYPE:
-		case SSTRING:
-		case SGOSTRING:
-		case SWINDOWS:
-			if(!s->reachable)
+	for(h=0; h<NHASH; h++) {
+		for(s=hash[h]; s!=S; s=s->hash) {
+			switch(s->type&~SSUB) {
+			case SCONST:
+			case SRODATA:
+			case SDATA:
+			case SELFDATA:
+			case SMACHOGOT:
+			case SWINDOWS:
+				if(!s->reachable)
+					continue;
+				put(s, s->name, 'D', symaddr(s), s->size, s->version, s->gotype);
 				continue;
-			put(s, s->name, 'D', symaddr(s), s->size, s->version, s->gotype);
-			continue;
 
-		case SBSS:
-			if(!s->reachable)
+			case SBSS:
+				if(!s->reachable)
+					continue;
+				put(s, s->name, 'B', symaddr(s), s->size, s->version, s->gotype);
 				continue;
-			put(s, s->name, 'B', symaddr(s), s->size, s->version, s->gotype);
-			continue;
 
-		case SFILE:
-			put(nil, s->name, 'f', s->value, 0, s->version, 0);
-			continue;
+			case SFILE:
+				put(nil, s->name, 'f', s->value, 0, s->version, 0);
+				continue;
+			}
 		}
 	}
 

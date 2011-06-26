@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package ripemd160 implements the RIPEMD-160 hash algorithm.
+// This package implements the RIPEMD-160 hash algorithm.
 package ripemd160
 
 // RIPEMD-160 is designed by by Hans Dobbertin, Antoon Bosselaers, and Bart
@@ -10,14 +10,9 @@ package ripemd160
 // http://homes.esat.kuleuven.be/~cosicart/pdf/AB-9601/AB-9601.pdf.
 
 import (
-	"crypto"
 	"hash"
 	"os"
 )
-
-func init() {
-	crypto.RegisterHash(crypto.RIPEMD160, New)
-}
 
 // The size of the checksum in bytes.
 const Size = 20

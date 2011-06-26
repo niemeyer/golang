@@ -23,7 +23,6 @@ import (
 func checkValid(data []byte, scan *scanner) os.Error {
 	scan.reset()
 	for _, c := range data {
-		scan.bytes++
 		if scan.step(scan, int(c)) == scanError {
 			return scan.err
 		}
@@ -57,12 +56,10 @@ func nextValue(data []byte, scan *scanner) (value, rest []byte, err os.Error) {
 }
 
 // A SyntaxError is a description of a JSON syntax error.
-type SyntaxError struct {
-	msg    string // description of error
-	Offset int64  // error occurred after reading Offset bytes
-}
+type SyntaxError string
 
-func (e *SyntaxError) String() string { return e.msg }
+func (e SyntaxError) String() string { return string(e) }
+
 
 // A scanner is a JSON scanning state machine.
 // Callers call scan.reset() and then pass bytes in one at a time
@@ -92,9 +89,6 @@ type scanner struct {
 	// 1-byte redo (see undo method)
 	redoCode  int
 	redoState func(*scanner, int) int
-
-	// total bytes consumed, updated by decoder.Decode
-	bytes int64
 }
 
 // These values are returned by the state transition functions
@@ -154,7 +148,7 @@ func (s *scanner) eof() int {
 		return scanEnd
 	}
 	if s.err == nil {
-		s.err = &SyntaxError{"unexpected end of JSON input", s.bytes}
+		s.err = SyntaxError("unexpected end of JSON input")
 	}
 	return scanError
 }
@@ -587,7 +581,7 @@ func stateError(s *scanner, c int) int {
 // error records an error and switches to the error state.
 func (s *scanner) error(c int, context string) int {
 	s.step = stateError
-	s.err = &SyntaxError{"invalid character " + quoteChar(c) + " " + context, s.bytes}
+	s.err = SyntaxError("invalid character " + quoteChar(c) + " " + context)
 	return scanError
 }
 

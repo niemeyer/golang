@@ -319,7 +319,7 @@ ldelf(Biobuf *f, char *pkg, int64 len, char *pn)
 	char *name;
 	int i, j, rela, is64, n;
 	uchar hdrbuf[64];
-	uchar *p;
+	uchar *p, *dp;
 	ElfHdrBytes *hdr;
 	ElfObj *obj;
 	ElfSect *sect, *rsect;
@@ -328,16 +328,15 @@ ldelf(Biobuf *f, char *pkg, int64 len, char *pn)
 	Reloc *r, *rp;
 	Sym *s;
 
-	USED(pkg);
 	if(debug['v'])
 		Bprint(&bso, "%5.2f ldelf %s\n", cputime(), pn);
 
 	version++;
 	base = Boffset(f);
 
-	if(Bread(f, hdrbuf, sizeof hdrbuf) != sizeof hdrbuf)
+	if(Bread(f, &hdrbuf, sizeof hdrbuf) != sizeof hdrbuf)
 		goto bad;
-	hdr = (ElfHdrBytes*)hdrbuf;
+	hdr = (ElfHdrBytes*)&hdrbuf;
 	if(memcmp(hdr->ident, ElfMagic, 4) != 0)
 		goto bad;
 	switch(hdr->ident[5]) {
@@ -519,7 +518,7 @@ ldelf(Biobuf *f, char *pkg, int64 len, char *pn)
 		name = smprint("%s(%s)", pn, sect->name);
 		s = lookup(name, version);
 		free(name);
-		switch((int)sect->flags&(ElfSectFlagAlloc|ElfSectFlagWrite|ElfSectFlagExec)) {
+		switch(sect->flags&(ElfSectFlagAlloc|ElfSectFlagWrite|ElfSectFlagExec)) {
 		default:
 			werrstr("unexpected flags for ELF section %s", sect->name);
 			goto bad;
@@ -562,6 +561,7 @@ ldelf(Biobuf *f, char *pkg, int64 len, char *pn)
 		n = rsect->size/(4+4*is64)/(2+rela);
 		r = mal(n*sizeof r[0]);
 		p = rsect->base;
+		dp = sect->base;
 		for(j=0; j<n; j++) {
 			add = 0;
 			rp = &r[j];

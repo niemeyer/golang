@@ -2,18 +2,16 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package ocsp parses OCSP responses as specified in RFC 2560. OCSP responses
+// This package parses OCSP responses as specified in RFC 2560. OCSP responses
 // are signed messages attesting to the validity of a certificate for a small
 // period of time. This is used to manage revocation for X.509 certificates.
 package ocsp
 
 import (
 	"asn1"
-	"crypto"
 	"crypto/rsa"
-	_ "crypto/sha1"
+	"crypto/sha1"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"os"
 	"time"
 )
@@ -33,9 +31,21 @@ const (
 	ocspUnauthorized  = 5
 )
 
+type rdnSequence []relativeDistinguishedNameSET
+
+type relativeDistinguishedNameSET []attributeTypeAndValue
+
+type attributeTypeAndValue struct {
+	Type  asn1.ObjectIdentifier
+	Value interface{}
+}
+
+type algorithmIdentifier struct {
+	Algorithm asn1.ObjectIdentifier
+}
 
 type certID struct {
-	HashAlgorithm pkix.AlgorithmIdentifier
+	HashAlgorithm algorithmIdentifier
 	NameHash      []byte
 	IssuerKeyHash []byte
 	SerialNumber  asn1.RawValue
@@ -53,16 +63,16 @@ type responseBytes struct {
 
 type basicResponse struct {
 	TBSResponseData    responseData
-	SignatureAlgorithm pkix.AlgorithmIdentifier
+	SignatureAlgorithm algorithmIdentifier
 	Signature          asn1.BitString
 	Certificates       []asn1.RawValue "explicit,tag:0,optional"
 }
 
 type responseData struct {
 	Raw           asn1.RawContent
-	Version       int              "optional,default:1,explicit,tag:0"
-	RequestorName pkix.RDNSequence "optional,explicit,tag:1"
-	KeyHash       []byte           "optional,explicit,tag:2"
+	Version       int         "optional,default:1,explicit,tag:0"
+	RequestorName rdnSequence "optional,explicit,tag:1"
+	KeyHash       []byte      "optional,explicit,tag:2"
 	ProducedAt    *time.Time
 	Responses     []singleResponse
 }
@@ -158,8 +168,8 @@ func ParseResponse(bytes []byte) (*Response, os.Error) {
 		return nil, x509.UnsupportedAlgorithmError{}
 	}
 
-	hashType := crypto.SHA1
-	h := hashType.New()
+	h := sha1.New()
+	hashType := rsa.HashSHA1
 
 	pub := ret.Certificate.PublicKey.(*rsa.PublicKey)
 	h.Write(basicResp.TBSResponseData.Raw)

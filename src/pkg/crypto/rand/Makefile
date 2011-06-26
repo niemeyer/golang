@@ -8,7 +8,6 @@ TARG=crypto/rand
 
 GOFILES=\
 	rand.go\
-	util.go\
 
 GOFILES_freebsd=\
 	rand_unix.go\

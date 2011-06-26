@@ -7,7 +7,6 @@ package html
 import (
 	"bytes"
 	"os"
-	"strings"
 	"testing"
 )
 
@@ -16,8 +15,8 @@ type tokenTest struct {
 	desc string
 	// The HTML to parse.
 	html string
-	// The string representations of the expected tokens, joined by '$'.
-	golden string
+	// The string representations of the expected tokens.
+	tokens []string
 }
 
 var tokenTests = []tokenTest{
@@ -26,134 +25,61 @@ var tokenTests = []tokenTest{
 	{
 		"text",
 		"foo  bar",
-		"foo  bar",
+		[]string{
+			"foo  bar",
+		},
 	},
 	// An entity.
 	{
 		"entity",
 		"one &lt; two",
-		"one &lt; two",
+		[]string{
+			"one &lt; two",
+		},
 	},
 	// A start, self-closing and end tag. The tokenizer does not care if the start
 	// and end tokens don't match; that is the job of the parser.
 	{
 		"tags",
 		"<a>b<c/>d</e>",
-		"<a>$b$<c/>$d$</e>",
-	},
-	// Comments.
-	{
-		"comment0",
-		"abc<b><!-- skipme --></b>def",
-		"abc$<b>$</b>$def",
-	},
-	{
-		"comment1",
-		"a<!-->z",
-		"a$z",
-	},
-	{
-		"comment2",
-		"a<!--->z",
-		"a$z",
-	},
-	{
-		"comment3",
-		"a<!--x>-->z",
-		"a$z",
-	},
-	{
-		"comment4",
-		"a<!--x->-->z",
-		"a$z",
-	},
-	{
-		"comment5",
-		"a<!>z",
-		"a$&lt;!&gt;z",
-	},
-	{
-		"comment6",
-		"a<!->z",
-		"a$&lt;!-&gt;z",
-	},
-	{
-		"comment7",
-		"a<!---<>z",
-		"a$&lt;!---&lt;&gt;z",
-	},
-	{
-		"comment8",
-		"a<!--z",
-		"a$&lt;!--z",
+		[]string{
+			"<a>",
+			"b",
+			"<c/>",
+			"d",
+			"</e>",
+		},
 	},
 	// An attribute with a backslash.
 	{
 		"backslash",
 		`<p id="a\"b">`,
-		`<p id="a&quot;b">`,
+		[]string{
+			`<p id="a&quot;b">`,
+		},
 	},
 	// Entities, tag name and attribute key lower-casing, and whitespace
 	// normalization within a tag.
 	{
 		"tricky",
 		"<p \t\n iD=\"a&quot;B\"  foo=\"bar\"><EM>te&lt;&amp;;xt</em></p>",
-		`<p id="a&quot;B" foo="bar">$<em>$te&lt;&amp;;xt$</em>$</p>`,
+		[]string{
+			`<p id="a&quot;B" foo="bar">`,
+			"<em>",
+			"te&lt;&amp;;xt",
+			"</em>",
+			"</p>",
+		},
 	},
-	// A nonexistent entity. Tokenizing and converting back to a string should
+	// A non-existant entity. Tokenizing and converting back to a string should
 	// escape the "&" to become "&amp;".
 	{
 		"noSuchEntity",
 		`<a b="c&noSuchEntity;d">&lt;&alsoDoesntExist;&`,
-		`<a b="c&amp;noSuchEntity;d">$&lt;&amp;alsoDoesntExist;&amp;`,
-	},
-
-	// Attribute tests:
-	// http://dev.w3.org/html5/spec/Overview.html#attributes-0
-	{
-		"Empty attribute",
-		`<input disabled FOO>`,
-		`<input disabled="" foo="">`,
-	},
-	{
-		"Empty attribute, whitespace",
-		`<input disabled FOO >`,
-		`<input disabled="" foo="">`,
-	},
-	{
-		"Unquoted attribute value",
-		`<input value=yes FOO=BAR>`,
-		`<input value="yes" foo="BAR">`,
-	},
-	{
-		"Unquoted attribute value, spaces",
-		`<input value = yes FOO = BAR>`,
-		`<input value="yes" foo="BAR">`,
-	},
-	{
-		"Unquoted attribute value, trailing space",
-		`<input value=yes FOO=BAR >`,
-		`<input value="yes" foo="BAR">`,
-	},
-	{
-		"Single-quoted attribute value",
-		`<input value='yes' FOO='BAR'>`,
-		`<input value="yes" foo="BAR">`,
-	},
-	{
-		"Single-quoted attribute value, trailing space",
-		`<input value='yes' FOO='BAR' >`,
-		`<input value="yes" foo="BAR">`,
-	},
-	{
-		"Double-quoted attribute value",
-		`<input value="I'm an attribute" FOO="BAR">`,
-		`<input value="I&apos;m an attribute" foo="BAR">`,
-	},
-	{
-		"Attribute name characters",
-		`<meta http-equiv="content-type">`,
-		`<meta http-equiv="content-type">`,
+		[]string{
+			`<a b="c&amp;noSuchEntity;d">`,
+			"&lt;&amp;alsoDoesntExist;&amp;",
+		},
 	},
 }
 
@@ -161,7 +87,7 @@ func TestTokenizer(t *testing.T) {
 loop:
 	for _, tt := range tokenTests {
 		z := NewTokenizer(bytes.NewBuffer([]byte(tt.html)))
-		for i, s := range strings.Split(tt.golden, "$", -1) {
+		for i, s := range tt.tokens {
 			if z.Next() == ErrorToken {
 				t.Errorf("%s token %d: want %q got error %v", tt.desc, i, s, z.Error())
 				continue loop

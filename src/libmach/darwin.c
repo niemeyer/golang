@@ -170,7 +170,7 @@ me(kern_return_t r)
 // handles to tasks (processes), and handles to threads within a
 // process.  All of them are small integers.
 //
-// To accommodate Mach, we employ a clumsy hack: in this interface,
+// To accomodate Mach, we employ a clumsy hack: in this interface,
 // if you pass in a positive number, that's a process id.
 // If you pass in a negative number, that identifies a thread that
 // has been previously returned by procthreadpids (it indexes
@@ -579,7 +579,7 @@ machregrw(Map *map, Seg *seg, uvlong addr, void *v, uint n, int isr)
 		if(!isr)
 			thread_resume(thread);
 		rerrstr(buf, sizeof buf);
-		if(strstr(buf, "send invalid dest") != nil) 
+		if(strcmp(buf, "send invalid dest") == 0)
 			werrstr("process exited");
 		else
 			werrstr("thread_get_state: %r");

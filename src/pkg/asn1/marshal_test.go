@@ -45,10 +45,6 @@ type printableStringTest struct {
 	A string "printable"
 }
 
-type optionalRawValueTest struct {
-	A RawValue "optional"
-}
-
 type testSET []int
 
 func setPST(t *time.Time) *time.Time {
@@ -81,32 +77,7 @@ var marshalTests = []marshalTest{
 	{ObjectIdentifier([]int{1, 2, 3, 4}), "06032a0304"},
 	{ObjectIdentifier([]int{1, 2, 840, 133549, 1, 1, 5}), "06092a864888932d010105"},
 	{"test", "130474657374"},
-	{
-		"" +
-			"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" +
-			"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" +
-			"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" +
-			"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", // This is 127 times 'x'
-		"137f" +
-			"7878787878787878787878787878787878787878787878787878787878787878" +
-			"7878787878787878787878787878787878787878787878787878787878787878" +
-			"7878787878787878787878787878787878787878787878787878787878787878" +
-			"78787878787878787878787878787878787878787878787878787878787878",
-	},
-	{
-		"" +
-			"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" +
-			"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" +
-			"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" +
-			"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", // This is 128 times 'x'
-		"138180" +
-			"7878787878787878787878787878787878787878787878787878787878787878" +
-			"7878787878787878787878787878787878787878787878787878787878787878" +
-			"7878787878787878787878787878787878787878787878787878787878787878" +
-			"7878787878787878787878787878787878787878787878787878787878787878",
-	},
 	{ia5StringTest{"test"}, "3006160474657374"},
-	{optionalRawValueTest{}, "3000"},
 	{printableStringTest{"test"}, "3006130474657374"},
 	{printableStringTest{"test*"}, "30071305746573742a"},
 	{rawContentsStruct{nil, 64}, "3003020140"},

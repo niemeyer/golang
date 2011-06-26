@@ -5,7 +5,7 @@
 #define		EXTERN
 #include	"go.h"
 #include	"y.tab.h"
-#include	<ar.h>
+#include <ar.h>
 
 #undef	getc
 #undef	ungetc
@@ -97,7 +97,7 @@ fault(int s)
 	// in the program, don't bother complaining
 	// about the seg fault too; let the user clean up
 	// the code and try again.
-	if(nsavederrors + nerrors > 0)
+	if(nerrors > 0)
 		errorexit();
 	fatal("fault");
 }
@@ -123,6 +123,9 @@ main(int argc, char *argv[])
 
 	runtimepkg = mkpkg(strlit("runtime"));
 	runtimepkg->name = "runtime";
+
+	stringpkg = mkpkg(strlit("string"));
+	stringpkg->name = "string";
 
 	typepkg = mkpkg(strlit("type"));
 	typepkg->name = "type";
@@ -235,14 +238,13 @@ main(int argc, char *argv[])
 	if(debug['f'])
 		frame(1);
 
-	// Process top-level declarations in four phases.
+	// Process top-level declarations in three phases.
 	// Phase 1: const, type, and names and types of funcs.
 	//   This will gather all the information about types
 	//   and methods but doesn't depend on any of it.
 	// Phase 2: Variable assignments.
 	//   To check interface assignments, depends on phase 1.
-	// Phase 3: Type check function bodies.
-	// Phase 4: Compile function bodies.
+	// Phase 3: Function bodies.
 	defercheckwidth();
 	for(l=xtop; l; l=l->next)
 		if(l->n->op != ODCL && l->n->op != OAS)
@@ -250,55 +252,31 @@ main(int argc, char *argv[])
 	for(l=xtop; l; l=l->next)
 		if(l->n->op == ODCL || l->n->op == OAS)
 			typecheck(&l->n, Etop);
-	resumetypecopy();
 	resumecheckwidth();
-
-	for(l=xtop; l; l=l->next)
-		if(l->n->op == ODCLFUNC) {
-			curfn = l->n;
-			saveerrors();
-			typechecklist(l->n->nbody, Etop);
-			if(nerrors != 0)
-				l->n->nbody = nil;  // type errors; do not compile
-		}
-	curfn = nil;
-
 	for(l=xtop; l; l=l->next)
 		if(l->n->op == ODCLFUNC)
 			funccompile(l->n, 0);
-
-	if(nsavederrors+nerrors == 0)
+	if(nerrors == 0)
 		fninit(xtop);
-
 	while(closures) {
 		l = closures;
 		closures = nil;
 		for(; l; l=l->next)
 			funccompile(l->n, 1);
 	}
+	dclchecks();
 
-	for(l=externdcl; l; l=l->next)
-		if(l->n->op == ONAME)
-			typecheck(&l->n, Erv);
-
-	if(nerrors+nsavederrors)
+	if(nerrors)
 		errorexit();
 
 	dumpobj();
 
-	if(nerrors+nsavederrors)
+	if(nerrors)
 		errorexit();
 
 	flusherrors();
 	exit(0);
 	return 0;
-}
-
-void
-saveerrors(void)
-{
-	nsavederrors += nerrors;
-	nerrors = 0;
 }
 
 static int
@@ -427,7 +405,7 @@ void
 importfile(Val *f, int line)
 {
 	Biobuf *imp;
-	char *file, *p, *q;
+	char *file;
 	int32 c;
 	int len;
 	Strlit *path;
@@ -445,15 +423,6 @@ importfile(Val *f, int line)
 		errorexit();
 	}
 
-	// The package name main is no longer reserved,
-	// but we reserve the import path "main" to identify
-	// the main package, just as we reserve the import 
-	// path "math" to identify the standard math package.
-	if(strcmp(f->u.sval->s, "main") == 0) {
-		yyerror("cannot import \"main\"");
-		errorexit();
-	}
-
 	if(strcmp(f->u.sval->s, "unsafe") == 0) {
 		if(safemode) {
 			yyerror("cannot import package unsafe");
@@ -463,7 +432,7 @@ importfile(Val *f, int line)
 		cannedimports("unsafe.6", unsafeimport);
 		return;
 	}
-	
+
 	path = f->u.sval;
 	if(islocalname(path)) {
 		cleanbuf = mal(strlen(pathname) + strlen(path->s) + 2);
@@ -490,24 +459,9 @@ importfile(Val *f, int line)
 	len = strlen(namebuf);
 	if(len > 2 && namebuf[len-2] == '.' && namebuf[len-1] == 'a') {
 		if(!skiptopkgdef(imp)) {
-			yyerror("import %s: not a package file", file);
+			yyerror("import not package file: %s", namebuf);
 			errorexit();
 		}
-	}
-	
-	// check object header
-	p = Brdstr(imp, '\n', 1);
-	if(strcmp(p, "empty archive") != 0) {
-		if(strncmp(p, "go object ", 10) != 0) {
-			yyerror("import %s: not a go object file", file);
-			errorexit();
-		}
-		q = smprint("%s %s %s", getgoos(), thestring, getgoversion());
-		if(strcmp(p+10, q) != 0) {
-			yyerror("import %s: object is [%s] expected [%s]", file, p+10, q);
-			errorexit();
-		}
-		free(q);
 	}
 
 	// assume files move (get installed)
@@ -525,7 +479,6 @@ importfile(Val *f, int line)
 	curio.infile = file;
 	curio.nlsemi = 0;
 	typecheckok = 1;
-
 	for(;;) {
 		c = getc();
 		if(c == EOF)
@@ -1335,7 +1288,7 @@ getc(void)
 			lexlineno++;
 		return c;
 	}
-	
+
 	if(curio.bin == nil) {
 		c = *curio.cp & 0xff;
 		if(c != 0)
@@ -1350,11 +1303,8 @@ getc(void)
 			break;
 		}
 	case EOF:
-		// insert \n at EOF
-		if(curio.eofnl)
-			return EOF;
-		curio.eofnl = 1;
-		c = '\n';
+		return EOF;
+
 	case '\n':
 		if(pushedio.bin == nil)
 			lexlineno++;
@@ -1580,6 +1530,7 @@ static	struct
 	"append",		LNAME,		Txxx,		OAPPEND,
 	"cap",		LNAME,		Txxx,		OCAP,
 	"close",	LNAME,		Txxx,		OCLOSE,
+	"closed",	LNAME,		Txxx,		OCLOSED,
 	"complex",	LNAME,		Txxx,		OCOMPLEX,
 	"copy",		LNAME,		Txxx,		OCOPY,
 	"imag",		LNAME,		Txxx,		OIMAG,

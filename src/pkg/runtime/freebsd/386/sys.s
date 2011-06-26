@@ -60,20 +60,6 @@ TEXT runtime·write(SB),7,$-4
 	INT	$0x80
 	RET
 
-TEXT runtime·raisesigpipe(SB),7,$12
-	// thr_self(&8(SP))
-	LEAL	8(SP), AX
-	MOVL	AX, 0(SP)
-	MOVL	$432, AX
-	INT	$0x80
-	// thr_kill(self, SIGPIPE)
-	MOVL	8(SP), AX
-	MOVL	AX, 0(SP)
-	MOVL	$13, 4(SP)
-	MOVL	$433, AX
-	INT	$0x80
-	RET
-
 TEXT runtime·notok(SB),7,$0
 	MOVL	$0xf1, 0xf1
 	RET
@@ -101,11 +87,6 @@ TEXT runtime·munmap(SB),7,$-4
 	CALL	runtime·notok(SB)
 	RET
 
-TEXT runtime·setitimer(SB), 7, $-4
-	MOVL	$83, AX
-	INT	$0x80
-	RET
-
 TEXT runtime·gettime(SB), 7, $32
 	MOVL	$116, AX
 	LEAL	12(SP), BX
@@ -130,36 +111,30 @@ TEXT runtime·sigaction(SB),7,$-4
 	CALL	runtime·notok(SB)
 	RET
 
-TEXT runtime·sigtramp(SB),7,$44
-	get_tls(CX)
-
-	// save g
-	MOVL	g(CX), DI
-	MOVL	DI, 20(SP)
-	
+TEXT runtime·sigtramp(SB),7,$40
 	// g = m->gsignal
-	MOVL	m(CX), BX
-	MOVL	m_gsignal(BX), BX
-	MOVL	BX, g(CX)
+	get_tls(DX)
+	MOVL	m(DX), BP
+	MOVL	m_gsignal(BP), BP
+	MOVL	BP, g(DX)
 
-	// copy arguments for call to sighandler
-	MOVL	signo+0(FP), BX
-	MOVL	BX, 0(SP)
-	MOVL	info+4(FP), BX
+	MOVL	signo+0(FP), AX
+	MOVL	siginfo+4(FP), BX
+	MOVL	context+8(FP), CX
+
+	MOVL	AX, 0(SP)
 	MOVL	BX, 4(SP)
-	MOVL	context+8(FP), BX
-	MOVL	BX, 8(SP)
-	MOVL	DI, 12(SP)
-
+	MOVL	CX, 8(SP)
 	CALL	runtime·sighandler(SB)
 
-	// restore g
-	get_tls(CX)
-	MOVL	20(SP), BX
-	MOVL	BX, g(CX)
-	
-	// call sigreturn
+	// g = m->curg
+	get_tls(DX)
+	MOVL	m(DX), BP
+	MOVL	m_curg(BP), BP
+	MOVL	BP, g(DX)
+
 	MOVL	context+8(FP), AX
+
 	MOVL	$0, 0(SP)	// syscall gap
 	MOVL	AX, 4(SP)
 	MOVL	$417, AX	// sigreturn(ucontext)

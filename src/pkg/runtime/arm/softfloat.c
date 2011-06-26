@@ -15,7 +15,6 @@
 #define FLAGS_V (1 << 28)
 
 void	runtime·abort(void);
-void	math·sqrtGoC(uint64, uint64*);
 
 static	uint32	trace = 0;
 
@@ -92,7 +91,6 @@ static uint32
 stepflt(uint32 *pc, uint32 *regs)
 {
 	uint32 i, regd, regm, regn;
-	int32 delta;
 	uint32 *addr;
 	uint64 uval;
 	int64 sval;
@@ -119,7 +117,7 @@ stepflt(uint32 *pc, uint32 *regs)
 		return 1;
 	}
 	if(i == 0xe08bb00d) {
-		// add sp to r11.
+		// add sp to 11.
 		// might be part of a large stack offset address
 		// (or might not, but again no harm done).
 		regs[11] += regs[13];
@@ -136,19 +134,6 @@ stepflt(uint32 *pc, uint32 *regs)
 			runtime·printf("*** fpsr R[CPSR] = F[CPSR] %x\n", regs[CPSR]);
 		return 1;
 	}
-	if((i&0xff000000) == 0xea000000) {
-		// unconditional branch
-		// can happen in the middle of floating point
-		// if the linker decides it is time to lay down
-		// a sequence of instruction stream constants.
-		delta = i&0xffffff;
-		delta = (delta<<8) >> 8;	// sign extend
-
-		if(trace)
-			runtime·printf("*** cpu PC += %x\n", (delta+2)*4);
-		return delta+2;
-	}
-
 	goto stage1;
 
 stage1:	// load/store regn is cpureg, regm is 8bit offset
@@ -358,15 +343,6 @@ stage3:	// regd, regm are 4bit variables
 				regd, regm, m->freghi[regd], m->freglo[regd]);
 		break;
 
-	case 0xeeb10bc0:	// D[regd] = sqrt D[regm]
-		math·sqrtGoC(getd(regm), &uval);
-		putd(regd, uval);
-
-		if(trace)
-			runtime·printf("*** D[%d] = sqrt D[%d] %x-%x\n",
-				regd, regm, m->freghi[regd], m->freglo[regd]);
-		break;
-
 	case 0xeeb40bc0:	// D[regd] :: D[regm] (CMPD)
 		runtime·fcmp64c(getd(regd), getd(regm), &cmp, &nan);
 		m->fflag = fstatus(nan, cmp);
@@ -513,10 +489,8 @@ runtime·_sfloat2(uint32 *lr, uint32 r0)
 	uint32 skip;
 
 	skip = stepflt(lr, &r0);
-	if(skip == 0) {
-		runtime·printf("sfloat2 %p %x\n", lr, *lr);
+	if(skip == 0)
 		fabort(); // not ok to fail first instruction
-	}
 
 	lr += skip;
 	while(skip = stepflt(lr, &r0))

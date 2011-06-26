@@ -120,25 +120,6 @@ peep(void)
 			p = p->link;
 		}
 	}
-	
-	// movb elimination.
-	// movb is simulated by the linker
-	// when a register other than ax, bx, cx, dx
-	// is used, so rewrite to other instructions
-	// when possible.  a movb into a register
-	// can smash the entire 32-bit register without
-	// causing any trouble.
-	for(r=firstr; r!=R; r=r->link) {
-		p = r->prog;
-		if(p->as == AMOVB && regtyp(&p->to)) {
-			// movb into register.
-			// from another register or constant can be movl.
-			if(regtyp(&p->from) || p->from.type == D_CONST)
-				p->as = AMOVL;
-			else
-				p->as = AMOVBLZX;
-		}
-	}
 
 	// constant propagation
 	// find MOV $con,R followed by
@@ -171,8 +152,6 @@ loop1:
 	for(r=firstr; r!=R; r=r->link) {
 		p = r->prog;
 		switch(p->as) {
-		case AMOVB:
-		case AMOVW:
 		case AMOVL:
 			if(regtyp(&p->to))
 			if(regtyp(&p->from)) {
@@ -203,7 +182,6 @@ loop1:
 			}
 			break;
 
-		case AADDB:
 		case AADDL:
 		case AADDW:
 			if(p->from.type != D_CONST || needc(p->link))
@@ -226,7 +204,6 @@ loop1:
 			}
 			break;
 
-		case ASUBB:
 		case ASUBL:
 		case ASUBW:
 			if(p->from.type != D_CONST || needc(p->link))
@@ -403,8 +380,6 @@ subprop(Reg *r0)
 		case AMOVSL:
 			return 0;
 
-		case AMOVB:
-		case AMOVW:
 		case AMOVL:
 			if(p->to.type == v1->type)
 				goto gotit;
@@ -585,8 +560,6 @@ copyu(Prog *p, Adr *v, Adr *s)
 
 
 	case ANOP:	/* rhs store */
-	case AMOVB:
-	case AMOVW:
 	case AMOVL:
 	case AMOVBLSX:
 	case AMOVBLZX:
@@ -651,6 +624,8 @@ copyu(Prog *p, Adr *v, Adr *s)
 	case AXORB:
 	case AXORL:
 	case AXORW:
+	case AMOVB:
+	case AMOVW:
 		if(copyas(&p->to, v))
 			return 2;
 		goto caseread;

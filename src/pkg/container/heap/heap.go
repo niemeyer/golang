@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package heap provides heap operations for any type that implements
+// This package provides heap operations for any type that implements
 // heap.Interface.
 //
 package heap
@@ -22,7 +22,7 @@ type Interface interface {
 }
 
 
-// A heap must be initialized before any of the heap operations
+// A heaper must be initialized before any of the heap operations
 // can be used. Init is idempotent with respect to the heap invariants
 // and may be called whenever the heap invariants may have been invalidated.
 // Its complexity is O(n) where n = h.Len().

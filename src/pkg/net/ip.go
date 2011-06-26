@@ -12,8 +12,6 @@
 
 package net
 
-import "os"
-
 // IP address lengths (bytes).
 const (
 	IPv4len = 4
@@ -41,15 +39,17 @@ type IPMask []byte
 // IPv4 address a.b.c.d.
 func IPv4(a, b, c, d byte) IP {
 	p := make(IP, IPv6len)
-	copy(p, v4InV6Prefix)
+	for i := 0; i < 10; i++ {
+		p[i] = 0
+	}
+	p[10] = 0xff
+	p[11] = 0xff
 	p[12] = a
 	p[13] = b
 	p[14] = c
 	p[15] = d
 	return p
 }
-
-var v4InV6Prefix = []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff}
 
 // IPv4Mask returns the IP mask (in 16-byte form) of the
 // IPv4 mask a.b.c.d.
@@ -75,70 +75,8 @@ var (
 
 // Well-known IPv6 addresses
 var (
-	IPv6zero                   = IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
-	IPv6unspecified            = IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
-	IPv6loopback               = IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
-	IPv6interfacelocalallnodes = IP{0xff, 0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01}
-	IPv6linklocalallnodes      = IP{0xff, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01}
-	IPv6linklocalallrouters    = IP{0xff, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x02}
+	IPzero = make(IP, IPv6len) // all zeros
 )
-
-// IsUnspecified returns true if ip is an unspecified address.
-func (ip IP) IsUnspecified() bool {
-	if ip.Equal(IPv4zero) || ip.Equal(IPv6unspecified) {
-		return true
-	}
-	return false
-}
-
-// IsLoopback returns true if ip is a loopback address.
-func (ip IP) IsLoopback() bool {
-	if ip4 := ip.To4(); ip4 != nil && ip4[0] == 127 {
-		return true
-	}
-	return ip.Equal(IPv6loopback)
-}
-
-// IsMulticast returns true if ip is a multicast address.
-func (ip IP) IsMulticast() bool {
-	if ip4 := ip.To4(); ip4 != nil && ip4[0]&0xf0 == 0xe0 {
-		return true
-	}
-	return ip[0] == 0xff
-}
-
-// IsInterfaceLinkLocalMulticast returns true if ip is
-// an interface-local multicast address.
-func (ip IP) IsInterfaceLocalMulticast() bool {
-	return len(ip) == IPv6len && ip[0] == 0xff && ip[1]&0x0f == 0x01
-}
-
-// IsLinkLocalMulticast returns true if ip is a link-local
-// multicast address.
-func (ip IP) IsLinkLocalMulticast() bool {
-	if ip4 := ip.To4(); ip4 != nil && ip4[0] == 224 && ip4[1] == 0 && ip4[2] == 0 {
-		return true
-	}
-	return ip[0] == 0xff && ip[1]&0x0f == 0x02
-}
-
-// IsLinkLocalUnicast returns true if ip is a link-local
-// unicast address.
-func (ip IP) IsLinkLocalUnicast() bool {
-	if ip4 := ip.To4(); ip4 != nil && ip4[0] == 169 && ip4[1] == 254 {
-		return true
-	}
-	return ip[0] == 0xfe && ip[1]&0xc0 == 0x80
-}
-
-// IsGlobalUnicast returns true if ip is a global unicast
-// address.
-func (ip IP) IsGlobalUnicast() bool {
-	return !ip.IsUnspecified() &&
-		!ip.IsLoopback() &&
-		!ip.IsMulticast() &&
-		!ip.IsLinkLocalUnicast()
-}
 
 // Is p all zeros?
 func isZeros(p IP) bool {
@@ -202,24 +140,9 @@ func (ip IP) DefaultMask() IPMask {
 	return nil // not reached
 }
 
-func allFF(b []byte) bool {
-	for _, c := range b {
-		if c != 0xff {
-			return false
-		}
-	}
-	return true
-}
-
 // Mask returns the result of masking the IP address ip with mask.
 func (ip IP) Mask(mask IPMask) IP {
 	n := len(ip)
-	if len(mask) == 16 && len(ip) == 4 && allFF(mask[:12]) {
-		mask = mask[12:]
-	}
-	if len(mask) == 4 && len(ip) == 16 && bytesEqual(ip[:12], v4InV6Prefix) {
-		ip = ip[12:]
-	}
 	if n != len(mask) {
 		return nil
 	}
@@ -320,34 +243,6 @@ func (ip IP) String() string {
 		s += itox((uint(p[i]) << 8) | uint(p[i+1]))
 	}
 	return s
-}
-
-// Equal returns true if ip and x are the same IP address.
-// An IPv4 address and that same address in IPv6 form are
-// considered to be equal.
-func (ip IP) Equal(x IP) bool {
-	if len(ip) == len(x) {
-		return bytesEqual(ip, x)
-	}
-	if len(ip) == 4 && len(x) == 16 {
-		return bytesEqual(x[0:12], v4InV6Prefix) && bytesEqual(ip, x[12:])
-	}
-	if len(ip) == 16 && len(x) == 4 {
-		return bytesEqual(ip[0:12], v4InV6Prefix) && bytesEqual(ip[12:], x)
-	}
-	return false
-}
-
-func bytesEqual(x, y []byte) bool {
-	if len(x) != len(y) {
-		return false
-	}
-	for i, b := range x {
-		if y[i] != b {
-			return false
-		}
-	}
-	return true
 }
 
 // If mask is a sequence of 1 bits followed by 0 bits,
@@ -456,6 +351,7 @@ func parseIPv6(s string) IP {
 
 	// Loop, parsing hex numbers followed by colon.
 	j := 0
+L:
 	for j < IPv6len {
 		// Hex number.
 		n, i1, ok := xtoi(s, i)
@@ -498,7 +394,7 @@ func parseIPv6(s string) IP {
 		}
 
 		// Otherwise must be followed by colon and more.
-		if s[i] != ':' || i+1 == len(s) {
+		if s[i] != ':' && i+1 == len(s) {
 			return nil
 		}
 		i++
@@ -536,79 +432,15 @@ func parseIPv6(s string) IP {
 	return p
 }
 
-// A ParseError represents a malformed text string and the type of string that was expected.
-type ParseError struct {
-	Type string
-	Text string
-}
-
-func (e *ParseError) String() string {
-	return "invalid " + e.Type + ": " + e.Text
-}
-
-func parseIP(s string) IP {
-	if p := parseIPv4(s); p != nil {
-		return p
-	}
-	if p := parseIPv6(s); p != nil {
-		return p
-	}
-	return nil
-}
-
 // ParseIP parses s as an IP address, returning the result.
 // The string s can be in dotted decimal ("74.125.19.99")
 // or IPv6 ("2001:4860:0:2001::68") form.
 // If s is not a valid textual representation of an IP address,
 // ParseIP returns nil.
 func ParseIP(s string) IP {
-	if p := parseIPv4(s); p != nil {
+	p := parseIPv4(s)
+	if p != nil {
 		return p
 	}
 	return parseIPv6(s)
-}
-
-// ParseCIDR parses s as a CIDR notation IP address and mask,
-// like "192.168.100.1/24", "2001:DB8::/48", as defined in
-// RFC 4632 and RFC 4291.
-func ParseCIDR(s string) (ip IP, mask IPMask, err os.Error) {
-	i := byteIndex(s, '/')
-	if i < 0 {
-		return nil, nil, &ParseError{"CIDR address", s}
-	}
-	ipstr, maskstr := s[:i], s[i+1:]
-	iplen := 4
-	ip = parseIPv4(ipstr)
-	if ip == nil {
-		iplen = 16
-		ip = parseIPv6(ipstr)
-	}
-	nn, i, ok := dtoi(maskstr, 0)
-	if ip == nil || !ok || i != len(maskstr) || nn < 0 || nn > 8*iplen {
-		return nil, nil, &ParseError{"CIDR address", s}
-	}
-	n := uint(nn)
-	if iplen == 4 {
-		v4mask := ^uint32(0xffffffff >> n)
-		mask = IPv4Mask(byte(v4mask>>24), byte(v4mask>>16), byte(v4mask>>8), byte(v4mask))
-	} else {
-		mask = make(IPMask, 16)
-		for i := 0; i < 16; i++ {
-			if n >= 8 {
-				mask[i] = 0xff
-				n -= 8
-				continue
-			}
-			mask[i] = ^byte(0xff >> n)
-			n = 0
-
-		}
-	}
-	// address must not have any bits not in mask
-	for i := range ip {
-		if ip[i]&^mask[i] != 0 {
-			return nil, nil, &ParseError{"CIDR address", s}
-		}
-	}
-	return ip, mask, nil
 }

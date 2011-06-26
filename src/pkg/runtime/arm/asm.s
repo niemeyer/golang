@@ -12,10 +12,10 @@ TEXT _rt0_arm(SB),7,$-4
 	// use R13 instead of SP to avoid linker rewriting the offsets
 	MOVW	0(R13), R0		// argc
 	MOVW	$4(R13), R1		// argv
-	SUB	$64, R13		// plenty of scratch
+	SUB	$128, R13		// plenty of scratch
 	AND	$~7, R13
-	MOVW	R0, 60(R13)		// save argc, argv away
-	MOVW	R1, 64(R13)
+	MOVW	R0, 120(R13)		// save argc, argv away
+	MOVW	R1, 124(R13)
 
 	// set up m and g registers
 	// g is R10, m is R9
@@ -34,9 +34,9 @@ TEXT _rt0_arm(SB),7,$-4
 	BL	runtime·check(SB)
 
 	// saved argc, argv
-	MOVW	60(R13), R0
+	MOVW	120(R13), R0
 	MOVW	R0, 4(R13)
-	MOVW	64(R13), R1
+	MOVW	124(R13), R1
 	MOVW	R1, 8(R13)
 	BL	runtime·args(SB)
 	BL	runtime·osinit(SB)
@@ -93,13 +93,14 @@ TEXT runtime·breakpoint(SB),7,$0
  *  go-routine
  */
 
-// void gosave(Gobuf*)
+// uintptr gosave(Gobuf*)
 // save state in Gobuf; setjmp
 TEXT runtime·gosave(SB), 7, $-4
 	MOVW	0(FP), R0		// gobuf
 	MOVW	SP, gobuf_sp(R0)
 	MOVW	LR, gobuf_pc(R0)
 	MOVW	g, gobuf_g(R0)
+	MOVW	$0, R0			// return 0
 	RET
 
 // void gogo(Gobuf*, uintptr)
@@ -125,30 +126,6 @@ TEXT runtime·gogocall(SB), 7, $-4
 	MOVW	gobuf_sp(R0), SP	// restore SP
 	MOVW	gobuf_pc(R0), LR
 	MOVW	R1, PC
-
-// void mcall(void (*fn)(G*))
-// Switch to m->g0's stack, call fn(g).
-// Fn must never return.  It should gogo(&g->sched)
-// to keep running g.
-TEXT runtime·mcall(SB), 7, $-4
-	MOVW	fn+0(FP), R0
-
-	// Save caller state in g->gobuf.
-	MOVW	SP, (g_sched+gobuf_sp)(g)
-	MOVW	LR, (g_sched+gobuf_pc)(g)
-	MOVW	g, (g_sched+gobuf_g)(g)
-
-	// Switch to m->g0 & its stack, call fn.
-	MOVW	g, R1
-	MOVW	m_g0(m), g
-	CMP	g, R1
-	BL.EQ	runtime·badmcall(SB)
-	MOVW	(g_sched+gobuf_sp)(g), SP
-	SUB	$8, SP
-	MOVW	R1, 4(SP)
-	BL	(R0)
-	BL	runtime·badmcall2(SB)
-	RET
 
 /*
  * support for morestack
@@ -182,9 +159,9 @@ TEXT runtime·morestack(SB),7,$-4
 	// Set m->morepc to f's PC.
 	MOVW	LR, m_morepc(m)
 
-	// Call newstack on m->g0's stack.
+	// Call newstack on m's scheduling stack.
 	MOVW	m_g0(m), g
-	MOVW	(g_sched+gobuf_sp)(g), SP
+	MOVW	(m_sched+gobuf_sp)(m), SP
 	B	runtime·newstack(SB)
 
 // Called from reflection library.  Mimics morestack,
@@ -215,9 +192,9 @@ TEXT reflect·call(SB), 7, $-4
 	MOVW	$1, R3
 	MOVW	R3, m_moreframesize(m)		// f's frame size
 
-	// Call newstack on m->g0's stack.
+	// Call newstack on m's scheduling stack.
 	MOVW	m_g0(m), g
-	MOVW	(g_sched+gobuf_sp)(g), SP
+	MOVW	(m_sched+gobuf_sp)(m), SP
 	B	runtime·newstack(SB)
 
 // Return point when leaving stack.
@@ -226,9 +203,9 @@ TEXT runtime·lessstack(SB), 7, $-4
 	// Save return value in m->cret
 	MOVW	R0, m_cret(m)
 
-	// Call oldstack on m->g0's stack.
+	// Call oldstack on m's scheduling stack.
 	MOVW	m_g0(m), g
-	MOVW	(g_sched+gobuf_sp)(g), SP
+	MOVW	(m_sched+gobuf_sp)(m), SP
 	B	runtime·oldstack(SB)
 
 // void jmpdefer(fn, sp);
@@ -243,12 +220,6 @@ TEXT runtime·jmpdefer(SB), 7, $0
 	MOVW	argp+4(FP), SP
 	MOVW	$-4(SP), SP	// SP is 4 below argp, due to saved LR
 	B		(R0)
-
-TEXT	runtime·asmcgocall(SB),7,$0
-	B	runtime·cgounimpl(SB)
-
-TEXT	runtime·cgocallback(SB),7,$0
-	B	runtime·cgounimpl(SB)
 
 TEXT runtime·memclr(SB),7,$20
 	MOVW	0(FP), R0
@@ -277,6 +248,22 @@ TEXT runtime·getcallersp(SB),7,$-4
 	MOVW	$-4(R0), R0
 	RET
 
+// runcgo(void(*fn)(void*), void *arg)
+// Just call fn(arg), but first align the stack
+// appropriately for the gcc ABI.
+// TODO(kaib): figure out the arm-gcc ABI
+TEXT runtime·runcgo(SB),7,$16
+	BL	runtime·abort(SB)
+//	MOVL	fn+0(FP), AX
+//	MOVL	arg+4(FP), BX
+//	MOVL	SP, CX
+//	ANDL	$~15, SP	// alignment for gcc ABI
+//	MOVL	CX, 4(SP)
+//	MOVL	BX, 0(SP)
+//	CALL	AX
+//	MOVL	4(SP), SP
+//	RET
+
 TEXT runtime·emptyfunc(SB),0,$0
 	RET
 
@@ -284,33 +271,6 @@ TEXT runtime·abort(SB),7,$-4
 	MOVW	$0, R0
 	MOVW	(R0), R1
 
-// bool armcas(int32 *val, int32 old, int32 new)
-// Atomically:
-//	if(*val == old){
-//		*val = new;
-//		return 1;
-//	}else
-//		return 0;
-//
-// To implement runtime·cas in ../$GOOS/arm/sys.s
-// using the native instructions, use:
-//
-//	TEXT runtime·cas(SB),7,$0
-//		B	runtime·armcas(SB)
-//
-TEXT runtime·armcas(SB),7,$0
-	MOVW	valptr+0(FP), R1
-	MOVW	old+4(FP), R2
-	MOVW	new+8(FP), R3
-casl:
-	LDREX	(R1), R0
-	CMP		R0, R2
-	BNE		casfail
-	STREX	R3, (R1), R0
-	CMP		$0, R0
-	BNE		casl
-	MOVW	$1, R0
-	RET
-casfail:
+TEXT runtime·runcgocallback(SB),7,$0
 	MOVW	$0, R0
-	RET
+	MOVW	(R0), R1

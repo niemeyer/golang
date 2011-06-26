@@ -63,7 +63,7 @@ typedef	struct	Eface		Eface;
 typedef	struct	Type		Type;
 typedef	struct	Defer		Defer;
 typedef	struct	Panic		Panic;
-typedef	struct	Hmap		Hmap;
+typedef	struct	hash		Hmap;
 typedef	struct	Hchan		Hchan;
 typedef	struct	Complex64	Complex64;
 typedef	struct	Complex128	Complex128;
@@ -103,6 +103,7 @@ enum
 	Gwaiting,
 	Gmoribund,
 	Gdead,
+	Grecovery,
 };
 enum
 {
@@ -183,9 +184,6 @@ struct	G
 	Defer*	defer;
 	Panic*	panic;
 	Gobuf	sched;
-	byte*	gcstack;		// if status==Gsyscall, gcstack = stackbase to use during gc
-	byte*	gcsp;		// if status==Gsyscall, gcsp = sched.sp to use during gc
-	byte*	gcguard;		// if status==Gsyscall, gcguard = stackguard to use during gc
 	byte*	stack0;
 	byte*	entry;		// initial function
 	G*	alllink;	// on allg
@@ -198,12 +196,10 @@ struct	G
 	bool	ispanic;
 	M*	m;		// for debuggers, but offset not hard-coded
 	M*	lockedm;
-	M*	idlem;
 	int32	sig;
 	uintptr	sigcode0;
 	uintptr	sigcode1;
 	uintptr	sigpc;
-	uintptr	gopc;	// pc of go statement that created this goroutine
 };
 struct	M
 {
@@ -220,6 +216,7 @@ struct	M
 	uint64	procid;		// for debuggers, but offset not hard-coded
 	G*	gsignal;	// signal-handling G
 	uint32	tls[8];		// thread-local storage (for 386 extern register)
+	Gobuf	sched;	// scheduling stack
 	G*	curg;		// current running goroutine
 	int32	id;
 	int32	mallocing;
@@ -227,8 +224,6 @@ struct	M
 	int32	locks;
 	int32	nomemprof;
 	int32	waitnextg;
-	int32	dying;
-	int32	profilehz;
 	Note	havenextg;
 	G*	nextg;
 	M*	alllink;	// on allm
@@ -236,15 +231,13 @@ struct	M
 	uint32	machport;	// Return address for Mach IPC (OS X)
 	MCache	*mcache;
 	G*	lockedg;
-	G*	idleg;
 	uint32	freglo[16];	// D[i] lsb and F[i]
 	uint32	freghi[16];	// D[i] msb and F[i+16]
 	uint32	fflag;		// floating point compare flags
 #ifdef __WINDOWS__
-	void*	sehframe;
+	void*	gostack;	// bookmark to keep track of go stack during stdcall
 #endif
 };
-
 struct	Stktop
 {
 	// The offsets of these fields are known to (hard-coded in) libmach.
@@ -306,7 +299,7 @@ enum {
 
 /*
  * defined macros
- *    you need super-gopher-guru privilege
+ *    you need super-goru privilege
  *    to add this list.
  */
 #define	nelem(x)	(sizeof(x)/sizeof((x)[0]))
@@ -365,7 +358,7 @@ G*	runtime·allg;
 M*	runtime·allm;
 int32	runtime·goidgen;
 extern	int32	runtime·gomaxprocs;
-extern	uint32	runtime·panicking;
+extern	int32	runtime·panicking;
 extern	int32	runtime·gcwaiting;		// gc is waiting to run
 int8*	runtime·goos;
 extern	bool	runtime·iscgo;
@@ -387,7 +380,7 @@ int32	runtime·charntorune(int32*, uint8*, int32);
 
 void	runtime·gogo(Gobuf*, uintptr);
 void	runtime·gogocall(Gobuf*, void(*)(void));
-void	runtime·gosave(Gobuf*);
+uintptr	runtime·gosave(Gobuf*);
 void	runtime·lessstack(void);
 void	runtime·goargs(void);
 void	runtime·goenvs(void);
@@ -413,7 +406,6 @@ int32	runtime·gotraceback(void);
 void	runtime·traceback(uint8 *pc, uint8 *sp, uint8 *lr, G* gp);
 void	runtime·tracebackothers(G*);
 int32	runtime·write(int32, void*, int32);
-int32	runtime·mincore(void*, uintptr, byte*);
 bool	runtime·cas(uint32*, uint32, uint32);
 bool	runtime·casp(void**, void*, void*);
 uint32	runtime·xadd(uint32 volatile*, int32);
@@ -427,7 +419,7 @@ void	runtime·signalstack(byte*, int32);
 G*	runtime·malg(int32);
 void	runtime·minit(void);
 Func*	runtime·findfunc(uintptr);
-int32	runtime·funcline(Func*, uintptr);
+int32	runtime·funcline(Func*, uint64);
 void*	runtime·stackalloc(uint32);
 void	runtime·stackfree(void*, uintptr);
 MCache*	runtime·allocmcache(void);
@@ -444,28 +436,24 @@ void	runtime·addfinalizer(void*, void(*fn)(void*), int32);
 void	runtime·walkfintab(void (*fn)(void*));
 void	runtime·runpanic(Panic*);
 void*	runtime·getcallersp(void*);
-int32	runtime·mcount(void);
-void	runtime·mcall(void(*)(G*));
 
 void	runtime·exit(int32);
 void	runtime·breakpoint(void);
 void	runtime·gosched(void);
 void	runtime·goexit(void);
-void	runtime·asmcgocall(void (*fn)(void*), void*);
+void	runtime·runcgo(void (*fn)(void*), void*);
+void	runtime·runcgocallback(G*, void*, void (*fn)());
 void	runtime·entersyscall(void);
 void	runtime·exitsyscall(void);
-G*	runtime·newproc1(byte*, byte*, int32, int32, void*);
+void	runtime·startcgocallback(G*);
+void	runtime·endcgocallback(G*);
+G*	runtime·newproc1(byte*, byte*, int32, int32);
 void	runtime·siginit(void);
 bool	runtime·sigsend(int32 sig);
 void	runtime·gettime(int64*, int32*);
 int32	runtime·callers(int32, uintptr*, int32);
-int32	runtime·gentraceback(byte*, byte*, byte*, G*, int32, uintptr*, int32);
 int64	runtime·nanotime(void);
 void	runtime·dopanic(int32);
-void	runtime·startpanic(void);
-void	runtime·sigprof(uint8 *pc, uint8 *sp, uint8 *lr, G *gp);
-void	runtime·resetcpuprofiler(int32);
-void	runtime·setcpuprofilerate(void(*)(uintptr*, int32), int32);
 
 #pragma	varargck	argpos	runtime·printf	1
 #pragma	varargck	type	"d"	int32
@@ -585,6 +573,7 @@ int32	runtime·gomaxprocsfunc(int32 n);
 
 void	runtime·mapassign(Hmap*, byte*, byte*);
 void	runtime·mapaccess(Hmap*, byte*, byte*, bool*);
+struct hash_iter*	runtime·newmapiterinit(Hmap*);
 void	runtime·mapiternext(struct hash_iter*);
 bool	runtime·mapiterkey(struct hash_iter*, void*);
 void	runtime·mapiterkeyvalue(struct hash_iter*, void*, void*);
@@ -593,8 +582,90 @@ Hmap*	runtime·makemap_c(Type*, Type*, int64);
 Hchan*	runtime·makechan_c(Type*, int64);
 void	runtime·chansend(Hchan*, void*, bool*);
 void	runtime·chanrecv(Hchan*, void*, bool*, bool*);
+void	runtime·chanclose(Hchan*);
+bool	runtime·chanclosed(Hchan*);
 int32	runtime·chanlen(Hchan*);
 int32	runtime·chancap(Hchan*);
 
 void	runtime·ifaceE2I(struct InterfaceType*, Eface, Iface*);
 
+/*
+ * Stack layout parameters.
+ * Known to linkers.
+ *
+ * The per-goroutine g->stackguard is set to point
+ * StackGuard bytes above the bottom of the stack.
+ * Each function compares its stack pointer against
+ * g->stackguard to check for overflow.  To cut one
+ * instruction from the check sequence for functions
+ * with tiny frames, the stack is allowed to protrude
+ * StackSmall bytes below the stack guard.  Functions
+ * with large frames don't bother with the check and
+ * always call morestack.  The sequences are
+ * (for amd64, others are similar):
+ *
+ * 	guard = g->stackguard
+ * 	frame = function's stack frame size
+ * 	argsize = size of function arguments (call + return)
+ *
+ * 	stack frame size <= StackSmall:
+ * 		CMPQ guard, SP
+ * 		JHI 3(PC)
+ * 		MOVQ m->morearg, $(argsize << 32)
+ * 		CALL morestack(SB)
+ *
+ * 	stack frame size > StackSmall but < StackBig
+ * 		LEAQ (frame-StackSmall)(SP), R0
+ * 		CMPQ guard, R0
+ * 		JHI 3(PC)
+ * 		MOVQ m->morearg, $(argsize << 32)
+ * 		CALL morestack(SB)
+ *
+ * 	stack frame size >= StackBig:
+ * 		MOVQ m->morearg, $((argsize << 32) | frame)
+ * 		CALL morestack(SB)
+ *
+ * The bottom StackGuard - StackSmall bytes are important:
+ * there has to be enough room to execute functions that
+ * refuse to check for stack overflow, either because they
+ * need to be adjacent to the actual caller's frame (deferproc)
+ * or because they handle the imminent stack overflow (morestack).
+ *
+ * For example, deferproc might call malloc, which does one
+ * of the above checks (without allocating a full frame),
+ * which might trigger a call to morestack.  This sequence
+ * needs to fit in the bottom section of the stack.  On amd64,
+ * morestack's frame is 40 bytes, and deferproc's frame is 56 bytes.
+ * That fits well within the StackGuard - StackSmall = 128 bytes
+ * at the bottom.  There may be other sequences lurking or yet to
+ * be written that require more stack.  Morestack checks to make
+ * sure the stack has not completely overflowed and should catch
+ * such sequences.
+ */
+enum
+{
+#ifdef __WINDOWS__
+	// need enough room in guard area for exception handler.
+	// use larger stacks to compensate for larger stack guard.
+	StackSmall = 256,
+	StackGuard = 2048,
+	StackBig   = 8192,
+	StackExtra = StackGuard,
+#else
+	// byte offset of stack guard (g->stackguard) above bottom of stack.
+	StackGuard = 256,
+
+	// checked frames are allowed to protrude below the guard by
+	// this many bytes.  this saves an instruction in the checking
+	// sequence when the stack frame is tiny.
+	StackSmall = 128,
+
+	// extra space in the frame (beyond the function for which
+	// the frame is allocated) is assumed not to be much bigger
+	// than this amount.  it may not be used efficiently if it is.
+	StackBig = 4096,
+
+	// extra room over frame size when allocating a stack.
+	StackExtra = 1024,
+#endif
+};

@@ -6,14 +6,6 @@
 #include "type.h"
 #include "malloc.h"
 
-enum 
-{
-	// If an empty interface has these bits set in its type
-	// pointer, it was copied from a reflect.Value and is
-	// not a valid empty interface.
-	reflectFlags = 3,
-};
-
 void
 runtime·printiface(Iface i)
 {
@@ -50,7 +42,7 @@ itab(InterfaceType *inter, Type *type, int32 canfail)
 	Method *t, *et;
 	IMethod *i, *ei;
 	uint32 h;
-	String *iname, *ipkgPath;
+	String *iname;
 	Itab *m;
 	UncommonType *x;
 	Type *itype;
@@ -120,7 +112,6 @@ search:
 	for(; i < ei; i++) {
 		itype = i->type;
 		iname = i->name;
-		ipkgPath = i->pkgPath;
 		for(;; t++) {
 			if(t >= et) {
 				if(!canfail) {
@@ -137,7 +128,7 @@ search:
 				m->bad = 1;
 				goto out;
 			}
-			if(t->mtyp == itype && t->name == iname && t->pkgPath == ipkgPath)
+			if(t->mtyp == itype && t->name == iname)
 				break;
 		}
 		if(m)
@@ -218,25 +209,16 @@ runtime·convT2E(Type *t, ...)
 	copyin(t, elem, &ret->data);
 }
 
-static void assertI2Tret(Type *t, Iface i, byte *ret);
-
 // func ifaceI2T(typ *byte, iface any) (ret any)
 #pragma textflag 7
 void
 runtime·assertI2T(Type *t, Iface i, ...)
 {
-	byte *ret;
-
-	ret = (byte*)(&i+1);
-	assertI2Tret(t, i, ret);
-}
-
-static void
-assertI2Tret(Type *t, Iface i, byte *ret)
-{
 	Itab *tab;
+	byte *ret;
 	Eface err;
 
+	ret = (byte*)(&i+1);
 	tab = i.tab;
 	if(tab == nil) {
 		runtime·newTypeAssertionError(nil, nil, t,
@@ -276,28 +258,16 @@ runtime·assertI2T2(Type *t, Iface i, ...)
 	copyout(t, &i.data, ret);
 }
 
-static void assertE2Tret(Type *t, Eface e, byte *ret);
-
 // func ifaceE2T(typ *byte, iface any) (ret any)
 #pragma textflag 7
 void
 runtime·assertE2T(Type *t, Eface e, ...)
 {
 	byte *ret;
-
-	if(((uintptr)e.type&reflectFlags) != 0)
-		runtime·throw("invalid interface value");
-	ret = (byte*)(&e+1);
-	assertE2Tret(t, e, ret);
-}
-
-static void
-assertE2Tret(Type *t, Eface e, byte *ret)
-{
 	Eface err;
 
-	if(((uintptr)e.type&reflectFlags) != 0)
-		runtime·throw("invalid interface value");
+	ret = (byte*)(&e+1);
+
 	if(e.type == nil) {
 		runtime·newTypeAssertionError(nil, nil, t,
 			nil, nil, t->string,
@@ -322,8 +292,6 @@ runtime·assertE2T2(Type *t, Eface e, ...)
 	bool *ok;
 	int32 wid;
 
-	if(((uintptr)e.type&reflectFlags) != 0)
-		runtime·throw("invalid interface value");
 	ret = (byte*)(&e+1);
 	wid = t->size;
 	ok = (bool*)(ret+runtime·rnd(wid, 1));
@@ -339,6 +307,7 @@ runtime·assertE2T2(Type *t, Eface e, ...)
 }
 
 // func convI2E(elem any) (ret any)
+#pragma textflag 7
 void
 runtime·convI2E(Iface i, Eface ret)
 {
@@ -353,6 +322,7 @@ runtime·convI2E(Iface i, Eface ret)
 }
 
 // func ifaceI2E(typ *byte, iface any) (ret any)
+#pragma textflag 7
 void
 runtime·assertI2E(InterfaceType* inter, Iface i, Eface ret)
 {
@@ -373,6 +343,7 @@ runtime·assertI2E(InterfaceType* inter, Iface i, Eface ret)
 }
 
 // func ifaceI2E2(typ *byte, iface any) (ret any, ok bool)
+#pragma textflag 7
 void
 runtime·assertI2E2(InterfaceType* inter, Iface i, Eface ret, bool ok)
 {
@@ -393,6 +364,7 @@ runtime·assertI2E2(InterfaceType* inter, Iface i, Eface ret, bool ok)
 }
 
 // func convI2I(typ *byte, elem any) (ret any)
+#pragma textflag 7
 void
 runtime·convI2I(InterfaceType* inter, Iface i, Iface ret)
 {
@@ -427,6 +399,7 @@ runtime·ifaceI2I(InterfaceType *inter, Iface i, Iface *ret)
 }
 
 // func ifaceI2I(sigi *byte, iface any) (ret any)
+#pragma textflag 7
 void
 runtime·assertI2I(InterfaceType* inter, Iface i, Iface ret)
 {
@@ -434,6 +407,7 @@ runtime·assertI2I(InterfaceType* inter, Iface i, Iface ret)
 }
 
 // func ifaceI2I2(sigi *byte, iface any) (ret any, ok bool)
+#pragma textflag 7
 void
 runtime·assertI2I2(InterfaceType *inter, Iface i, Iface ret, bool ok)
 {
@@ -459,8 +433,6 @@ runtime·ifaceE2I(InterfaceType *inter, Eface e, Iface *ret)
 	Type *t;
 	Eface err;
 
-	if(((uintptr)e.type&reflectFlags) != 0)
-		runtime·throw("invalid interface value");
 	t = e.type;
 	if(t == nil) {
 		// explicit conversions require non-nil interface value.
@@ -473,15 +445,8 @@ runtime·ifaceE2I(InterfaceType *inter, Eface e, Iface *ret)
 	ret->tab = itab(inter, t, 0);
 }
 
-// For reflect
-//	func ifaceE2I(t *InterfaceType, e interface{}, dst *Iface)
-void
-reflect·ifaceE2I(InterfaceType *inter, Eface e, Iface *dst)
-{
-	runtime·ifaceE2I(inter, e, dst);
-}
-
 // func ifaceE2I(sigi *byte, iface any) (ret any)
+#pragma textflag 7
 void
 runtime·assertE2I(InterfaceType* inter, Eface e, Iface ret)
 {
@@ -489,11 +454,10 @@ runtime·assertE2I(InterfaceType* inter, Eface e, Iface ret)
 }
 
 // ifaceE2I2(sigi *byte, iface any) (ret any, ok bool)
+#pragma textflag 7
 void
 runtime·assertE2I2(InterfaceType *inter, Eface e, Iface ret, bool ok)
 {
-	if(((uintptr)e.type&reflectFlags) != 0)
-		runtime·throw("invalid interface value");
 	if(e.type == nil) {
 		ok = 0;
 		ret.data = nil;
@@ -510,14 +474,13 @@ runtime·assertE2I2(InterfaceType *inter, Eface e, Iface ret, bool ok)
 }
 
 // func ifaceE2E(typ *byte, iface any) (ret any)
+#pragma textflag 7
 void
 runtime·assertE2E(InterfaceType* inter, Eface e, Eface ret)
 {
 	Type *t;
 	Eface err;
 
-	if(((uintptr)e.type&reflectFlags) != 0)
-		runtime·throw("invalid interface value");
 	t = e.type;
 	if(t == nil) {
 		// explicit conversions require non-nil interface value.
@@ -531,11 +494,10 @@ runtime·assertE2E(InterfaceType* inter, Eface e, Eface ret)
 }
 
 // func ifaceE2E2(iface any) (ret any, ok bool)
+#pragma textflag 7
 void
 runtime·assertE2E2(InterfaceType* inter, Eface e, Eface ret, bool ok)
 {
-	if(((uintptr)e.type&reflectFlags) != 0)
-		runtime·throw("invalid interface value");
 	USED(inter);
 	ret = e;
 	ok = e.type != nil;
@@ -613,10 +575,6 @@ runtime·ifaceeq_c(Iface i1, Iface i2)
 bool
 runtime·efaceeq_c(Eface e1, Eface e2)
 {
-	if(((uintptr)e1.type&reflectFlags) != 0)
-		runtime·throw("invalid interface value");
-	if(((uintptr)e2.type&reflectFlags) != 0)
-		runtime·throw("invalid interface value");
 	if(e1.type != e2.type)
 		return false;
 	if(e1.type == nil)
@@ -659,8 +617,6 @@ runtime·efacethash(Eface e1, uint32 ret)
 {
 	Type *t;
 
-	if(((uintptr)e1.type&reflectFlags) != 0)
-		runtime·throw("invalid interface value");
 	ret = 0;
 	t = e1.type;
 	if(t != nil)
@@ -671,14 +627,11 @@ runtime·efacethash(Eface e1, uint32 ret)
 void
 unsafe·Typeof(Eface e, Eface ret)
 {
-	if(((uintptr)e.type&reflectFlags) != 0)
-		runtime·throw("invalid interface value");
 	if(e.type == nil) {
 		ret.type = nil;
 		ret.data = nil;
-	} else {
-		ret = *(Eface*)(e.type);
-	}
+	} else
+		ret = *(Eface*)e.type;
 	FLUSH(&ret);
 }
 
@@ -688,8 +641,6 @@ unsafe·Reflect(Eface e, Eface rettype, void *retaddr)
 	uintptr *p;
 	uintptr x;
 
-	if(((uintptr)e.type&reflectFlags) != 0)
-		runtime·throw("invalid interface value");
 	if(e.type == nil) {
 		rettype.type = nil;
 		rettype.data = nil;
@@ -720,9 +671,6 @@ unsafe·Reflect(Eface e, Eface rettype, void *retaddr)
 void
 unsafe·Unreflect(Eface typ, void *addr, Eface e)
 {
-	if(((uintptr)typ.type&reflectFlags) != 0)
-		runtime·throw("invalid interface value");
-
 	// Reflect library has reinterpreted typ
 	// as its own kind of type structure.
 	// We know that the pointer to the original
@@ -747,9 +695,6 @@ unsafe·New(Eface typ, void *ret)
 {
 	Type *t;
 
-	if(((uintptr)typ.type&reflectFlags) != 0)
-		runtime·throw("invalid interface value");
-
 	// Reflect library has reinterpreted typ
 	// as its own kind of type structure.
 	// We know that the pointer to the original
@@ -757,7 +702,7 @@ unsafe·New(Eface typ, void *ret)
 	t = (Type*)((Eface*)typ.data-1);
 
 	if(t->kind&KindNoPointers)
-		ret = runtime·mallocgc(t->size, FlagNoPointers, 1, 1);
+		ret = runtime·mallocgc(t->size, RefNoPointers, 1, 1);
 	else
 		ret = runtime·mal(t->size);
 	FLUSH(&ret);
@@ -769,9 +714,6 @@ unsafe·NewArray(Eface typ, uint32 n, void *ret)
 	uint64 size;
 	Type *t;
 
-	if(((uintptr)typ.type&reflectFlags) != 0)
-		runtime·throw("invalid interface value");
-
 	// Reflect library has reinterpreted typ
 	// as its own kind of type structure.
 	// We know that the pointer to the original
@@ -780,7 +722,7 @@ unsafe·NewArray(Eface typ, uint32 n, void *ret)
 	
 	size = n*t->size;
 	if(t->kind&KindNoPointers)
-		ret = runtime·mallocgc(size, FlagNoPointers, 1, 1);
+		ret = runtime·mallocgc(size, RefNoPointers, 1, 1);
 	else
 		ret = runtime·mal(size);
 	FLUSH(&ret);

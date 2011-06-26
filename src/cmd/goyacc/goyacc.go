@@ -153,17 +153,9 @@ var ftable *bufio.Writer    // y.go file
 var fcode = &bytes.Buffer{} // saved code
 var foutput *bufio.Writer   // y.output file
 
-var oflag string  // -o [y.go]		- y.go file
-var vflag string  // -v [y.output]	- y.output file
-var lflag bool    // -l			- disable line directives
-var prefix string // name prefix for identifiers, default yy
-
-func init() {
-	flag.StringVar(&oflag, "o", "y.go", "parser output")
-	flag.StringVar(&prefix, "p", "yy", "name prefix to use in generated code")
-	flag.StringVar(&vflag, "v", "y.output", "create parsing tables")
-	flag.BoolVar(&lflag, "l", false, "disable line directives")
-}
+var oflag string // -o [y.go]		- y.go file
+var vflag string // -v [y.output]	- y.output file
+var lflag bool   // -l			- disable line directives
 
 var stacksize = 200
 
@@ -357,6 +349,10 @@ func setup() {
 	stderr = bufio.NewWriter(os.NewFile(2, "stderr"))
 	foutput = nil
 
+	flag.StringVar(&oflag, "o", "", "parser output")
+	flag.StringVar(&vflag, "v", "", "create parsing tables")
+	flag.BoolVar(&lflag, "l", false, "disable line directives")
+
 	flag.Parse()
 	if flag.NArg() != 1 {
 		usage()
@@ -366,7 +362,6 @@ func setup() {
 		fmt.Fprintf(stderr, "yacc: stack size too small\n")
 		usage()
 	}
-	yaccpar = strings.Replace(yaccpartext, "$$", prefix, -1)
 	openup()
 
 	defin(0, "$end")
@@ -382,7 +377,7 @@ outer:
 	for {
 		switch t {
 		default:
-			errorf("syntax error tok=%v", t-PRIVATE)
+			error("syntax error tok=%v", t-PRIVATE)
 
 		case MARK, ENDFILE:
 			break outer
@@ -392,14 +387,14 @@ outer:
 		case START:
 			t = gettok()
 			if t != IDENTIFIER {
-				errorf("bad %%start construction")
+				error("bad %%start construction")
 			}
 			start = chfind(1, tokname)
 
 		case TYPEDEF:
 			t = gettok()
 			if t != TYPENAME {
-				errorf("bad syntax in %%type")
+				error("bad syntax in %%type")
 			}
 			ty = numbval
 			for {
@@ -410,7 +405,7 @@ outer:
 					if t < NTBASE {
 						j = TYPE(toklev[t])
 						if j != 0 && j != ty {
-							errorf("type redeclaration of token ",
+							error("type redeclaration of token ",
 								tokset[t].name)
 						} else {
 							toklev[t] = SETTYPE(toklev[t], ty)
@@ -418,7 +413,7 @@ outer:
 					} else {
 						j = nontrst[t-NTBASE].value
 						if j != 0 && j != ty {
-							errorf("type redeclaration of nonterminal %v",
+							error("type redeclaration of nonterminal %v",
 								nontrst[t-NTBASE].name)
 						} else {
 							nontrst[t-NTBASE].value = ty
@@ -464,18 +459,18 @@ outer:
 				case IDENTIFIER:
 					j = chfind(0, tokname)
 					if j >= NTBASE {
-						errorf("%v defined earlier as nonterminal", tokname)
+						error("%v defined earlier as nonterminal", tokname)
 					}
 					if lev != 0 {
 						if ASSOC(toklev[j]) != 0 {
-							errorf("redeclaration of precedence of %v", tokname)
+							error("redeclaration of precedence of %v", tokname)
 						}
 						toklev[j] = SETASC(toklev[j], lev)
 						toklev[j] = SETPLEV(toklev[j], i)
 					}
 					if ty != 0 {
 						if TYPE(toklev[j]) != 0 {
-							errorf("redeclaration of type of %v", tokname)
+							error("redeclaration of type of %v", tokname)
 						}
 						toklev[j] = SETTYPE(toklev[j], ty)
 					}
@@ -498,7 +493,7 @@ outer:
 	}
 
 	if t == ENDFILE {
-		errorf("unexpected EOF before %%")
+		error("unexpected EOF before %%")
 	}
 
 	// put out non-literal terminals
@@ -511,20 +506,20 @@ outer:
 	}
 
 	// put out names of token names
-	fmt.Fprintf(ftable, "var\t%sToknames\t =[]string {\n", prefix)
+	fmt.Fprintf(ftable, "var\tyyToknames\t =[]string {\n")
 	for i := TOKSTART; i <= ntokens; i++ {
 		fmt.Fprintf(ftable, "\t\"%v\",\n", tokset[i].name)
 	}
 	fmt.Fprintf(ftable, "}\n")
 
 	// put out names of state names
-	fmt.Fprintf(ftable, "var\t%sStatenames\t =[]string {\n", prefix)
+	fmt.Fprintf(ftable, "var\tyyStatenames\t =[]string {\n")
 	//	for i:=TOKSTART; i<=ntokens; i++ {
 	//		fmt.Fprintf(ftable, "\t\"%v\",\n", tokset[i].name);
 	//	}
 	fmt.Fprintf(ftable, "}\n")
 
-	fmt.Fprintf(fcode, "switch %snt {\n", prefix)
+	fmt.Fprintf(fcode, "switch yynt {\n")
 
 	moreprod()
 	prdptr[0] = []int{NTBASE, start, 1, 0}
@@ -533,7 +528,7 @@ outer:
 	curprod := make([]int, RULEINC)
 	t = gettok()
 	if t != IDENTCOLON {
-		errorf("bad syntax on first rule")
+		error("bad syntax on first rule")
 	}
 
 	if start == 0 {
@@ -557,11 +552,11 @@ outer:
 		} else if t == IDENTCOLON {
 			curprod[mem] = chfind(1, tokname)
 			if curprod[mem] < NTBASE {
-				errorf("token illegal on LHS of grammar rule")
+				error("token illegal on LHS of grammar rule")
 			}
 			mem++
 		} else {
-			errorf("illegal rule: missing semicolon or | ?")
+			error("illegal rule: missing semicolon or | ?")
 		}
 
 		// read rule body
@@ -582,11 +577,11 @@ outer:
 			}
 			if t == PREC {
 				if gettok() != IDENTIFIER {
-					errorf("illegal %%prec syntax")
+					error("illegal %%prec syntax")
 				}
 				j = chfind(2, tokname)
 				if j >= NTBASE {
-					errorf("nonterminal " + nontrst[j-NTBASE].name + " illegal after %%prec")
+					error("nonterminal " + nontrst[j-NTBASE].name + " illegal after %%prec")
 				}
 				levprd[nprod] = toklev[j]
 				t = gettok()
@@ -642,7 +637,7 @@ outer:
 			// no explicit action, LHS has value
 			tempty := curprod[1]
 			if tempty < 0 {
-				errorf("must return a value, since LHS has a type")
+				error("must return a value, since LHS has a type")
 			}
 			if tempty >= NTBASE {
 				tempty = nontrst[tempty-NTBASE].value
@@ -650,11 +645,11 @@ outer:
 				tempty = TYPE(toklev[tempty])
 			}
 			if tempty != nontrst[curprod[0]-NTBASE].value {
-				errorf("default action causes potential type clash")
+				error("default action causes potential type clash")
 			}
 			fmt.Fprintf(fcode, "\ncase %v:", nprod)
-			fmt.Fprintf(fcode, "\n\t%sVAL.%v = %sS[%spt-0].%v;",
-				prefix, typeset[tempty], prefix, prefix, typeset[tempty])
+			fmt.Fprintf(fcode, "\n\tYYVAL.%v = YYS[yypt-0].%v;",
+				typeset[tempty], typeset[tempty])
 		}
 		moreprod()
 		prdptr[nprod] = make([]int, mem)
@@ -671,9 +666,9 @@ outer:
 
 	fmt.Fprintf(fcode, "\n\t}")
 
-	fmt.Fprintf(ftable, "const	%sEofCode	= 1\n", prefix)
-	fmt.Fprintf(ftable, "const	%sErrCode	= 2\n", prefix)
-	fmt.Fprintf(ftable, "const	%sMaxDepth	= %v\n", prefix, stacksize)
+	fmt.Fprintf(ftable, "const	yyEofCode	= 1\n")
+	fmt.Fprintf(ftable, "const	yyErrCode	= 2\n")
+	fmt.Fprintf(ftable, "const	yyMaxDepth	= %v\n", stacksize)
 
 	//
 	// copy any postfix code
@@ -773,7 +768,7 @@ func defin(nt int, s string) int {
 			case 'v':
 				val = '\v'
 			default:
-				errorf("invalid escape %v", s[1:3])
+				error("invalid escape %v", s[1:3])
 			}
 		} else if s[2] == 'u' && len(s) == 2+1+4 { // \unnnn sequence
 			val = 0
@@ -788,16 +783,16 @@ func defin(nt int, s string) int {
 				case c >= 'A' && c <= 'F':
 					c -= 'A' - 10
 				default:
-					errorf("illegal \\unnnn construction")
+					error("illegal \\unnnn construction")
 				}
 				val = val*16 + c
 				s = s[1:]
 			}
 			if val == 0 {
-				errorf("'\\u0000' is illegal")
+				error("'\\u0000' is illegal")
 			}
 		} else {
-			errorf("unknown escape")
+			error("unknown escape")
 		}
 	} else {
 		val = extval
@@ -855,7 +850,7 @@ func gettok() int {
 		}
 
 		if c != '>' {
-			errorf("unterminated < ... > clause")
+			error("unterminated < ... > clause")
 		}
 
 		for i = 1; i <= ntypes; i++ {
@@ -881,7 +876,7 @@ func gettok() int {
 		for {
 			c = getrune(finput)
 			if c == '\n' || c == EOF {
-				errorf("illegal or missing ' or \"")
+				error("illegal or missing ' or \"")
 			}
 			if c == '\\' {
 				tokname += string('\\')
@@ -926,7 +921,7 @@ func gettok() int {
 				return resrv[c].value
 			}
 		}
-		errorf("invalid escape, or illegal reserved word: %v", tokname)
+		error("invalid escape, or illegal reserved word: %v", tokname)
 
 	case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
 		numbval = c - '0'
@@ -1004,7 +999,7 @@ func fdtype(t int) int {
 		s = tokset[t].name
 	}
 	if v <= 0 {
-		errorf("must specify type for %v", s)
+		error("must specify type for %v", s)
 	}
 	return v
 }
@@ -1026,7 +1021,7 @@ func chfind(t int, s string) int {
 
 	// cannot find name
 	if t > 1 {
-		errorf("%v should have been defined earlier", s)
+		error("%v should have been defined earlier", s)
 	}
 	return defin(t, s)
 }
@@ -1039,7 +1034,7 @@ func cpyunion() {
 	if !lflag {
 		fmt.Fprintf(ftable, "\n//line %v:%v\n", infile, lineno)
 	}
-	fmt.Fprintf(ftable, "type\t%sSymType\tstruct", prefix)
+	fmt.Fprintf(ftable, "type\tyySymType\tstruct")
 
 	level := 0
 
@@ -1047,7 +1042,7 @@ out:
 	for {
 		c := getrune(finput)
 		if c == EOF {
-			errorf("EOF encountered while processing %%union")
+			error("EOF encountered while processing %%union")
 		}
 		ftable.WriteRune(c)
 		switch c {
@@ -1097,7 +1092,7 @@ func cpycode() {
 		c = getrune(finput)
 	}
 	lineno = lno
-	errorf("eof before %%}")
+	error("eof before %%}")
 }
 
 //
@@ -1115,11 +1110,11 @@ func skipcom() int {
 			}
 			c = getrune(finput)
 		}
-		errorf("EOF inside comment")
+		error("EOF inside comment")
 		return 0
 	}
 	if c != '*' {
-		errorf("illegal comment")
+		error("illegal comment")
 	}
 
 	nl := 0 // lines skipped
@@ -1196,13 +1191,13 @@ loop:
 			if c == '<' {
 				ungetrune(finput, c)
 				if gettok() != TYPENAME {
-					errorf("bad syntax on $<ident> clause")
+					error("bad syntax on $<ident> clause")
 				}
 				tok = numbval
 				c = getrune(finput)
 			}
 			if c == '$' {
-				fmt.Fprintf(fcode, "%sVAL", prefix)
+				fmt.Fprintf(fcode, "YYVAL")
 
 				// put out the proper tag...
 				if ntypes != 0 {
@@ -1226,13 +1221,13 @@ loop:
 				ungetrune(finput, c)
 				j = j * s
 				if j >= max {
-					errorf("Illegal use of $%v", j)
+					error("Illegal use of $%v", j)
 				}
 			} else if isword(c) || c == '_' || c == '.' {
 				// look for $name
 				ungetrune(finput, c)
 				if gettok() != IDENTIFIER {
-					errorf("$ must be followed by an identifier")
+					error("$ must be followed by an identifier")
 				}
 				tokn := chfind(2, tokname)
 				fnd := -1
@@ -1240,7 +1235,7 @@ loop:
 				if c != '@' {
 					ungetrune(finput, c)
 				} else if gettok() != NUMBER {
-					errorf("@ must be followed by number")
+					error("@ must be followed by number")
 				} else {
 					fnd = numbval
 				}
@@ -1253,7 +1248,7 @@ loop:
 					}
 				}
 				if j >= max {
-					errorf("$name or $name@number not found")
+					error("$name or $name@number not found")
 				}
 			} else {
 				fcode.WriteRune('$')
@@ -1263,12 +1258,12 @@ loop:
 				ungetrune(finput, c)
 				continue loop
 			}
-			fmt.Fprintf(fcode, "%sS[%spt-%v]", prefix, prefix, max-j-1)
+			fmt.Fprintf(fcode, "YYS[yypt-%v]", max-j-1)
 
 			// put out the proper tag
 			if ntypes != 0 {
 				if j <= 0 && tok < 0 {
-					errorf("must specify type of $%v", j)
+					error("must specify type of $%v", j)
 				}
 				if tok < 0 {
 					tok = fdtype(curprod[j])
@@ -1315,7 +1310,7 @@ loop:
 				fcode.WriteRune(c)
 				c = getrune(finput)
 			}
-			errorf("EOF inside comment")
+			error("EOF inside comment")
 
 		case '\'', '"':
 			// character string or constant
@@ -1333,16 +1328,16 @@ loop:
 					break swt
 				}
 				if c == '\n' {
-					errorf("newline in string or char const")
+					error("newline in string or char const")
 				}
 				fcode.WriteRune(c)
 				c = getrune(finput)
 			}
-			errorf("EOF in string or character constant")
+			error("EOF in string or character constant")
 
 		case EOF:
 			lineno = lno
-			errorf("action does not terminate")
+			error("action does not terminate")
 
 		case '\n':
 			lineno++
@@ -1356,14 +1351,14 @@ func openup() {
 	infile = flag.Arg(0)
 	finput = open(infile)
 	if finput == nil {
-		errorf("cannot open %v", infile)
+		error("cannot open %v", infile)
 	}
 
 	foutput = nil
 	if vflag != "" {
-		foutput = create(vflag)
+		foutput = create(vflag, 0666)
 		if foutput == nil {
-			errorf("can't create file %v", vflag)
+			error("can't create file %v", vflag)
 		}
 	}
 
@@ -1371,9 +1366,9 @@ func openup() {
 	if oflag == "" {
 		oflag = "y.go"
 	}
-	ftable = create(oflag)
+	ftable = create(oflag, 0666)
 	if ftable == nil {
-		errorf("can't create file %v", oflag)
+		error("can't create file %v", oflag)
 	}
 
 }
@@ -1433,7 +1428,7 @@ func cpres() {
 			}
 		}
 		if n == 0 {
-			errorf("nonterminal %v not defined", nontrst[i].name)
+			error("nonterminal %v not defined", nontrst[i].name)
 			continue
 		}
 		pres[i] = make([][]int, n)
@@ -1506,7 +1501,7 @@ more:
 		}
 		if pempty[i] != OK {
 			fatfl = 0
-			errorf("nonterminal " + nontrst[i].name + " never derives any token string")
+			error("nonterminal " + nontrst[i].name + " never derives any token string")
 		}
 	}
 
@@ -1921,11 +1916,11 @@ look:
 	// state is new
 	zznewstate++
 	if nolook != 0 {
-		errorf("yacc state/nolook error")
+		error("yacc state/nolook error")
 	}
 	pstate[nstate+2] = p2
 	if nstate+1 >= NSTATES {
-		errorf("too many states")
+		error("too many states")
 	}
 	if c >= NTBASE {
 		mstates[nstate] = ntstates[c-NTBASE]
@@ -2061,7 +2056,7 @@ nextk:
 		}
 		return off + rr
 	}
-	errorf("no space in action table")
+	error("no space in action table")
 	return 0
 }
 
@@ -2072,7 +2067,7 @@ func output() {
 	var c, u, v int
 
 	fmt.Fprintf(ftable, "\n//line yacctab:1\n")
-	fmt.Fprintf(ftable, "var\t%sExca = []int {\n", prefix)
+	fmt.Fprintf(ftable, "var\tyyExca = []int {\n")
 
 	noset := mkset()
 
@@ -2145,10 +2140,10 @@ func output() {
 	}
 
 	fmt.Fprintf(ftable, "}\n")
-	fmt.Fprintf(ftable, "const\t%sNprod\t= %v\n", prefix, nprod)
-	fmt.Fprintf(ftable, "const\t%sPrivate\t= %v\n", prefix, PRIVATE)
-	fmt.Fprintf(ftable, "var\t%sTokenNames []string\n", prefix)
-	fmt.Fprintf(ftable, "var\t%sStates []string\n", prefix)
+	fmt.Fprintf(ftable, "const\tyyNprod\t= %v\n", nprod)
+	fmt.Fprintf(ftable, "const\tyyPrivate\t= %v\n", PRIVATE)
+	fmt.Fprintf(ftable, "var\tyyTokenNames []string\n")
+	fmt.Fprintf(ftable, "var\tyyStates []string\n")
 }
 
 //
@@ -2623,7 +2618,7 @@ nextgp:
 			if s > maxa {
 				maxa = s
 				if maxa >= ACTSIZE {
-					errorf("a array overflow")
+					error("a array overflow")
 				}
 			}
 			if amem[s] != 0 {
@@ -2646,7 +2641,7 @@ nextgp:
 		}
 		return
 	}
-	errorf("cannot place goto %v\n", i)
+	error("cannot place goto %v\n", i)
 }
 
 func stin(i int) {
@@ -2705,7 +2700,7 @@ nextn:
 				maxa = s
 			}
 			if amem[s] != 0 && amem[s] != q[r+1] {
-				errorf("clobber of a array, pos'n %v, by %v", s, q[r+1])
+				error("clobber of a array, pos'n %v, by %v", s, q[r+1])
 			}
 			amem[s] = q[r+1]
 		}
@@ -2715,7 +2710,7 @@ nextn:
 		}
 		return
 	}
-	errorf("Error; failure to place state %v", i)
+	error("Error; failure to place state %v", i)
 }
 
 //
@@ -2723,10 +2718,10 @@ nextn:
 // write out the optimized parser
 //
 func aoutput() {
-	fmt.Fprintf(ftable, "const\t%sLast\t= %v\n", prefix, maxa+1)
-	arout("Act", amem, maxa+1)
-	arout("Pact", indgo, nstate)
-	arout("Pgo", pgo, nnonter+1)
+	fmt.Fprintf(ftable, "const\tyyLast\t= %v\n", maxa+1)
+	arout("yyAct", amem, maxa+1)
+	arout("yyPact", indgo, nstate)
+	arout("yyPgo", pgo, nnonter+1)
 }
 
 //
@@ -2735,7 +2730,7 @@ func aoutput() {
 func others() {
 	var i, j int
 
-	arout("R1", levprd, nprod)
+	arout("yyR1", levprd, nprod)
 	aryfil(temp1, nprod, 0)
 
 	//
@@ -2744,7 +2739,7 @@ func others() {
 	for i = 1; i < nprod; i++ {
 		temp1[i] = len(prdptr[i]) - 2
 	}
-	arout("R2", temp1, nprod)
+	arout("yyR2", temp1, nprod)
 
 	aryfil(temp1, nstate, -1000)
 	for i = 0; i <= ntokens; i++ {
@@ -2757,8 +2752,8 @@ func others() {
 			temp1[j] = -i
 		}
 	}
-	arout("Chk", temp1, nstate)
-	arout("Def", defact, nstate)
+	arout("yyChk", temp1, nstate)
+	arout("yyDef", defact, nstate)
 
 	// put out token translation tables
 	// table 1 has 0-256
@@ -2783,7 +2778,7 @@ func others() {
 			temp1[i] = YYLEXUNK
 		}
 	}
-	arout("Tok1", temp1, c+1)
+	arout("yyTok1", temp1, c+1)
 
 	// table 2 has PRIVATE-PRIVATE+256
 	aryfil(temp1, 256, 0)
@@ -2802,10 +2797,10 @@ func others() {
 			}
 		}
 	}
-	arout("Tok2", temp1, c+1)
+	arout("yyTok2", temp1, c+1)
 
 	// table 3 has everything else
-	fmt.Fprintf(ftable, "var\t%sTok3\t= []int {\n", prefix)
+	fmt.Fprintf(ftable, "var\tyyTok3\t= []int {\n")
 	c = 0
 	for i = 1; i <= ntokens; i++ {
 		j = tokset[i].value
@@ -2834,14 +2829,13 @@ func others() {
 	// copy yaccpar
 	fmt.Fprintf(ftable, "\n//line yaccpar:1\n")
 
-	parts := strings.Split(yaccpar, prefix+"run()", 2)
+	parts := strings.Split(yaccpar, "yyrun()", 2)
 	fmt.Fprintf(ftable, "%v", parts[0])
 	ftable.Write(fcode.Bytes())
 	fmt.Fprintf(ftable, "%v", parts[1])
 }
 
 func arout(s string, v []int, n int) {
-	s = prefix + s
 	fmt.Fprintf(ftable, "var\t%v\t= []int {\n", s)
 	for i := 0; i < n; i++ {
 		if i%10 == 0 {
@@ -3014,7 +3008,7 @@ func getrune(f *bufio.Reader) int {
 		return EOF
 	}
 	if err != nil {
-		errorf("read error: %v", err)
+		error("read error: %v", err)
 	}
 	//fmt.Printf("rune = %v n=%v\n", string(c), n);
 	return c
@@ -3036,27 +3030,27 @@ func write(f *bufio.Writer, b []byte, n int) int {
 }
 
 func open(s string) *bufio.Reader {
-	fi, err := os.Open(s)
+	fi, err := os.Open(s, os.O_RDONLY, 0)
 	if err != nil {
-		errorf("error opening %v: %v", s, err)
+		error("error opening %v: %v", s, err)
 	}
 	//fmt.Printf("open %v\n", s);
 	return bufio.NewReader(fi)
 }
 
-func create(s string) *bufio.Writer {
-	fo, err := os.Create(s)
+func create(s string, m uint32) *bufio.Writer {
+	fo, err := os.Open(s, os.O_WRONLY|os.O_CREAT|os.O_TRUNC, m)
 	if err != nil {
-		errorf("error creating %v: %v", s, err)
+		error("error opening %v: %v", s, err)
 	}
-	//fmt.Printf("create %v mode %v\n", s);
+	//fmt.Printf("create %v mode %v\n", s, m);
 	return bufio.NewWriter(fo)
 }
 
 //
 // write out error comment
 //
-func errorf(s string, v ...interface{}) {
+func error(s string, v ...interface{}) {
 	nerrors++
 	fmt.Fprintf(stderr, s, v...)
 	fmt.Fprintf(stderr, ": %v:%v\n", infile, lineno)
@@ -3082,84 +3076,86 @@ func exit(status int) {
 	os.Exit(status)
 }
 
-var yaccpar string // will be processed version of yaccpartext: s/$$/prefix/g
-var yaccpartext = `
+var yaccpar = `
 /*	parser for yacc output	*/
 
-var $$Debug = 0
+var yyDebug = 0
 
-type $$Lexer interface {
-	Lex(lval *$$SymType) int
+type yyLexer interface {
+	Lex(lval *yySymType) int
 	Error(s string)
 }
 
-const $$Flag = -1000
+const yyFlag = -1000
 
-func $$Tokname(c int) string {
-	if c > 0 && c <= len($$Toknames) {
-		if $$Toknames[c-1] != "" {
-			return $$Toknames[c-1]
+func yyTokname(yyc int) string {
+	if yyc > 0 && yyc <= len(yyToknames) {
+		if yyToknames[yyc-1] != "" {
+			return yyToknames[yyc-1]
 		}
 	}
-	return fmt.Sprintf("tok-%v", c)
+	return fmt.Sprintf("tok-%v", yyc)
 }
 
-func $$Statname(s int) string {
-	if s >= 0 && s < len($$Statenames) {
-		if $$Statenames[s] != "" {
-			return $$Statenames[s]
+func yyStatname(yys int) string {
+	if yys >= 0 && yys < len(yyStatenames) {
+		if yyStatenames[yys] != "" {
+			return yyStatenames[yys]
 		}
 	}
-	return fmt.Sprintf("state-%v", s)
+	return fmt.Sprintf("state-%v", yys)
 }
 
-func $$lex1(lex $$Lexer, lval *$$SymType) int {
-	c := 0
-	char := lex.Lex(lval)
-	if char <= 0 {
-		c = $$Tok1[0]
+func yylex1(yylex yyLexer, lval *yySymType) int {
+	var yychar int
+	var c int
+
+	yychar = yylex.Lex(lval)
+	if yychar <= 0 {
+		c = yyTok1[0]
 		goto out
 	}
-	if char < len($$Tok1) {
-		c = $$Tok1[char]
+	if yychar < len(yyTok1) {
+		c = yyTok1[yychar]
 		goto out
 	}
-	if char >= $$Private {
-		if char < $$Private+len($$Tok2) {
-			c = $$Tok2[char-$$Private]
+	if yychar >= yyPrivate {
+		if yychar < yyPrivate+len(yyTok2) {
+			c = yyTok2[yychar-yyPrivate]
 			goto out
 		}
 	}
-	for i := 0; i < len($$Tok3); i += 2 {
-		c = $$Tok3[i+0]
-		if c == char {
-			c = $$Tok3[i+1]
+	for i := 0; i < len(yyTok3); i += 2 {
+		c = yyTok3[i+0]
+		if c == yychar {
+			c = yyTok3[i+1]
 			goto out
 		}
 	}
+	c = 0
 
 out:
 	if c == 0 {
-		c = $$Tok2[1] /* unknown char */
+		c = yyTok2[1] /* unknown char */
 	}
-	if $$Debug >= 3 {
-		fmt.Printf("lex %U %s\n", uint(char), $$Tokname(c))
+	if yyDebug >= 3 {
+		fmt.Printf("lex %U %s\n", uint(yychar), yyTokname(c))
 	}
 	return c
 }
 
-func $$Parse($$lex $$Lexer) int {
-	var $$n int
-	var $$lval $$SymType
-	var $$VAL $$SymType
-	$$S := make([]$$SymType, $$MaxDepth)
+func yyParse(yylex yyLexer) int {
+	var yyn int
+	var yylval yySymType
+	var YYVAL yySymType
+	YYS := make([]yySymType, yyMaxDepth)
 
 	Nerrs := 0   /* number of errors */
 	Errflag := 0 /* error recovery flag */
-	$$state := 0
-	$$char := -1
-	$$p := -1
-	goto $$stack
+	yystate := 0
+	yychar := -1
+	yyp := -1
+	goto yystack
 
 ret0:
 	return 0
@@ -3167,80 +3163,80 @@ ret0:
 ret1:
 	return 1
 
-$$stack:
+yystack:
 	/* put a state and value onto the stack */
-	if $$Debug >= 4 {
-		fmt.Printf("char %v in %v\n", $$Tokname($$char), $$Statname($$state))
+	if yyDebug >= 4 {
+		fmt.Printf("char %v in %v\n", yyTokname(yychar), yyStatname(yystate))
 	}
 
-	$$p++
-	if $$p >= len($$S) {
-		nyys := make([]$$SymType, len($$S)*2)
-		copy(nyys, $$S)
-		$$S = nyys
+	yyp++
+	if yyp >= len(YYS) {
+		nyys := make([]yySymType, len(YYS)*2)
+		copy(nyys, YYS)
+		YYS = nyys
 	}
-	$$S[$$p] = $$VAL
-	$$S[$$p].yys = $$state
+	YYS[yyp] = YYVAL
+	YYS[yyp].yys = yystate
 
-$$newstate:
-	$$n = $$Pact[$$state]
-	if $$n <= $$Flag {
-		goto $$default /* simple state */
+yynewstate:
+	yyn = yyPact[yystate]
+	if yyn <= yyFlag {
+		goto yydefault /* simple state */
 	}
-	if $$char < 0 {
-		$$char = $$lex1($$lex, &$$lval)
+	if yychar < 0 {
+		yychar = yylex1(yylex, &yylval)
 	}
-	$$n += $$char
-	if $$n < 0 || $$n >= $$Last {
-		goto $$default
+	yyn += yychar
+	if yyn < 0 || yyn >= yyLast {
+		goto yydefault
 	}
-	$$n = $$Act[$$n]
-	if $$Chk[$$n] == $$char { /* valid shift */
-		$$char = -1
-		$$VAL = $$lval
-		$$state = $$n
+	yyn = yyAct[yyn]
+	if yyChk[yyn] == yychar { /* valid shift */
+		yychar = -1
+		YYVAL = yylval
+		yystate = yyn
 		if Errflag > 0 {
 			Errflag--
 		}
-		goto $$stack
+		goto yystack
 	}
 
-$$default:
+yydefault:
 	/* default state action */
-	$$n = $$Def[$$state]
-	if $$n == -2 {
-		if $$char < 0 {
-			$$char = $$lex1($$lex, &$$lval)
+	yyn = yyDef[yystate]
+	if yyn == -2 {
+		if yychar < 0 {
+			yychar = yylex1(yylex, &yylval)
 		}
 
 		/* look through exception table */
-		xi := 0
+		yyxi := 0
 		for {
-			if $$Exca[xi+0] == -1 && $$Exca[xi+1] == $$state {
+			if yyExca[yyxi+0] == -1 && yyExca[yyxi+1] == yystate {
 				break
 			}
-			xi += 2
+			yyxi += 2
 		}
-		for xi += 2; ; xi += 2 {
-			$$n = $$Exca[xi+0]
-			if $$n < 0 || $$n == $$char {
+		for yyxi += 2; ; yyxi += 2 {
+			yyn = yyExca[yyxi+0]
+			if yyn < 0 || yyn == yychar {
 				break
 			}
 		}
-		$$n = $$Exca[xi+1]
-		if $$n < 0 {
+		yyn = yyExca[yyxi+1]
+		if yyn < 0 {
 			goto ret0
 		}
 	}
-	if $$n == 0 {
+	if yyn == 0 {
 		/* error ... attempt to resume parsing */
 		switch Errflag {
 		case 0: /* brand new error */
-			$$lex.Error("syntax error")
+			yylex.Error("syntax error")
 			Nerrs++
-			if $$Debug >= 1 {
-				fmt.Printf("%s", $$Statname($$state))
-				fmt.Printf("saw %s\n", $$Tokname($$char))
+			if yyDebug >= 1 {
+				fmt.Printf("%s", yyStatname(yystate))
+				fmt.Printf("saw %s\n", yyTokname(yychar))
 			}
 			fallthrough
 
@@ -3248,64 +3244,64 @@ $$default:
 			Errflag = 3
 
 			/* find a state where "error" is a legal shift action */
-			for $$p >= 0 {
-				$$n = $$Pact[$$S[$$p].yys] + $$ErrCode
-				if $$n >= 0 && $$n < $$Last {
-					$$state = $$Act[$$n] /* simulate a shift of "error" */
-					if $$Chk[$$state] == $$ErrCode {
-						goto $$stack
+			for yyp >= 0 {
+				yyn = yyPact[YYS[yyp].yys] + yyErrCode
+				if yyn >= 0 && yyn < yyLast {
+					yystate = yyAct[yyn] /* simulate a shift of "error" */
+					if yyChk[yystate] == yyErrCode {
+						goto yystack
 					}
 				}
 
-				/* the current p has no shift onn "error", pop stack */
-				if $$Debug >= 2 {
+				/* the current yyp has no shift onn "error", pop stack */
+				if yyDebug >= 2 {
 					fmt.Printf("error recovery pops state %d, uncovers %d\n",
-						$$S[$$p].yys, $$S[$$p-1].yys)
+						YYS[yyp].yys, YYS[yyp-1].yys)
 				}
-				$$p--
+				yyp--
 			}
 			/* there is no state on the stack with an error shift ... abort */
 			goto ret1
 
 		case 3: /* no shift yet; clobber input char */
-			if $$Debug >= 2 {
-				fmt.Printf("error recovery discards %s\n", $$Tokname($$char))
+			if yyDebug >= 2 {
+				fmt.Printf("error recovery discards %s\n", yyTokname(yychar))
 			}
-			if $$char == $$EofCode {
+			if yychar == yyEofCode {
 				goto ret1
 			}
-			$$char = -1
-			goto $$newstate /* try again in the same state */
+			yychar = -1
+			goto yynewstate /* try again in the same state */
 		}
 	}
 
-	/* reduction by production $$n */
-	if $$Debug >= 2 {
-		fmt.Printf("reduce %v in:\n\t%v\n", $$n, $$Statname($$state))
+	/* reduction by production yyn */
+	if yyDebug >= 2 {
+		fmt.Printf("reduce %v in:\n\t%v\n", yyn, yyStatname(yystate))
 	}
 
-	$$nt := $$n
-	$$pt := $$p
-	_ = $$pt		// guard against "declared and not used"
+	yynt := yyn
+	yypt := yyp
+	_ = yypt		// guard against "declared and not used"
 
-	$$p -= $$R2[$$n]
-	$$VAL = $$S[$$p+1]
+	yyp -= yyR2[yyn]
+	YYVAL = YYS[yyp+1]
 
 	/* consult goto table to find next state */
-	$$n = $$R1[$$n]
-	$$g := $$Pgo[$$n]
-	$$j := $$g + $$S[$$p].yys + 1
+	yyn = yyR1[yyn]
+	yyg := yyPgo[yyn]
+	yyj := yyg + YYS[yyp].yys + 1
 
-	if $$j >= $$Last {
-		$$state = $$Act[$$g]
+	if yyj >= yyLast {
+		yystate = yyAct[yyg]
 	} else {
-		$$state = $$Act[$$j]
-		if $$Chk[$$state] != -$$n {
-			$$state = $$Act[$$g]
+		yystate = yyAct[yyj]
+		if yyChk[yystate] != -yyn {
+			yystate = yyAct[yyg]
 		}
 	}
 	// dummy call; replaced with literal code
-	$$run()
-	goto $$stack /* stack new state and value */
+	yyrun()
+	goto yystack /* stack new state and value */
 }
 `

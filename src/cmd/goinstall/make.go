@@ -1,4 +1,4 @@
-// Copyright 2011 The Go Authors.  All rights reserved.
+// Copyright 2010 The Go Authors.  All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -8,25 +8,32 @@ package main
 
 import (
 	"bytes"
-	"go/build"
 	"os"
-	"path/filepath"
-	"strings"
 	"template"
 )
 
 // domake builds the package in dir.
+// If local is false, the package was copied from an external system.
+// For non-local packages or packages without Makefiles,
 // domake generates a standard Makefile and passes it
 // to make on standard input.
-func domake(dir, pkg string, tree *build.Tree, isCmd bool) (err os.Error) {
-	makefile, err := makeMakefile(dir, pkg, tree, isCmd)
-	if err != nil {
-		return err
+func domake(dir, pkg string, local bool) (err os.Error) {
+	needMakefile := true
+	if local {
+		_, err := os.Stat(dir + "/Makefile")
+		if err == nil {
+			needMakefile = false
+		}
 	}
-	cmd := []string{"bash", "gomake", "-f-"}
-	if *nuke {
-		cmd = append(cmd, "nuke")
-	} else if *clean {
+	cmd := []string{"gomake"}
+	var makefile []byte
+	if needMakefile {
+		if makefile, err = makeMakefile(dir, pkg); err != nil {
+			return err
+		}
+		cmd = append(cmd, "-f-")
+	}
+	if *clean {
 		cmd = append(cmd, "clean")
 	}
 	cmd = append(cmd, "install")
@@ -36,145 +43,78 @@ func domake(dir, pkg string, tree *build.Tree, isCmd bool) (err os.Error) {
 // makeMakefile computes the standard Makefile for the directory dir
 // installing as package pkg.  It includes all *.go files in the directory
 // except those in package main and those ending in _test.go.
-func makeMakefile(dir, pkg string, tree *build.Tree, isCmd bool) ([]byte, os.Error) {
-	if !safeName(pkg) {
-		return nil, os.NewError("unsafe name: " + pkg)
-	}
-	targ := pkg
-	targDir := tree.PkgDir()
-	if isCmd {
-		// use the last part of the package name for targ
-		_, targ = filepath.Split(pkg)
-		targDir = tree.BinDir()
-	}
-	dirInfo, err := build.ScanDir(dir, isCmd)
+func makeMakefile(dir, pkg string) ([]byte, os.Error) {
+	dirInfo, err := scanDir(dir, false)
 	if err != nil {
 		return nil, err
 	}
 
-	cgoFiles := dirInfo.CgoFiles
+	if len(dirInfo.cgoFiles) == 0 && len(dirInfo.cFiles) > 0 {
+		// When using cgo, .c files are compiled with gcc.  Without cgo,
+		// they may be intended for 6c.  Just error out for now.
+		return nil, os.ErrorString("C files found in non-cgo package")
+	}
+
+	cgoFiles := dirInfo.cgoFiles
 	isCgo := make(map[string]bool, len(cgoFiles))
 	for _, file := range cgoFiles {
-		if !safeName(file) {
-			return nil, os.NewError("bad name: " + file)
-		}
 		isCgo[file] = true
 	}
 
-	goFiles := make([]string, 0, len(dirInfo.GoFiles))
-	for _, file := range dirInfo.GoFiles {
-		if !safeName(file) {
-			return nil, os.NewError("unsafe name: " + file)
-		}
+	oFiles := make([]string, 0, len(dirInfo.cFiles))
+	for _, file := range dirInfo.cFiles {
+		oFiles = append(oFiles, file[:len(file)-2]+".o")
+	}
+
+	goFiles := make([]string, 0, len(dirInfo.goFiles))
+	for _, file := range dirInfo.goFiles {
 		if !isCgo[file] {
 			goFiles = append(goFiles, file)
 		}
 	}
 
-	oFiles := make([]string, 0, len(dirInfo.CFiles)+len(dirInfo.SFiles))
-	cgoOFiles := make([]string, 0, len(dirInfo.CFiles))
-	for _, file := range dirInfo.CFiles {
-		if !safeName(file) {
-			return nil, os.NewError("unsafe name: " + file)
-		}
-		// When cgo is in use, C files are compiled with gcc,
-		// otherwise they're compiled with gc.
-		if len(cgoFiles) > 0 {
-			cgoOFiles = append(cgoOFiles, file[:len(file)-2]+".o")
-		} else {
-			oFiles = append(oFiles, file[:len(file)-2]+".$O")
-		}
-	}
-
-	for _, file := range dirInfo.SFiles {
-		if !safeName(file) {
-			return nil, os.NewError("unsafe name: " + file)
-		}
-		oFiles = append(oFiles, file[:len(file)-2]+".$O")
-	}
-
-	var imports []string
-	for _, t := range build.Path {
-		imports = append(imports, t.PkgDir())
-	}
-
 	var buf bytes.Buffer
-	md := makedata{targ, targDir, "pkg", goFiles, oFiles, cgoFiles, cgoOFiles, imports}
-	if isCmd {
-		md.Type = "cmd"
-	}
-	if err := makefileTemplate.Execute(&buf, &md); err != nil {
+	md := makedata{pkg, goFiles, cgoFiles, oFiles}
+	if err := makefileTemplate.Execute(&md, &buf); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
 }
 
-var safeBytes = []byte("+-./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz")
-
-func safeName(s string) bool {
-	if s == "" {
-		return false
-	}
-	if strings.Contains(s, "..") {
-		return false
-	}
-	for i := 0; i < len(s); i++ {
-		if c := s[i]; c < 0x80 && bytes.IndexByte(safeBytes, c) < 0 {
-			return false
-		}
-	}
-	return true
-}
-
 // makedata is the data type for the makefileTemplate.
 type makedata struct {
-	Targ      string   // build target
-	TargDir   string   // build target directory
-	Type      string   // build type: "pkg" or "cmd"
-	GoFiles   []string // list of non-cgo .go files
-	OFiles    []string // list of .$O files
-	CgoFiles  []string // list of cgo .go files
-	CgoOFiles []string // list of cgo .o files, without extension
-	Imports   []string // gc/ld import paths
+	Pkg      string   // package import path
+	GoFiles  []string // list of non-cgo .go files
+	CgoFiles []string // list of cgo .go files
+	OFiles   []string // list of ofiles for cgo
 }
 
 var makefileTemplate = template.MustParse(`
 include $(GOROOT)/src/Make.inc
 
-TARG={Targ}
-TARGDIR={TargDir}
+TARG={Pkg}
 
 {.section GoFiles}
 GOFILES=\
-{.repeated section @}
-	{@}\
-{.end}
-
-{.end}
-{.section OFiles}
-OFILES=\
-{.repeated section @}
+{.repeated section GoFiles}
 	{@}\
 {.end}
 
 {.end}
 {.section CgoFiles}
 CGOFILES=\
-{.repeated section @}
+{.repeated section CgoFiles}
 	{@}\
 {.end}
 
 {.end}
-{.section CgoOFiles}
+{.section OFiles}
 CGO_OFILES=\
-{.repeated section @}
+{.repeated section OFiles}
 	{@}\
 {.end}
 
 {.end}
-GCIMPORTS={.repeated section Imports}-I "{@}" {.end}
-LDIMPORTS={.repeated section Imports}-L "{@}" {.end}
-
-include $(GOROOT)/src/Make.{Type}
+include $(GOROOT)/src/Make.pkg
 `,
 	nil)

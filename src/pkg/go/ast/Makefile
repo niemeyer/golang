@@ -9,7 +9,6 @@ GOFILES=\
 	ast.go\
 	filter.go\
 	print.go\
-	resolve.go\
 	scope.go\
 	walk.go\
 

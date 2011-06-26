@@ -2,8 +2,9 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package token defines constants representing the lexical tokens of the Go
-// programming language and basic operations on tokens (printing, predicates).
+// This package defines constants representing the lexical
+// tokens of the Go programming language and basic operations
+// on tokens (printing, predicates).
 //
 package token
 
@@ -125,7 +126,10 @@ const (
 )
 
 
-var tokens = [...]string{
+// At the moment we have no array literal syntax that lets us describe
+// the index for each element - use a map for now to make sure they are
+// in sync.
+var tokens = map[Token]string{
 	ILLEGAL: "ILLEGAL",
 
 	EOF:     "EOF",
@@ -233,14 +237,10 @@ var tokens = [...]string{
 // constant name (e.g. for the token IDENT, the string is "IDENT").
 //
 func (tok Token) String() string {
-	s := ""
-	if 0 <= tok && tok < Token(len(tokens)) {
-		s = tokens[tok]
+	if str, exists := tokens[tok]; exists {
+		return str
 	}
-	if s == "" {
-		s = "token(" + strconv.Itoa(int(tok)) + ")"
-	}
-	return s
+	return "token(" + strconv.Itoa(int(tok)) + ")"
 }
 
 
@@ -252,8 +252,8 @@ func (tok Token) String() string {
 //
 const (
 	LowestPrec  = 0 // non-operators
-	UnaryPrec   = 6
-	HighestPrec = 7
+	UnaryPrec   = 7
+	HighestPrec = 8
 )
 
 
@@ -267,12 +267,14 @@ func (op Token) Precedence() int {
 		return 1
 	case LAND:
 		return 2
-	case EQL, NEQ, LSS, LEQ, GTR, GEQ:
+	case ARROW:
 		return 3
-	case ADD, SUB, OR, XOR:
+	case EQL, NEQ, LSS, LEQ, GTR, GEQ:
 		return 4
-	case MUL, QUO, REM, SHL, SHR, AND, AND_NOT:
+	case ADD, SUB, OR, XOR:
 		return 5
+	case MUL, QUO, REM, SHL, SHR, AND, AND_NOT:
+		return 6
 	}
 	return LowestPrec
 }

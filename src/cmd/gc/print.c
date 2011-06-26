@@ -48,10 +48,10 @@ exprfmt(Fmt *f, Node *n, int prec)
 	case ODOTMETH:
 	case ODOTTYPE:
 	case ODOTTYPE2:
-	case OXDOT:
 	case OARRAYBYTESTR:
 	case OCAP:
 	case OCLOSE:
+	case OCLOSED:
 	case OCOPY:
 	case OLEN:
 	case OMAKE:
@@ -132,10 +132,6 @@ exprfmt(Fmt *f, Node *n, int prec)
 	default:
 	bad:
 		fmtprint(f, "(node %O)", n->op);
-		break;
-
-	case OREGISTER:
-		fmtprint(f, "%R", n->val.u.reg);
 		break;
 
 	case OLITERAL:
@@ -244,17 +240,6 @@ exprfmt(Fmt *f, Node *n, int prec)
 		exprfmt(f, n->left, 0);
 		fmtprint(f, " %#O= ", n->etype);
 		exprfmt(f, n->right, 0);
-		break;
-
-	case OAS2:
-	case OAS2DOTTYPE:
-	case OAS2FUNC:
-	case OAS2MAPR:
-	case OAS2MAPW:
-	case OAS2RECV:
-		exprlistfmt(f, n->list);
-		fmtprint(f, " = ");
-		exprlistfmt(f, n->rlist);
 		break;
 
 	case OADD:
@@ -419,6 +404,7 @@ exprfmt(Fmt *f, Node *n, int prec)
 	case OAPPEND:
 	case OCAP:
 	case OCLOSE:
+	case OCLOSED:
 	case OLEN:
 	case OCOPY:
 	case OMAKE:

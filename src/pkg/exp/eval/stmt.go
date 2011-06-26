@@ -68,7 +68,7 @@ type flowBuf struct {
 	gotos map[token.Pos]*flowBlock
 	// labels is a map from label name to information on the block
 	// at the point of the label.  labels are tracked by name,
-	// since multiple labels at the same PC can have different
+	// since mutliple labels at the same PC can have different
 	// blocks.
 	labels map[string]*flowBlock
 }
@@ -287,6 +287,9 @@ func (a *stmtCompiler) compile(s ast.Stmt) {
 	case *ast.SwitchStmt:
 		a.compileSwitchStmt(s)
 
+	case *ast.TypeCaseClause:
+		notimpl = true
+
 	case *ast.TypeSwitchStmt:
 		notimpl = true
 
@@ -307,7 +310,7 @@ func (a *stmtCompiler) compile(s ast.Stmt) {
 	}
 
 	if notimpl {
-		a.diag("%T statement node not implemented", s)
+		a.diag("%T statment node not implemented", s)
 	}
 
 	if a.block.inner != nil {
@@ -550,7 +553,7 @@ func (a *stmtCompiler) doAssign(lhs []ast.Expr, rhs []ast.Expr, tok token.Token,
 			ident, ok = le.(*ast.Ident)
 			if !ok {
 				a.diagAt(le.Pos(), "left side of := must be a name")
-				// Suppress new definitions errors
+				// Suppress new defitions errors
 				nDefs++
 				continue
 			}
@@ -905,7 +908,7 @@ func (a *stmtCompiler) compileBranchStmt(s *ast.BranchStmt) {
 		return
 
 	default:
-		log.Panicf("Unexpected branch token %v", s.Tok)
+		log.Panic("Unexpected branch token %v", s.Tok)
 	}
 
 	a.flow.put1(false, pc)
@@ -1009,13 +1012,13 @@ func (a *stmtCompiler) compileSwitchStmt(s *ast.SwitchStmt) {
 			a.diagAt(clause.Pos(), "switch statement must contain case clauses")
 			continue
 		}
-		if clause.List == nil {
+		if clause.Values == nil {
 			if hasDefault {
 				a.diagAt(clause.Pos(), "switch statement contains more than one default case")
 			}
 			hasDefault = true
 		} else {
-			ncases += len(clause.List)
+			ncases += len(clause.Values)
 		}
 	}
 
@@ -1027,7 +1030,7 @@ func (a *stmtCompiler) compileSwitchStmt(s *ast.SwitchStmt) {
 		if !ok {
 			continue
 		}
-		for _, v := range clause.List {
+		for _, v := range clause.Values {
 			e := condbc.compileExpr(condbc.block, false, v)
 			switch {
 			case e == nil:
@@ -1074,8 +1077,8 @@ func (a *stmtCompiler) compileSwitchStmt(s *ast.SwitchStmt) {
 
 		// Save jump PC's
 		pc := a.nextPC()
-		if clause.List != nil {
-			for _ = range clause.List {
+		if clause.Values != nil {
+			for _ = range clause.Values {
 				casePCs[i] = &pc
 				i++
 			}

@@ -4,7 +4,6 @@
 
 #define	EXTERN
 #include	"l.h"
-#include	"../ld/lib.h"
 
 // Software floating point.
 
@@ -54,8 +53,6 @@ softfloat(void)
 			case AMULD:
 			case ADIVF:
 			case ADIVD:
-			case ASQRTF:
-			case ASQRTD:
 				goto soft;
 
 			default:

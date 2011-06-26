@@ -7,9 +7,9 @@
 package main
 
 func f(args ...int) {
-	g(args)
+	g(args)	// ERROR "[.][.][.]"
 }
 
 func g(args ...interface{}) {
-	f(args)	// ERROR "cannot use|incompatible"
+	f(args)	// ERROR "[.][.][.]"
 }

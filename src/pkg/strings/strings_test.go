@@ -5,14 +5,10 @@
 package strings_test
 
 import (
-	"bytes"
 	"os"
-	"reflect"
-	"strconv"
 	. "strings"
 	"testing"
 	"unicode"
-	"unsafe"
 	"utf8"
 )
 
@@ -119,57 +115,6 @@ func TestIndex(t *testing.T)        { runIndexTests(t, Index, "Index", indexTest
 func TestLastIndex(t *testing.T)    { runIndexTests(t, LastIndex, "LastIndex", lastIndexTests) }
 func TestIndexAny(t *testing.T)     { runIndexTests(t, IndexAny, "IndexAny", indexAnyTests) }
 func TestLastIndexAny(t *testing.T) { runIndexTests(t, LastIndexAny, "LastIndexAny", lastIndexAnyTests) }
-
-type IndexRuneTest struct {
-	s    string
-	rune int
-	out  int
-}
-
-var indexRuneTests = []IndexRuneTest{
-	{"a A x", 'A', 2},
-	{"some_text=some_value", '=', 9},
-	{"☺a", 'a', 3},
-	{"a☻☺b", '☺', 4},
-}
-
-func TestIndexRune(t *testing.T) {
-	for _, test := range indexRuneTests {
-		if actual := IndexRune(test.s, test.rune); actual != test.out {
-			t.Errorf("IndexRune(%q,%d)= %v; want %v", test.s, test.rune, actual, test.out)
-		}
-	}
-}
-
-const benchmarkString = "some_text=some☺value"
-
-func BenchmarkIndexRune(b *testing.B) {
-	if got := IndexRune(benchmarkString, '☺'); got != 14 {
-		panic("wrong index: got=" + strconv.Itoa(got))
-	}
-	for i := 0; i < b.N; i++ {
-		IndexRune(benchmarkString, '☺')
-	}
-}
-
-func BenchmarkIndexRuneFastPath(b *testing.B) {
-	if got := IndexRune(benchmarkString, 'v'); got != 17 {
-		panic("wrong index: got=" + strconv.Itoa(got))
-	}
-	for i := 0; i < b.N; i++ {
-		IndexRune(benchmarkString, 'v')
-	}
-}
-
-func BenchmarkIndex(b *testing.B) {
-	if got := Index(benchmarkString, "v"); got != 17 {
-		panic("wrong index: got=" + strconv.Itoa(got))
-	}
-	for i := 0; i < b.N; i++ {
-		Index(benchmarkString, "v")
-	}
-}
-
 
 type ExplodeTest struct {
 	s string
@@ -432,31 +377,11 @@ func TestMap(t *testing.T) {
 	if m != expect {
 		t.Errorf("drop: expected %q got %q", expect, m)
 	}
-
-	// 6. Identity
-	identity := func(rune int) int {
-		return rune
-	}
-	orig := "Input string that we expect not to be copied."
-	m = Map(identity, orig)
-	if (*reflect.StringHeader)(unsafe.Pointer(&orig)).Data !=
-		(*reflect.StringHeader)(unsafe.Pointer(&m)).Data {
-		t.Error("unexpected copy during identity map")
-	}
 }
 
 func TestToUpper(t *testing.T) { runStringTests(t, ToUpper, "ToUpper", upperTests) }
 
 func TestToLower(t *testing.T) { runStringTests(t, ToLower, "ToLower", lowerTests) }
-
-func BenchmarkMapNoChanges(b *testing.B) {
-	identity := func(rune int) int {
-		return rune
-	}
-	for i := 0; i < b.N; i++ {
-		Map(identity, "Some string that won't be modified.")
-	}
-}
 
 func TestSpecialCase(t *testing.T) {
 	lower := "abcçdefgğhıijklmnoöprsştuüvyz"
@@ -640,11 +565,7 @@ func equal(m string, s1, s2 string, t *testing.T) bool {
 
 func TestCaseConsistency(t *testing.T) {
 	// Make a string of all the runes.
-	numRunes := unicode.MaxRune + 1
-	if testing.Short() {
-		numRunes = 1000
-	}
-	a := make([]int, numRunes)
+	a := make([]int, unicode.MaxRune+1)
 	for i := range a {
 		a[i] = i
 	}
@@ -654,10 +575,10 @@ func TestCaseConsistency(t *testing.T) {
 	lower := ToLower(s)
 
 	// Consistency checks
-	if n := utf8.RuneCountInString(upper); n != numRunes {
+	if n := utf8.RuneCountInString(upper); n != unicode.MaxRune+1 {
 		t.Error("rune count wrong in upper:", n)
 	}
-	if n := utf8.RuneCountInString(lower); n != numRunes {
+	if n := utf8.RuneCountInString(lower); n != unicode.MaxRune+1 {
 		t.Error("rune count wrong in lower:", n)
 	}
 	if !equal("ToUpper(upper)", ToUpper(upper), upper, t) {
@@ -752,56 +673,13 @@ func TestRunes(t *testing.T) {
 	}
 }
 
-func TestReadByte(t *testing.T) {
-	testStrings := []string{"", abcd, faces, commas}
-	for _, s := range testStrings {
-		reader := NewReader(s)
-		if e := reader.UnreadByte(); e == nil {
-			t.Errorf("Unreading %q at beginning: expected error", s)
-		}
-		var res bytes.Buffer
-		for {
-			b, e := reader.ReadByte()
-			if e == os.EOF {
-				break
-			}
-			if e != nil {
-				t.Errorf("Reading %q: %s", s, e)
-				break
-			}
-			res.WriteByte(b)
-			// unread and read again
-			e = reader.UnreadByte()
-			if e != nil {
-				t.Errorf("Unreading %q: %s", s, e)
-				break
-			}
-			b1, e := reader.ReadByte()
-			if e != nil {
-				t.Errorf("Reading %q after unreading: %s", s, e)
-				break
-			}
-			if b1 != b {
-				t.Errorf("Reading %q after unreading: want byte %q, got %q", s, b, b1)
-				break
-			}
-		}
-		if res.String() != s {
-			t.Errorf("Reader(%q).ReadByte() produced %q", s, res.String())
-		}
-	}
-}
-
 func TestReadRune(t *testing.T) {
 	testStrings := []string{"", abcd, faces, commas}
 	for _, s := range testStrings {
 		reader := NewReader(s)
-		if e := reader.UnreadRune(); e == nil {
-			t.Errorf("Unreading %q at beginning: expected error", s)
-		}
 		res := ""
 		for {
-			r, z, e := reader.ReadRune()
+			r, _, e := reader.ReadRune()
 			if e == os.EOF {
 				break
 			}
@@ -810,25 +688,6 @@ func TestReadRune(t *testing.T) {
 				break
 			}
 			res += string(r)
-			// unread and read again
-			e = reader.UnreadRune()
-			if e != nil {
-				t.Errorf("Unreading %q: %s", s, e)
-				break
-			}
-			r1, z1, e := reader.ReadRune()
-			if e != nil {
-				t.Errorf("Reading %q after unreading: %s", s, e)
-				break
-			}
-			if r1 != r {
-				t.Errorf("Reading %q after unreading: want rune %q, got %q", s, r, r1)
-				break
-			}
-			if z1 != z {
-				t.Errorf("Reading %q after unreading: want size %d, got %d", s, z, z1)
-				break
-			}
 		}
 		if res != s {
 			t.Errorf("Reader(%q).ReadRune() produced %q", s, res)

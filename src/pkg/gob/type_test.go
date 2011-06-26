@@ -26,7 +26,7 @@ var basicTypes = []typeT{
 func getTypeUnlocked(name string, rt reflect.Type) gobType {
 	typeLock.Lock()
 	defer typeLock.Unlock()
-	t, err := getBaseType(name, rt)
+	t, err := getType(name, rt)
 	if err != nil {
 		panic("getTypeUnlocked: " + err.String())
 	}
@@ -47,15 +47,15 @@ func TestBasic(t *testing.T) {
 
 // Reregister some basic types to check registration is idempotent.
 func TestReregistration(t *testing.T) {
-	newtyp := getTypeUnlocked("int", reflect.TypeOf(int(0)))
+	newtyp := getTypeUnlocked("int", reflect.Typeof(int(0)))
 	if newtyp != tInt.gobType() {
 		t.Errorf("reregistration of %s got new type", newtyp.string())
 	}
-	newtyp = getTypeUnlocked("uint", reflect.TypeOf(uint(0)))
+	newtyp = getTypeUnlocked("uint", reflect.Typeof(uint(0)))
 	if newtyp != tUint.gobType() {
 		t.Errorf("reregistration of %s got new type", newtyp.string())
 	}
-	newtyp = getTypeUnlocked("string", reflect.TypeOf("hello"))
+	newtyp = getTypeUnlocked("string", reflect.Typeof("hello"))
 	if newtyp != tString.gobType() {
 		t.Errorf("reregistration of %s got new type", newtyp.string())
 	}
@@ -63,18 +63,18 @@ func TestReregistration(t *testing.T) {
 
 func TestArrayType(t *testing.T) {
 	var a3 [3]int
-	a3int := getTypeUnlocked("foo", reflect.TypeOf(a3))
-	newa3int := getTypeUnlocked("bar", reflect.TypeOf(a3))
+	a3int := getTypeUnlocked("foo", reflect.Typeof(a3))
+	newa3int := getTypeUnlocked("bar", reflect.Typeof(a3))
 	if a3int != newa3int {
 		t.Errorf("second registration of [3]int creates new type")
 	}
 	var a4 [4]int
-	a4int := getTypeUnlocked("goo", reflect.TypeOf(a4))
+	a4int := getTypeUnlocked("goo", reflect.Typeof(a4))
 	if a3int == a4int {
 		t.Errorf("registration of [3]int creates same type as [4]int")
 	}
 	var b3 [3]bool
-	a3bool := getTypeUnlocked("", reflect.TypeOf(b3))
+	a3bool := getTypeUnlocked("", reflect.Typeof(b3))
 	if a3int == a3bool {
 		t.Errorf("registration of [3]bool creates same type as [3]int")
 	}
@@ -87,14 +87,14 @@ func TestArrayType(t *testing.T) {
 
 func TestSliceType(t *testing.T) {
 	var s []int
-	sint := getTypeUnlocked("slice", reflect.TypeOf(s))
+	sint := getTypeUnlocked("slice", reflect.Typeof(s))
 	var news []int
-	newsint := getTypeUnlocked("slice1", reflect.TypeOf(news))
+	newsint := getTypeUnlocked("slice1", reflect.Typeof(news))
 	if sint != newsint {
 		t.Errorf("second registration of []int creates new type")
 	}
 	var b []bool
-	sbool := getTypeUnlocked("", reflect.TypeOf(b))
+	sbool := getTypeUnlocked("", reflect.Typeof(b))
 	if sbool == sint {
 		t.Errorf("registration of []bool creates same type as []int")
 	}
@@ -107,14 +107,14 @@ func TestSliceType(t *testing.T) {
 
 func TestMapType(t *testing.T) {
 	var m map[string]int
-	mapStringInt := getTypeUnlocked("map", reflect.TypeOf(m))
+	mapStringInt := getTypeUnlocked("map", reflect.Typeof(m))
 	var newm map[string]int
-	newMapStringInt := getTypeUnlocked("map1", reflect.TypeOf(newm))
+	newMapStringInt := getTypeUnlocked("map1", reflect.Typeof(newm))
 	if mapStringInt != newMapStringInt {
 		t.Errorf("second registration of map[string]int creates new type")
 	}
 	var b map[string]bool
-	mapStringBool := getTypeUnlocked("", reflect.TypeOf(b))
+	mapStringBool := getTypeUnlocked("", reflect.Typeof(b))
 	if mapStringBool == mapStringInt {
 		t.Errorf("registration of map[string]bool creates same type as map[string]int")
 	}
@@ -126,27 +126,27 @@ func TestMapType(t *testing.T) {
 }
 
 type Bar struct {
-	X string
+	x string
 }
 
 // This structure has pointers and refers to itself, making it a good test case.
 type Foo struct {
-	A int
-	B int32 // will become int
-	C string
-	D []byte
-	E *float64    // will become float64
-	F ****float64 // will become float64
-	G *Bar
-	H *Bar // should not interpolate the definition of Bar again
-	I *Foo // will not explode
+	a int
+	b int32 // will become int
+	c string
+	d []byte
+	e *float64    // will become float64
+	f ****float64 // will become float64
+	g *Bar
+	h *Bar // should not interpolate the definition of Bar again
+	i *Foo // will not explode
 }
 
 func TestStructType(t *testing.T) {
-	sstruct := getTypeUnlocked("Foo", reflect.TypeOf(Foo{}))
+	sstruct := getTypeUnlocked("Foo", reflect.Typeof(Foo{}))
 	str := sstruct.string()
 	// If we can print it correctly, we built it correctly.
-	expected := "Foo = struct { A int; B int; C string; D bytes; E float; F float; G Bar = struct { X string; }; H Bar; I Foo; }"
+	expected := "Foo = struct { a int; b int; c string; d bytes; e float; f float; g Bar = struct { x string; }; h Bar; i Foo; }"
 	if str != expected {
 		t.Errorf("struct printed as %q; expected %q", str, expected)
 	}

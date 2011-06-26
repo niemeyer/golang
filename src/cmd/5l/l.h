@@ -35,7 +35,6 @@
 
 enum
 {
-	thechar = '5',
 	PtrSize = 4
 };
 
@@ -110,7 +109,6 @@ struct	Prog
 	Prog*	dlink;
 	int32	pc;
 	int32	line;
-	int32	spadj;
 	uchar	mark;
 	uchar	optab;
 	uchar	as;
@@ -124,8 +122,6 @@ struct	Prog
 #define	datasize	reg
 #define	textflag	reg
 
-#define	iscall(p)	((p)->as == ABL)
-
 struct	Sym
 {
 	char*	name;
@@ -135,8 +131,6 @@ struct	Sym
 	uchar	reachable;
 	uchar	dynexport;
 	uchar	leaf;
-	uchar	stkcheck;
-	uchar	hide;
 	int32	dynid;
 	int32	plt;
 	int32	got;
@@ -144,9 +138,10 @@ struct	Sym
 	int32	sig;
 	int32	size;
 	uchar	special;
+	uchar	thumb;	// thumb code
+	uchar	foreign;	// called by arm if thumb, by thumb if arm
 	uchar	fnptr;	// used as fn ptr
 	Sym*	hash;	// in hash table
-	Sym*	allsym;	// in all symbol list
 	Sym*	next;	// in text or data list
 	Sym*	sub;	// in SSUB list
 	Sym*	outer;	// container of sub
@@ -154,7 +149,6 @@ struct	Sym
 	char*	file;
 	char*	dynimpname;
 	char*	dynimplib;
-	char*	dynimpvers;
 	
 	// STEXT
 	Auto*	autom;
@@ -203,9 +197,26 @@ struct	Count
 
 enum
 {
+	Sxxx,
+	
+	/* order here is order in output file */
+	STEXT		= 1,
+	SRODATA,
+	SELFDATA,
+	SDATA,
+	SBSS,
+
+	SXREF,
+	SFILE,
+	SCONST,
+	SDYNIMPORT,
+
+	SSUB	= 1<<8,
+
 	LFROM		= 1<<0,
 	LTO		= 1<<1,
 	LPOOL		= 1<<2,
+	V4		= 1<<3,	/* arm v4 arch */
 
 	C_NONE		= 0,
 	C_REG,
@@ -218,16 +229,21 @@ enum
 	C_RCON,		/* 0xff rotated */
 	C_NCON,		/* ~RCON */
 	C_SCON,		/* 0xffff */
+	C_BCON,		/* thumb */
 	C_LCON,
 	C_ZFCON,
 	C_SFCON,
 	C_LFCON,
+	C_GCON,		/* thumb */
 
 	C_RACON,
+	C_SACON,	/* thumb */
 	C_LACON,
+	C_GACON,	/* thumb */
 
 	C_SBRA,
 	C_LBRA,
+	C_GBRA,		/* thumb */
 
 	C_HAUTO,	/* halfword insn offset (-0xff to 0xff) */
 	C_FAUTO,	/* float insn offset (0 to 0x3fc, word aligned) */
@@ -242,10 +258,12 @@ enum
 	C_ROREG,
 	C_SROREG,	/* both S and R */
 	C_LOREG,
+	C_GOREG,		/* thumb */
 
 	C_PC,
 	C_SP,
 	C_HREG,
+	C_OFFPC,		/* thumb */
 
 	C_ADDR,		/* reference to relocatable address */
 
@@ -257,6 +275,7 @@ enum
 	LEAF		= 1<<2,
 
 	STRINGSZ	= 200,
+	NHASH		= 10007,
 	MINSIZ		= 64,
 	NENT		= 100,
 	MAXIO		= 8192,
@@ -276,6 +295,9 @@ EXTERN union
 
 #define	cbuf	u.obuf
 #define	xbuf	u.ibuf
+
+#define	setarch(p)		if((p)->as==ATEXT) thumb=(p)->reg&ALLTHUMBS
+#define	setthumb(p)	if((p)->as==ATEXT) seenthumb|=(p)->reg&ALLTHUMBS
 
 #ifndef COFFCVT
 
@@ -306,10 +328,10 @@ EXTERN	int	nerrors;
 EXTERN	int32	instoffset;
 EXTERN	Opcross	opcross[8];
 EXTERN	Oprang	oprange[ALAST];
+EXTERN	Oprang	thumboprange[ALAST];
 EXTERN	char*	outfile;
 EXTERN	int32	pc;
 EXTERN	uchar	repop[ALAST];
-EXTERN	char*	interpreter;
 EXTERN	char*	rpath;
 EXTERN	uint32	stroffset;
 EXTERN	int32	symsize;
@@ -319,10 +341,14 @@ EXTERN	int	version;
 EXTERN	char	xcmp[C_GOK+1][C_GOK+1];
 EXTERN	Prog	zprg;
 EXTERN	int	dtype;
+EXTERN	int	armv4;
+EXTERN	int	thumb;
+EXTERN	int	seenthumb;
 EXTERN	int	armsize;
 
 extern	char*	anames[];
 extern	Optab	optab[];
+extern	Optab	thumboptab[];
 
 void	addpool(Prog*, Adr*);
 EXTERN	Prog*	blitrl;
@@ -350,13 +376,17 @@ int	Oconv(Fmt*);
 int	Pconv(Fmt*);
 int	Sconv(Fmt*);
 int	aclass(Adr*);
+int	thumbaclass(Adr*, Prog*);
 void	addhist(int32, int);
 Prog*	appendp(Prog*);
 void	asmb(void);
+void	asmthumbmap(void);
 void	asmout(Prog*, Optab*, int32*);
+void	thumbasmout(Prog*, Optab*);
 int32	atolwhex(char*);
 Prog*	brloop(Prog*);
 void	buildop(void);
+void	thumbbuildop(void);
 void	buildrep(int, int);
 void	cflush(void);
 int	chipzero(Ieee*);
@@ -379,7 +409,6 @@ Sym*	lookup(char*, int);
 void	cput(int);
 void	hput(int32);
 void	lput(int32);
-void	lputb(int32);
 void	lputl(int32);
 void*	mysbrk(uint32);
 void	names(void);
@@ -420,6 +449,9 @@ int32	immaddr(int32);
 int32	opbra(int, int);
 int	brextra(Prog*);
 int	isbranch(Prog*);
+int	fnpinc(Sym *);
+int	fninc(Sym *);
+void	thumbcount(void);
 void fnptrs(void);
 void	doelf(void);
 

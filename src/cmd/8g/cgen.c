@@ -78,8 +78,6 @@ cgen(Node *n, Node *res)
 
 	// structs etc get handled specially
 	if(isfat(n->type)) {
-		if(n->type->width < 0)
-			fatal("forgot to compute width for %T", n->type);
 		sgen(n, res, n->type->width);
 		return;
 	}
@@ -232,7 +230,6 @@ cgen(Node *n, Node *res)
 			cgen(nl, res);
 			break;
 		}
-
 		tempname(&n2, n->type);
 		mgen(nl, &n1, res);
 		gmove(&n1, &n2);
@@ -278,10 +275,15 @@ cgen(Node *n, Node *res)
 		if(istype(nl->type, TSTRING) || isslice(nl->type)) {
 			// both slice and string have len one pointer into the struct.
 			igen(nl, &n1, res);
+			n1.op = OREGISTER;	// was OINDREG
+			regalloc(&n2, types[TUINT32], &n1);
+			n1.op = OINDREG;
 			n1.type = types[TUINT32];
-			n1.xoffset += Array_nel;
-			gmove(&n1, res);
+			n1.xoffset = Array_nel;
+			gmove(&n1, &n2);
+			gmove(&n2, res);
 			regfree(&n1);
+			regfree(&n2);
 			break;
 		}
 		fatal("cgen: OLEN: unknown type %lT", nl->type);
@@ -590,10 +592,9 @@ agen(Node *n, Node *res)
 				gmove(&n1, &n3);
 			}
 
-			if (v*w != 0) {
-				nodconst(&n2, types[tptr], v*w);
-				gins(optoas(OADD, types[tptr]), &n2, &n3);
-			}
+			nodconst(&n2, types[tptr], v*w);
+			gins(optoas(OADD, types[tptr]), &n2, &n3);
+
 			gmove(&n3, res);
 			regfree(&n3);
 			break;
@@ -726,27 +727,7 @@ void
 igen(Node *n, Node *a, Node *res)
 {
 	Node n1;
-	Type *fp;
-	Iter flist;
-  
-	switch(n->op) {
-	case ONAME:
-		if((n->class&PHEAP) || n->class == PPARAMREF)
-			break;
-		*a = *n;
-		return;
- 
-	case OCALLFUNC:
-		fp = structfirst(&flist, getoutarg(n->left->type));
-		cgen_call(n, 0);
-		memset(a, 0, sizeof *a);
-		a->op = OINDREG;
-		a->val.u.reg = D_SP;
-		a->addable = 1;
-		a->xoffset = fp->width;
-		a->type = n->type;
-		return;
-	}
+
 	// release register for now, to avoid
 	// confusing tempname.
 	if(res != N && res->op == OREGISTER)
@@ -917,7 +898,7 @@ bgen(Node *n, int true, Prog *to)
 		}
 
 		// make simplest on right
-		if(nl->op == OLITERAL || (nl->ullman < nr->ullman && nl->ullman < UINF)) {
+		if(nl->op == OLITERAL || nl->ullman < nr->ullman) {
 			a = brrev(a);
 			r = nl;
 			nl = nr;
@@ -936,7 +917,6 @@ bgen(Node *n, int true, Prog *to)
 			n2 = n1;
 			n2.op = OINDREG;
 			n2.xoffset = Array_array;
-			n2.type = types[tptr];
 			nodconst(&tmp, types[tptr], 0);
 			gins(optoas(OCMP, types[tptr]), &n2, &tmp);
 			patch(gbranch(a, types[tptr]), to);
@@ -1043,8 +1023,8 @@ bgen(Node *n, int true, Prog *to)
 		if(nr->ullman >= UINF) {
 			tempname(&n1, nl->type);
 			tempname(&tmp, nr->type);
-			cgen(nl, &n1);
 			cgen(nr, &tmp);
+			cgen(nl, &n1);
 			regalloc(&n2, nr->type, N);
 			cgen(&tmp, &n2);
 			goto cmp;

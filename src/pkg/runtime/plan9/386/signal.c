@@ -14,11 +14,3 @@ runtime·signame(int32)
 {
 	return runtime·emptystring;
 }
-
-void
-runtime·resetcpuprofiler(int32 hz)
-{
-	// TODO: Enable profiling interrupts.
-	
-	m->profilehz = hz;
-}

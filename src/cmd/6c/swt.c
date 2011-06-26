@@ -231,7 +231,7 @@ outcode(void)
 	}
 	Binit(&b, f, OWRITE);
 
-	Bprint(&b, "go object %s %s %s\n", getgoos(), thestring, getgoversion());
+	Bprint(&b, "%s\n", thestring);
 	if(ndynimp > 0 || ndynexp > 0) {
 		int i;
 

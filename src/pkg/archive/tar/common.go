@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package tar implements access to tar archives.
+// The tar package implements access to tar archives.
 // It aims to cover most of the variations, including those produced
 // by GNU and BSD tars.
 //

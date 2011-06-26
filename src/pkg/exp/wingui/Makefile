@@ -6,8 +6,6 @@ GOOS=windows
 
 include ../../../Make.inc
 
-LD:=$(LD) -Hwindowsgui
-
 TARG=wingui
 
 GOFILES=\
@@ -18,7 +16,7 @@ GOFILES=\
 include ../../../Make.cmd
 
 zwinapi.go: winapi.go
-	$(GOROOT)/src/pkg/syscall/mksyscall_windows.pl $< \
+	$(GOROOT)/src/pkg/syscall/mksyscall_windows.sh $< \
 		| sed 's/^package.*syscall$$/package main/' \
 		| sed '/^import/a \
 			import "syscall"' \

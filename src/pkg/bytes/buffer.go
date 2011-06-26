@@ -154,20 +154,17 @@ func (b *Buffer) ReadFrom(r io.Reader) (n int64, err os.Error) {
 }
 
 // WriteTo writes data to w until the buffer is drained or an error
-// occurs. The return value n is the number of bytes written; it always
-// fits into an int, but it is int64 to match the io.WriterTo interface.
+// occurs. The return value n is the number of bytes written.
 // Any error encountered during the write is also returned.
 func (b *Buffer) WriteTo(w io.Writer) (n int64, err os.Error) {
 	b.lastRead = opInvalid
-	if b.off < len(b.buf) {
+	for b.off < len(b.buf) {
 		m, e := w.Write(b.buf[b.off:])
+		n += int64(m)
 		b.off += m
-		n = int64(m)
 		if e != nil {
 			return n, e
 		}
-		// otherwise all bytes were written, by definition of
-		// Write method in io.Writer
 	}
 	// Buffer is now empty; reset.
 	b.Truncate(0)
@@ -280,7 +277,7 @@ func (b *Buffer) ReadRune() (r int, size int, err os.Error) {
 // from any read operation.)
 func (b *Buffer) UnreadRune() os.Error {
 	if b.lastRead != opReadRune {
-		return os.NewError("bytes.Buffer: UnreadRune: previous operation was not ReadRune")
+		return os.ErrorString("bytes.Buffer: UnreadRune: previous operation was not ReadRune")
 	}
 	b.lastRead = opInvalid
 	if b.off > 0 {
@@ -295,43 +292,13 @@ func (b *Buffer) UnreadRune() os.Error {
 // returns an error.
 func (b *Buffer) UnreadByte() os.Error {
 	if b.lastRead != opReadRune && b.lastRead != opRead {
-		return os.NewError("bytes.Buffer: UnreadByte: previous operation was not a read")
+		return os.ErrorString("bytes.Buffer: UnreadByte: previous operation was not a read")
 	}
 	b.lastRead = opInvalid
 	if b.off > 0 {
 		b.off--
 	}
 	return nil
-}
-
-// ReadBytes reads until the first occurrence of delim in the input,
-// returning a slice containing the data up to and including the delimiter.
-// If ReadBytes encounters an error before finding a delimiter,
-// it returns the data read before the error and the error itself (often os.EOF).
-// ReadBytes returns err != nil if and only if the returned data does not end in
-// delim.
-func (b *Buffer) ReadBytes(delim byte) (line []byte, err os.Error) {
-	i := IndexByte(b.buf[b.off:], delim)
-	size := i + 1
-	if i < 0 {
-		size = len(b.buf) - b.off
-		err = os.EOF
-	}
-	line = make([]byte, size)
-	copy(line, b.buf[b.off:])
-	b.off += size
-	return
-}
-
-// ReadString reads until the first occurrence of delim in the input,
-// returning a string containing the data up to and including the delimiter.
-// If ReadString encounters an error before finding a delimiter,
-// it returns the data read before the error and the error itself (often os.EOF).
-// ReadString returns err != nil if and only if the returned data does not end
-// in delim.
-func (b *Buffer) ReadString(delim byte) (line string, err os.Error) {
-	bytes, err := b.ReadBytes(delim)
-	return string(bytes), err
 }
 
 // NewBuffer creates and initializes a new Buffer using buf as its initial

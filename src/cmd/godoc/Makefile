@@ -8,13 +8,11 @@ TARG=godoc
 GOFILES=\
 	codewalk.go\
 	dirtrees.go\
-	filesystem.go\
 	format.go\
 	godoc.go\
 	index.go\
 	main.go\
 	mapping.go\
-	parser.go\
 	snippet.go\
 	spec.go\
 	utils.go\

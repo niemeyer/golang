@@ -4,11 +4,6 @@
 
 /*
  * Runtime type representation; master is type.go
- *
- * The *Types here correspond 1-1 to type.go's *Type's, but are
- * prefixed with an extra header of 2 pointers, corresponding to the
- * interface{} structure, which itself is called type Type again on
- * the Go side.
  */
 
 typedef struct CommonType CommonType;
@@ -31,7 +26,6 @@ struct CommonType
 	uint8 kind;
 	String *string;
 	UncommonType *x;
-	Type *ptrto;
 };
 
 enum {

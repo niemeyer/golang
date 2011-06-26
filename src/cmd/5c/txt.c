@@ -292,7 +292,8 @@ tmpreg(void)
 void
 regalloc(Node *n, Node *tn, Node *o)
 {
-	int i;
+	int i, j;
+	static int lasti;
 
 	switch(tn->type->etype) {
 	case TCHAR:
@@ -309,9 +310,16 @@ regalloc(Node *n, Node *tn, Node *o)
 			if(i >= 0 && i < NREG)
 				goto out;
 		}
-		for(i=REGRET+1; i<=REGEXT-2; i++)
-			if(reg[i] == 0)
+		j = lasti + REGRET+1;
+		for(i=REGRET+1; i<NREG; i++) {
+			if(j >= NREG)
+				j = REGRET+1;
+			if(reg[j] == 0) {
+				i = j;
 				goto out;
+			}
+			j++;
+		}
 		diag(tn, "out of fixed registers");
 		goto err;
 
@@ -323,9 +331,16 @@ regalloc(Node *n, Node *tn, Node *o)
 			if(i >= NREG && i < NREG+NFREG)
 				goto out;
 		}
-		for(i=NREG; i<NREG+NFREG; i++)
-			if(reg[i] == 0)
+		j = 0*2 + NREG;
+		for(i=NREG; i<NREG+NFREG; i++) {
+			if(j >= NREG+NFREG)
+				j = NREG;
+			if(reg[j] == 0) {
+				i = j;
 				goto out;
+			}
+			j++;
+		}
 		diag(tn, "out of float registers");
 		goto err;
 	}
@@ -335,6 +350,9 @@ err:
 	return;
 out:
 	reg[i]++;
+/* 	lasti++;	*** StrongARM does register forwarding */
+	if(lasti >= 5)
+		lasti = 0;
 	nodreg(n, tn, i);
 }
 
@@ -382,10 +400,6 @@ regsalloc(Node *n, Node *nn)
 void
 regaalloc1(Node *n, Node *nn)
 {
-	if(REGARG < 0) {
-		fatal(n, "regaalloc1 and REGARG<0");
-		return;
-	}
 	nodreg(n, nn, REGARG);
 	reg[REGARG]++;
 	curarg = align(curarg, nn->type, Aarg1, nil);
@@ -1180,10 +1194,8 @@ gpseudo(int a, Sym *s, Node *n)
 	p->from.type = D_OREG;
 	p->from.sym = s;
 	p->from.name = D_EXTERN;
-	if(a == ATEXT) {
+	if(a == ATEXT)
 		p->reg = textflag;
-		textflag = 0;
-	}
 	if(s->class == CSTATIC)
 		p->from.name = D_STATIC;
 	naddr(n, &p->to);

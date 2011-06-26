@@ -6,7 +6,6 @@ package main
 
 import (
 	"bytes"
-	"exec"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -14,11 +13,9 @@ import (
 	"go/printer"
 	"go/scanner"
 	"go/token"
-	"io"
 	"io/ioutil"
 	"os"
-	"path/filepath"
-	"runtime/pprof"
+	pathutil "path"
 	"strings"
 )
 
@@ -29,16 +26,16 @@ var (
 	write       = flag.Bool("w", false, "write result to (source) file instead of stdout")
 	rewriteRule = flag.String("r", "", "rewrite rule (e.g., 'α[β:len(α)] -> α[β:]')")
 	simplifyAST = flag.Bool("s", false, "simplify code")
-	doDiff      = flag.Bool("d", false, "display diffs instead of rewriting files")
+
+	// debugging support
+	comments = flag.Bool("comments", true, "print comments")
+	trace    = flag.Bool("trace", false, "print parse trace")
+	printAST = flag.Bool("ast", false, "print AST (before rewrites)")
 
 	// layout control
-	comments  = flag.Bool("comments", true, "print comments")
 	tabWidth  = flag.Int("tabwidth", 8, "tab width")
 	tabIndent = flag.Bool("tabindent", true, "indent with tabs independent of -spaces")
 	useSpaces = flag.Bool("spaces", true, "align with spaces instead of tabs")
-
-	// debugging
-	cpuprofile = flag.String("cpuprofile", "", "write cpu profile to this file")
 )
 
 
@@ -69,6 +66,9 @@ func initParserMode() {
 	if *comments {
 		parserMode |= parser.ParseComments
 	}
+	if *trace {
+		parserMode |= parser.Trace
+	}
 }
 
 
@@ -89,25 +89,20 @@ func isGoFile(f *os.FileInfo) bool {
 }
 
 
-// If in == nil, the source is the contents of the file with the given filename.
-func processFile(filename string, in io.Reader, out io.Writer) os.Error {
-	if in == nil {
-		f, err := os.Open(filename)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		in = f
-	}
-
-	src, err := ioutil.ReadAll(in)
+func processFile(f *os.File) os.Error {
+	src, err := ioutil.ReadAll(f)
 	if err != nil {
 		return err
 	}
 
-	file, err := parser.ParseFile(fset, filename, src, parserMode)
+	file, err := parser.ParseFile(fset, f.Name(), src, parserMode)
+
 	if err != nil {
 		return err
+	}
+
+	if *printAST {
+		ast.Print(file)
 	}
 
 	if rewrite != nil {
@@ -118,39 +113,40 @@ func processFile(filename string, in io.Reader, out io.Writer) os.Error {
 		simplify(file)
 	}
 
-	var buf bytes.Buffer
-	_, err = (&printer.Config{printerMode, *tabWidth}).Fprint(&buf, fset, file)
+	var res bytes.Buffer
+	_, err = (&printer.Config{printerMode, *tabWidth, nil}).Fprint(&res, fset, file)
 	if err != nil {
 		return err
 	}
-	res := buf.Bytes()
 
-	if !bytes.Equal(src, res) {
+	if bytes.Compare(src, res.Bytes()) != 0 {
 		// formatting has changed
 		if *list {
-			fmt.Fprintln(out, filename)
+			fmt.Fprintln(os.Stdout, f.Name())
 		}
 		if *write {
-			err = ioutil.WriteFile(filename, res, 0)
+			err = ioutil.WriteFile(f.Name(), res.Bytes(), 0)
 			if err != nil {
 				return err
 			}
 		}
-		if *doDiff {
-			data, err := diff(src, res)
-			if err != nil {
-				return fmt.Errorf("computing diff: %s", err)
-			}
-			fmt.Printf("diff %s gofmt/%s\n", filename, filename)
-			out.Write(data)
-		}
 	}
 
-	if !*list && !*write && !*doDiff {
-		_, err = out.Write(res)
+	if !*list && !*write {
+		_, err = os.Stdout.Write(res.Bytes())
 	}
 
 	return err
+}
+
+
+func processFileByName(filename string) os.Error {
+	file, err := os.Open(filename, os.O_RDONLY, 0)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	return processFile(file)
 }
 
 
@@ -164,7 +160,7 @@ func (v fileVisitor) VisitDir(path string, f *os.FileInfo) bool {
 func (v fileVisitor) VisitFile(path string, f *os.FileInfo) {
 	if isGoFile(f) {
 		v <- nil // synchronize error handler
-		if err := processFile(path, nil, os.Stdout); err != nil {
+		if err := processFileByName(path); err != nil {
 			v <- err
 		}
 	}
@@ -172,47 +168,30 @@ func (v fileVisitor) VisitFile(path string, f *os.FileInfo) {
 
 
 func walkDir(path string) {
+	// start an error handler
+	done := make(chan bool)
 	v := make(fileVisitor)
 	go func() {
-		filepath.Walk(path, v, v)
-		close(v)
-	}()
-	for err := range v {
-		if err != nil {
-			report(err)
+		for err := range v {
+			if err != nil {
+				report(err)
+			}
 		}
-	}
+		done <- true
+	}()
+	// walk the tree
+	pathutil.Walk(path, v, v)
+	close(v) // terminate error handler loop
+	<-done   // wait for all errors to be reported
 }
 
 
 func main() {
-	// call gofmtMain in a separate function
-	// so that it can use defer and have them
-	// run before the exit.
-	gofmtMain()
-	os.Exit(exitCode)
-}
-
-
-func gofmtMain() {
 	flag.Usage = usage
 	flag.Parse()
 	if *tabWidth < 0 {
 		fmt.Fprintf(os.Stderr, "negative tabwidth %d\n", *tabWidth)
-		exitCode = 2
-		return
-	}
-
-	if *cpuprofile != "" {
-		f, err := os.Create(*cpuprofile)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "creating cpu profile: %s\n", err)
-			exitCode = 2
-			return
-		}
-		defer f.Close()
-		pprof.StartCPUProfile(f)
-		defer pprof.StopCPUProfile()
+		os.Exit(2)
 	}
 
 	initParserMode()
@@ -220,10 +199,9 @@ func gofmtMain() {
 	initRewrite()
 
 	if flag.NArg() == 0 {
-		if err := processFile("<standard input>", os.Stdin, os.Stdout); err != nil {
+		if err := processFile(os.Stdin); err != nil {
 			report(err)
 		}
-		return
 	}
 
 	for i := 0; i < flag.NArg(); i++ {
@@ -232,40 +210,13 @@ func gofmtMain() {
 		case err != nil:
 			report(err)
 		case dir.IsRegular():
-			if err := processFile(path, nil, os.Stdout); err != nil {
+			if err := processFileByName(path); err != nil {
 				report(err)
 			}
 		case dir.IsDirectory():
 			walkDir(path)
 		}
 	}
-}
 
-
-func diff(b1, b2 []byte) (data []byte, err os.Error) {
-	f1, err := ioutil.TempFile("", "gofmt")
-	if err != nil {
-		return
-	}
-	defer os.Remove(f1.Name())
-	defer f1.Close()
-
-	f2, err := ioutil.TempFile("", "gofmt")
-	if err != nil {
-		return
-	}
-	defer os.Remove(f2.Name())
-	defer f2.Close()
-
-	f1.Write(b1)
-	f2.Write(b2)
-
-	data, err = exec.Command("diff", "-u", f1.Name(), f2.Name()).CombinedOutput()
-	if len(data) > 0 {
-		// diff exits with a non-zero status when the files don't match.
-		// Ignore that failure as long as we get output.
-		err = nil
-	}
-	return
-
+	os.Exit(exitCode)
 }

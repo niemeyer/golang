@@ -5,9 +5,6 @@
 #include "runtime.h"
 #include "malloc.h"
 
-// Lock to protect finalizer data structures.
-// Cannot reuse mheap.Lock because the finalizer
-// maintenance requires allocation.
 static Lock finlock;
 
 // Finalizer hash table.  Direct hash, linear scan, at most 3/4 full.
@@ -92,6 +89,7 @@ runtime·addfinalizer(void *p, void (*f)(void*), int32 nret)
 {
 	Fintab newtab;
 	int32 i;
+	uint32 *ref;
 	byte *base;
 	Finalizer *e;
 	
@@ -103,21 +101,24 @@ runtime·addfinalizer(void *p, void (*f)(void*), int32 nret)
 	}
 
 	runtime·lock(&finlock);
-	if(!runtime·mlookup(p, &base, nil, nil) || p != base) {
+	if(!runtime·mlookup(p, &base, nil, nil, &ref) || p != base) {
 		runtime·unlock(&finlock);
 		runtime·throw("addfinalizer on invalid pointer");
 	}
 	if(f == nil) {
-		lookfintab(&fintab, p, 1);
+		if(*ref & RefHasFinalizer) {
+			lookfintab(&fintab, p, 1);
+			*ref &= ~RefHasFinalizer;
+		}
 		runtime·unlock(&finlock);
 		return;
 	}
 
-	if(lookfintab(&fintab, p, 0)) {
+	if(*ref & RefHasFinalizer) {
 		runtime·unlock(&finlock);
 		runtime·throw("double finalizer");
 	}
-	runtime·setblockspecial(p);
+	*ref |= RefHasFinalizer;
 
 	if(fintab.nkey >= fintab.max/2+fintab.max/4) {
 		// keep table at most 3/4 full:
@@ -133,7 +134,7 @@ runtime·addfinalizer(void *p, void (*f)(void*), int32 nret)
 			newtab.max *= 3;
 		}
 
-		newtab.key = runtime·mallocgc(newtab.max*sizeof newtab.key[0], FlagNoPointers, 0, 1);
+		newtab.key = runtime·mallocgc(newtab.max*sizeof newtab.key[0], RefNoPointers, 0, 1);
 		newtab.val = runtime·mallocgc(newtab.max*sizeof newtab.val[0], 0, 0, 1);
 
 		for(i=0; i<fintab.max; i++) {

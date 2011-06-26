@@ -50,7 +50,7 @@ func TestRunClient(t *testing.T) {
 
 	testConfig.CipherSuites = []uint16{TLS_ECDHE_RSA_WITH_RC4_128_SHA}
 
-	conn, err := Dial("tcp", "127.0.0.1:10443", testConfig)
+	conn, err := Dial("tcp", "", "127.0.0.1:10443", testConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestRunClient(t *testing.T) {
 
 // Script of interaction with gnutls implementation.
 // The values for this test are obtained by building and running in client mode:
-//   % gotest -test.run "TestRunClient" -connect
+//   % gotest -match "TestRunClient" -connect
 // and then:
 //   % gnutls-serv -p 10443 --debug 100 --x509keyfile key.pem --x509certfile cert.pem -a > /tmp/log 2>&1
 //   % python parse-gnutls-cli-debug-log.py < /tmp/log

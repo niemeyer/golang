@@ -23,29 +23,9 @@ the package.  For example:
 	// #include <errno.h>
 	import "C"
 
-CFLAGS and LDFLAGS may be defined with pseudo #cgo directives
-within these comments to tweak the behavior of gcc.  Values defined
-in multiple directives are concatenated together.  Options prefixed
-by $GOOS, $GOARCH, or $GOOS/$GOARCH are only defined in matching
-systems.  For example:
-
-	// #cgo CFLAGS: -DPNG_DEBUG=1
-	// #cgo linux CFLAGS: -DLINUX=1
-	// #cgo LDFLAGS: -lpng
-	// #include <png.h>
-	import "C"
-
-Alternatively, CFLAGS and LDFLAGS may be obtained via the pkg-config
-tool using a '#cgo pkg-config:' directive followed by the package names.
-For example:
-
-	// #cgo pkg-config: png cairo
-	// #include <png.h>
-	import "C"
-
-Within the Go file, C identifiers or field names that are keywords in Go
-can be accessed by prefixing them with an underscore: if x points at a C
-struct with a field named "type", x._type accesses the field.
+C identifiers or field names that are keywords in Go can be
+accessed by prefixing them with an underscore: if x points at
+a C struct with a field named "type", x._type accesses the field.
 
 The standard C numeric types are available under the names
 C.char, C.schar (signed char), C.uchar (unsigned char),

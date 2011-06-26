@@ -3,6 +3,7 @@
 // license that can be found in the LICENSE file.
 
 /*
+
 Goinstall is an experiment in automatic package installation.
 It installs packages, possibly downloading them from the internet.
 It maintains a list of public Go packages at http://godashboard.appspot.com/package.
@@ -13,11 +14,8 @@ Usage:
 
 Flags and default settings:
         -a=false          install all previously installed packages
-	-clean=false      clean the package directory before installing
 	-dashboard=true   tally public packages on godashboard.appspot.com
-	-install=true     build and install the package and its dependencies
 	-log=true         log installed packages to $GOROOT/goinstall.log for use by -a
-	-nuke=false       remove the target object and clean before installing
 	-u=false          update already-downloaded packages
 	-v=false          verbose operation
 
@@ -63,7 +61,7 @@ if necessary.  The recognized code hosting sites are:
 		import "project.googlecode.com/svn/trunk"
 		import "project.googlecode.com/svn/trunk/sub/directory"
 
-	Launchpad (Bazaar)
+	Launchpad
 
 		import "launchpad.net/project"
 		import "launchpad.net/project/series"
@@ -87,7 +85,7 @@ system, typically HEAD for git, tip for Mercurial.
 After a successful download and installation of a publicly accessible
 remote package, goinstall reports the installation to godashboard.appspot.com,
 which increments a count associated with the package and the time
-of its most recent installation. This mechanism powers the package list
+of its most recent installation.  This mechanism powers the package list
 at http://godashboard.appspot.com/package, allowing Go programmers
 to learn about popular packages that might be worth looking at.
 The -dashboard=false flag disables this reporting.
@@ -96,60 +94,10 @@ By default, goinstall prints output only when it encounters an error.
 The -v flag causes goinstall to print information about packages
 being considered and installed.
 
-Goinstall does not use make. Makefiles are ignored by goinstall.
-
-
-The GOPATH Environment Variable
-
-GOPATH may be set to a colon-separated list of paths inside which Go code,
-package objects, and executables may be found.
-
-Set a GOPATH to use goinstall to build and install your own code and
-external libraries outside of the Go tree (and to avoid writing Makefiles).
-
-The top-level directory structure of a GOPATH is prescribed:
-
-The 'src' directory is for source code. The directory naming inside 'src'
-determines the package import path or executable name.
-
-The 'pkg' directory is for package objects. Like the Go tree, package objects
-are stored inside a directory named after the target operating system and
-processor architecture ('pkg/$GOOS_$GOARCH').
-A package whose source is located at '$GOPATH/src/foo/bar' would be imported
-as 'foo/bar' and installed as '$GOPATH/pkg/$GOOS_$GOARCH/foo/bar.a'.
-
-The 'bin' directory is for executable files.
-Goinstall installs program binaries using the name of the source folder.
-A binary whose source is at 'src/foo/qux' would be built and installed to
-'$GOPATH/bin/qux'. (Note 'bin/qux', not 'bin/foo/qux' - this is such that
-you can put the bin directory in your PATH.) 
-
-Here's an example directory layout:
-
-	GOPATH=/home/user/gocode
-
-	/home/user/gocode/
-		src/foo/
-			bar/               (go code in package bar)
-			qux/               (go code in package main)
-		bin/qux                    (executable file)
-		pkg/linux_amd64/foo/bar.a  (object file)
-
-Run 'goinstall foo/bar' to build and install the package 'foo/bar'
-(and its dependencies).
-Goinstall will search each GOPATH (in order) for 'src/foo/bar'.
-If the directory cannot be found, goinstall will attempt to fetch the
-source from a remote repository and write it to the 'src' directory of the
-first GOPATH (or $GOROOT/src/pkg if GOPATH is not set).
-
-Goinstall recognizes relative and absolute paths (paths beginning with / or .).
-The following commands would build our example packages:
-
-	goinstall /home/user/gocode/src/foo/bar  # build and install foo/bar
-	cd /home/user/gocode/src/foo
-	goinstall ./bar  # build and install foo/bar (again)
-	cd qux
-	goinstall .      # build and install foo/qux
-
+Goinstall does not attempt to be a replacement for make.
+Instead, it invokes "make install" after locating the package sources.
+For local packages without a Makefile and all remote packages,
+goinstall creates and uses a temporary Makefile constructed from
+the import path and the list of Go files in the package.
 */
 package documentation

@@ -85,9 +85,6 @@ func (c *serverCodec) ReadRequestHeader(r *rpc.Request) os.Error {
 }
 
 func (c *serverCodec) ReadRequestBody(x interface{}) os.Error {
-	if x == nil {
-		return nil
-	}
 	// JSON params is array value.
 	// RPC params is struct.
 	// Unmarshal into array containing struct for now.

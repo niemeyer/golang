@@ -5,7 +5,6 @@
 #include "runtime.h"
 #include "defs.h"
 #include "os.h"
-#include "stack.h"
 
 extern SigTab runtime·sigtab[];
 
@@ -158,17 +157,13 @@ runtime·goenvs(void)
 void
 runtime·newosproc(M *m, G *g, void *stk, void (*fn)(void))
 {
-	int32 errno;
-
 	m->tls[0] = m->id;	// so 386 asm can find it
 	if(0){
 		runtime·printf("newosproc stk=%p m=%p g=%p fn=%p id=%d/%d ostk=%p\n",
 			stk, m, g, fn, m->id, m->tls[0], &m);
 	}
-	if((errno = runtime·bsdthread_create(stk, m, g, fn)) < 0) {
-		runtime·printf("runtime: failed to create new OS thread (have %d already; errno=%d)\n", runtime·mcount(), -errno);
-		runtime·throw("runtime.newosproc");
-	}
+	if(runtime·bsdthread_create(stk, m, g, fn) < 0)
+		runtime·throw("cannot create new OS thread");
 }
 
 // Called to initialize a new m (including the bootstrap m).
@@ -177,7 +172,7 @@ runtime·minit(void)
 {
 	// Initialize signal handling.
 	m->gsignal = runtime·malg(32*1024);	// OS X wants >=8K, Linux >=2K
-	runtime·signalstack(m->gsignal->stackguard - StackGuard, 32*1024);
+	runtime·signalstack(m->gsignal->stackguard, 32*1024);
 }
 
 // Mach IPC, to get at semaphores

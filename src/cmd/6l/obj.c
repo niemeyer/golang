@@ -40,29 +40,17 @@
 #include	<ar.h>
 
 char	*noname		= "<none>";
+char	thechar		= '6';
 char*	thestring 	= "amd64";
 char*	paramspace	= "FP";
 
-Header headers[] = {
-   "plan9x32", Hplan9x32,
-   "plan9", Hplan9x64,
-   "elf", Helf,
-   "darwin", Hdarwin,
-   "linux", Hlinux,
-   "freebsd", Hfreebsd,
-   "windows", Hwindows,
-   "windowsgui", Hwindows,
-   0, 0
-};
-
 /*
- *	-Hplan9x32 -T4136 -R4096	is plan9 64-bit format
- *	-Hplan9 -T4128 -R4096		is plan9 32-bit format
- *	-Helf -T0x80110000 -R4096	is ELF32
- *	-Hdarwin -Tx -Rx		is apple MH-exec
- *	-Hlinux -Tx -Rx			is linux elf-exec
- *	-Hfreebsd -Tx -Rx		is FreeBSD elf-exec
- *	-Hwindows -Tx -Rx		is MS Windows PE32+
+ *	-H2 -T4136 -R4096		is plan9 64-bit format
+ *	-H3 -T4128 -R4096		is plan9 32-bit format
+ *	-H5 -T0x80110000 -R4096		is ELF32
+ *	-H6 -Tx -Rx			is apple MH-exec
+ *	-H7 -Tx -Rx			is linux elf-exec
+ *      -H9 -Tx -Rx			is FreeBSD elf-exec
  *
  *	options used: 189BLQSWabcjlnpsvz
  */
@@ -70,7 +58,7 @@ Header headers[] = {
 void
 usage(void)
 {
-	fprint(2, "usage: 6l [-options] [-E entry] [-H head] [-I interpreter] [-L dir] [-T text] [-R rnd] [-r path] [-o out] main.6\n");
+	fprint(2, "usage: 6l [-options] [-E entry] [-H head] [-L dir] [-T text] [-R rnd] [-r path] [-o out] main.6\n");
 	exits("usage");
 }
 
@@ -106,10 +94,7 @@ main(int argc, char *argv[])
 		INITENTRY = EARGF(usage());
 		break;
 	case 'H':
-		HEADTYPE = headtype(EARGF(usage()));
-		break;
-	case 'I':
-		interpreter = EARGF(usage());
+		HEADTYPE = atolwhex(EARGF(usage()));
 		break;
 	case 'L':
 		Lflag(EARGF(usage()));
@@ -135,15 +120,31 @@ main(int argc, char *argv[])
 		usage();
 
 	libinit();
+	if(rpath == nil)
+		rpath = smprint("%s/pkg/%s_%s", goroot, goos, goarch);
 
-	if(HEADTYPE == -1)
-		HEADTYPE = headtype(goos);
+	if(HEADTYPE == -1) {
+		HEADTYPE = 2;
+		if(strcmp(goos, "linux") == 0)
+			HEADTYPE = 7;
+		else
+		if(strcmp(goos, "darwin") == 0)
+			HEADTYPE = 6;
+		else
+		if(strcmp(goos, "freebsd") == 0)
+			HEADTYPE = 9;
+		else
+		if(strcmp(goos, "windows") == 0)
+			HEADTYPE = 10;
+		else
+			print("goos is not known: %s\n", goos);
+	}
 
 	switch(HEADTYPE) {
 	default:
 		diag("unknown -H option");
 		errorexit();
-	case Hplan9x32:	/* plan 9 */
+	case 2:	/* plan 9 */
 		HEADR = 32L+8L;
 		if(INITTEXT == -1)
 			INITTEXT = 4096+HEADR;
@@ -152,7 +153,7 @@ main(int argc, char *argv[])
 		if(INITRND == -1)
 			INITRND = 4096;
 		break;
-	case Hplan9x64:	/* plan 9 */
+	case 3:	/* plan 9 */
 		HEADR = 32L;
 		if(INITTEXT == -1)
 			INITTEXT = 4096+32;
@@ -161,7 +162,7 @@ main(int argc, char *argv[])
 		if(INITRND == -1)
 			INITRND = 4096;
 		break;
-	case Helf:	/* elf32 executable */
+	case 5:	/* elf32 executable */
 		HEADR = rnd(52L+3*32L, 16);
 		if(INITTEXT == -1)
 			INITTEXT = 0x80110000L;
@@ -170,14 +171,14 @@ main(int argc, char *argv[])
 		if(INITRND == -1)
 			INITRND = 4096;
 		break;
-	case Hdarwin:	/* apple MACH */
+	case 6:	/* apple MACH */
 		/*
 		 * OS X system constant - offset from 0(GS) to our TLS.
 		 * Explained in ../../libcgo/darwin_amd64.c.
 		 */
 		tlsoffset = 0x8a0;
 		machoinit();
-		HEADR = INITIAL_MACHO_HEADR;
+		HEADR = MACHORESERVE;
 		if(INITRND == -1)
 			INITRND = 4096;
 		if(INITTEXT == -1)
@@ -185,8 +186,8 @@ main(int argc, char *argv[])
 		if(INITDAT == -1)
 			INITDAT = 0;
 		break;
-	case Hlinux:	/* elf64 executable */
-	case Hfreebsd: /* freebsd */
+	case 7:	/* elf64 executable */
+	case 9: /* freebsd */
 		/*
 		 * ELF uses TLS offset negative from FS.
 		 * Translate 0(FS) and 8(FS) into -16(FS) and -8(FS).
@@ -203,7 +204,7 @@ main(int argc, char *argv[])
 		if(INITRND == -1)
 			INITRND = 4096;
 		break;
-	case Hwindows: /* PE executable */
+	case 10: /* PE executable */
 		peinit();
 		HEADR = PEFILEHEADR;
 		if(INITTEXT == -1)
@@ -248,10 +249,9 @@ main(int argc, char *argv[])
 	patch();
 	follow();
 	doelf();
-	if(HEADTYPE == Hdarwin)
+	if(HEADTYPE == 6)
 		domacho();
 	dostkoff();
-	dostkcheck();
 	paramspace = "SP";	/* (FP) now (SP) on output */
 	if(debug['p'])
 		if(debug['1'])
@@ -259,7 +259,7 @@ main(int argc, char *argv[])
 		else
 			doprof2();
 	span();
-	if(HEADTYPE == Hwindows)
+	if(HEADTYPE == 10)
 		dope();
 	addexport();
 	textaddress();
@@ -267,7 +267,6 @@ main(int argc, char *argv[])
 	symtab();
 	dodata();
 	address();
-	doweak();
 	reloc();
 	asmb();
 	undef();
@@ -287,7 +286,7 @@ zsym(char *pn, Biobuf *f, Sym *h[])
 {	
 	int o;
 	
-	o = BGETC(f);
+	o = Bgetc(f);
 	if(o < 0 || o >= NSYM || h[o] == nil)
 		mangle(pn);
 	return h[o];
@@ -301,12 +300,12 @@ zaddr(char *pn, Biobuf *f, Adr *a, Sym *h[])
 	Sym *s;
 	Auto *u;
 
-	t = BGETC(f);
+	t = Bgetc(f);
 	a->index = D_NONE;
 	a->scale = 0;
 	if(t & T_INDEX) {
-		a->index = BGETC(f);
-		a->scale = BGETC(f);
+		a->index = Bgetc(f);
+		a->scale = Bgetc(f);
 	}
 	a->offset = 0;
 	if(t & T_OFFSET) {
@@ -330,7 +329,7 @@ zaddr(char *pn, Biobuf *f, Adr *a, Sym *h[])
 		a->type = D_SCONST;
 	}
 	if(t & T_TYPE)
-		a->type = BGETC(f);
+		a->type = Bgetc(f);
 	if(a->type < 0 || a->type >= D_SIZE)
 		mangle(pn);
 	adrgotype = S;
@@ -356,15 +355,6 @@ zaddr(char *pn, Biobuf *f, Adr *a, Sym *h[])
 			return;
 		}
 	}
-	
-	switch(t) {
-	case D_FILE:
-	case D_FILE1:
-	case D_AUTO:
-	case D_PARAM:
-		if(s == S)
-			mangle(pn);
-	}
 
 	u = mal(sizeof(*u));
 	u->link = curauto;
@@ -389,7 +379,7 @@ ldobj1(Biobuf *f, char *pkg, int64 len, char *pn)
 	vlong ipc;
 	Prog *p;
 	int v, o, r, skip, mode;
-	Sym *h[NSYM], *s;
+	Sym *h[NSYM], *s, *di;
 	uint32 sig;
 	char *name, *x;
 	int ntext;
@@ -400,6 +390,7 @@ ldobj1(Biobuf *f, char *pkg, int64 len, char *pn)
 	lastp = nil;
 	ntext = 0;
 	eof = Boffset(f) + len;
+	di = S;
 	src[0] = 0;
 
 newloop:
@@ -413,10 +404,10 @@ newloop:
 loop:
 	if(f->state == Bracteof || Boffset(f) >= eof)
 		goto eof;
-	o = BGETC(f);
+	o = Bgetc(f);
 	if(o == Beof)
 		goto eof;
-	o |= BGETC(f) << 8;
+	o |= Bgetc(f) << 8;
 	if(o <= AXXX || o >= ALAST) {
 		if(o < 0)
 			goto eof;
@@ -429,8 +420,8 @@ loop:
 		sig = 0;
 		if(o == ASIGNAME)
 			sig = Bget4(f);
-		v = BGETC(f);	/* type */
-		o = BGETC(f);	/* sym */
+		v = Bgetc(f);	/* type */
+		o = Bgetc(f);	/* sym */
 		r = 0;
 		if(v == D_STATIC)
 			r = version;
@@ -567,7 +558,7 @@ loop:
 			diag("multiple initialization for %s: in both %s and %s", s->name, s->file, pn);
 			errorexit();
 		}
-		savedata(s, p, pn);
+		savedata(s, p);
 		unmal(p, sizeof *p);
 		goto loop;
 

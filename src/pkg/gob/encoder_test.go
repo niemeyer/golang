@@ -6,7 +6,6 @@ package gob
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"os"
 	"reflect"
@@ -121,7 +120,7 @@ func corruptDataCheck(s string, err os.Error, t *testing.T) {
 	dec := NewDecoder(b)
 	err1 := dec.Decode(new(ET2))
 	if err1 != err {
-		t.Errorf("from %q expected error %s; got %s", s, err, err1)
+		t.Error("expected error", err, "got", err1)
 	}
 }
 
@@ -170,7 +169,7 @@ func TestTypeToPtrType(t *testing.T) {
 		A int
 	}
 	t0 := Type0{7}
-	t0p := new(Type0)
+	t0p := (*Type0)(nil)
 	if err := encAndDec(t0, t0p); err != nil {
 		t.Error(err)
 	}
@@ -249,24 +248,6 @@ func TestArray(t *testing.T) {
 	}
 }
 
-func TestRecursiveMapType(t *testing.T) {
-	type recursiveMap map[string]recursiveMap
-	r1 := recursiveMap{"A": recursiveMap{"B": nil, "C": nil}, "D": nil}
-	r2 := make(recursiveMap)
-	if err := encAndDec(r1, &r2); err != nil {
-		t.Error(err)
-	}
-}
-
-func TestRecursiveSliceType(t *testing.T) {
-	type recursiveSlice []recursiveSlice
-	r1 := recursiveSlice{0: recursiveSlice{0: nil}, 1: nil}
-	r2 := make(recursiveSlice, 0)
-	if err := encAndDec(r1, &r2); err != nil {
-		t.Error(err)
-	}
-}
-
 // Regression test for bug: must send zero values inside arrays
 func TestDefaultsInArray(t *testing.T) {
 	type Type7 struct {
@@ -339,7 +320,7 @@ func TestSingletons(t *testing.T) {
 			continue
 		}
 		// Get rid of the pointer in the rhs
-		val := reflect.ValueOf(test.out).Elem().Interface()
+		val := reflect.NewValue(test.out).(*reflect.PtrValue).Elem().Interface()
 		if !reflect.DeepEqual(test.in, val) {
 			t.Errorf("decoding singleton: expected %v got %v", test.in, val)
 		}
@@ -400,152 +381,5 @@ func TestInterfaceIndirect(t *testing.T) {
 	err = NewDecoder(b).Decode(&r)
 	if err != nil {
 		t.Fatal("decode error:", err)
-	}
-}
-
-// Now follow various tests that decode into things that can't represent the
-// encoded value, all of which should be legal.
-
-// Also, when the ignored object contains an interface value, it may define
-// types. Make sure that skipping the value still defines the types by using
-// the encoder/decoder pair to send a value afterwards.  If an interface
-// is sent, its type in the test is always NewType0, so this checks that the
-// encoder and decoder don't skew with respect to type definitions.
-
-type Struct0 struct {
-	I interface{}
-}
-
-type NewType0 struct {
-	S string
-}
-
-type ignoreTest struct {
-	in, out interface{}
-}
-
-var ignoreTests = []ignoreTest{
-	// Decode normal struct into an empty struct
-	{&struct{ A int }{23}, &struct{}{}},
-	// Decode normal struct into a nil.
-	{&struct{ A int }{23}, nil},
-	// Decode singleton string into a nil.
-	{"hello, world", nil},
-	// Decode singleton slice into a nil.
-	{[]int{1, 2, 3, 4}, nil},
-	// Decode struct containing an interface into a nil.
-	{&Struct0{&NewType0{"value0"}}, nil},
-	// Decode singleton slice of interfaces into a nil.
-	{[]interface{}{"hi", &NewType0{"value1"}, 23}, nil},
-}
-
-func TestDecodeIntoNothing(t *testing.T) {
-	Register(new(NewType0))
-	for i, test := range ignoreTests {
-		b := new(bytes.Buffer)
-		enc := NewEncoder(b)
-		err := enc.Encode(test.in)
-		if err != nil {
-			t.Errorf("%d: encode error %s:", i, err)
-			continue
-		}
-		dec := NewDecoder(b)
-		err = dec.Decode(test.out)
-		if err != nil {
-			t.Errorf("%d: decode error: %s", i, err)
-			continue
-		}
-		// Now see if the encoder and decoder are in a consistent state.
-		str := fmt.Sprintf("Value %d", i)
-		err = enc.Encode(&NewType0{str})
-		if err != nil {
-			t.Fatalf("%d: NewType0 encode error: %s", i, err)
-		}
-		ns := new(NewType0)
-		err = dec.Decode(ns)
-		if err != nil {
-			t.Fatalf("%d: NewType0 decode error: %s", i, err)
-		}
-		if ns.S != str {
-			t.Fatalf("%d: expected %q got %q", i, str, ns.S)
-		}
-	}
-}
-
-// Another bug from golang-nuts, involving nested interfaces.
-type Bug0Outer struct {
-	Bug0Field interface{}
-}
-
-type Bug0Inner struct {
-	A int
-}
-
-func TestNestedInterfaces(t *testing.T) {
-	var buf bytes.Buffer
-	e := NewEncoder(&buf)
-	d := NewDecoder(&buf)
-	Register(new(Bug0Outer))
-	Register(new(Bug0Inner))
-	f := &Bug0Outer{&Bug0Outer{&Bug0Inner{7}}}
-	var v interface{} = f
-	err := e.Encode(&v)
-	if err != nil {
-		t.Fatal("Encode:", err)
-	}
-	err = d.Decode(&v)
-	if err != nil {
-		t.Fatal("Decode:", err)
-	}
-	// Make sure it decoded correctly.
-	outer1, ok := v.(*Bug0Outer)
-	if !ok {
-		t.Fatalf("v not Bug0Outer: %T", v)
-	}
-	outer2, ok := outer1.Bug0Field.(*Bug0Outer)
-	if !ok {
-		t.Fatalf("v.Bug0Field not Bug0Outer: %T", outer1.Bug0Field)
-	}
-	inner, ok := outer2.Bug0Field.(*Bug0Inner)
-	if !ok {
-		t.Fatalf("v.Bug0Field.Bug0Field not Bug0Inner: %T", outer2.Bug0Field)
-	}
-	if inner.A != 7 {
-		t.Fatalf("final value %d; expected %d", inner.A, 7)
-	}
-}
-
-// The bugs keep coming. We forgot to send map subtypes before the map.
-
-type Bug1Elem struct {
-	Name string
-	Id   int
-}
-
-type Bug1StructMap map[string]Bug1Elem
-
-func bug1EncDec(in Bug1StructMap, out *Bug1StructMap) os.Error {
-	return nil
-}
-
-func TestMapBug1(t *testing.T) {
-	in := make(Bug1StructMap)
-	in["val1"] = Bug1Elem{"elem1", 1}
-	in["val2"] = Bug1Elem{"elem2", 2}
-
-	b := new(bytes.Buffer)
-	enc := NewEncoder(b)
-	err := enc.Encode(in)
-	if err != nil {
-		t.Fatal("encode:", err)
-	}
-	dec := NewDecoder(b)
-	out := make(Bug1StructMap)
-	err = dec.Decode(&out)
-	if err != nil {
-		t.Fatal("decode:", err)
-	}
-	if !reflect.DeepEqual(in, out) {
-		t.Errorf("mismatch: %v %v", in, out)
 	}
 }

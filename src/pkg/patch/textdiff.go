@@ -17,8 +17,6 @@ type TextChunk struct {
 }
 
 func ParseTextDiff(raw []byte) (TextDiff, os.Error) {
-	var chunkHeader []byte
-
 	// Copy raw so it is safe to keep references to slices.
 	_, chunks := sections(raw, "@@ -")
 	delta := 0
@@ -28,12 +26,13 @@ func ParseTextDiff(raw []byte) (TextDiff, os.Error) {
 
 		// Parse start line: @@ -oldLine,oldCount +newLine,newCount @@ junk
 		chunk := splitLines(raw)
-		chunkHeader = chunk[0]
+		chunkHeader := chunk[0]
 		var ok bool
 		var oldLine, oldCount, newLine, newCount int
 		s := chunkHeader
 		if oldLine, s, ok = atoi(s, "@@ -", 10); !ok {
-			goto ErrChunkHdr
+		ErrChunkHdr:
+			return nil, SyntaxError("unexpected chunk header line: " + string(chunkHeader))
 		}
 		if len(s) == 0 || s[0] != ',' {
 			oldCount = 1
@@ -146,9 +145,6 @@ func ParseTextDiff(raw []byte) (TextDiff, os.Error) {
 		}
 	}
 	return diff, nil
-
-ErrChunkHdr:
-	return nil, SyntaxError("unexpected chunk header line: " + string(chunkHeader))
 }
 
 var ErrPatchFailure = os.NewError("patch did not apply cleanly")

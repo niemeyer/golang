@@ -6,7 +6,10 @@ include ../../../src/Make.inc
 
 TARG=stdio
 CGOFILES=\
+	align.go\
 	file.go\
+	test.go\
+	test1.go\
 
 CLEANFILES+=hello fib chain run.out
 

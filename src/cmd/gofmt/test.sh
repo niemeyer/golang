@@ -36,14 +36,13 @@ apply1() {
 	# the following files are skipped because they are test cases
 	# for syntax errors and thus won't parse in the first place:
 	case `basename "$F"` in
-	func3.go | const2.go | char_lit1.go | blank1.go | ddd1.go | \
+	func3.go | const2.go | char_lit1.go | \
 	bug014.go | bug050.go |  bug068.go |  bug083.go | bug088.go | \
 	bug106.go | bug121.go | bug125.go | bug133.go | bug160.go | \
 	bug163.go | bug166.go | bug169.go | bug217.go | bug222.go | \
 	bug226.go | bug228.go | bug248.go | bug274.go | bug280.go | \
 	bug282.go | bug287.go | bug298.go | bug299.go | bug300.go | \
-	bug302.go | bug306.go | bug322.go | bug324.go | bug335.go | \
-	bug340.go ) return ;;
+	bug302.go | bug306.go ) return ;;
 	esac
 	# the following directories are skipped because they contain test
 	# cases for syntax errors and thus won't parse in the first place:

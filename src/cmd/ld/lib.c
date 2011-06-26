@@ -31,8 +31,6 @@
 
 #include	"l.h"
 #include	"lib.h"
-#include	"../../pkg/runtime/stack.h"
-
 #include	<ar.h>
 
 int iconv(Fmt*);
@@ -61,7 +59,6 @@ void
 libinit(void)
 {
 	fmtinstall('i', iconv);
-	fmtinstall('Y', Yconv);
 	mywhatsys();	// get goroot, goarch, goos
 	if(strcmp(goarch, thestring) != 0)
 		print("goarch is not known: %s\n", goarch);
@@ -69,7 +66,7 @@ libinit(void)
 	// add goroot to the end of the libdir list.
 	libdir[nlibdir++] = smprint("%s/pkg/%s_%s", goroot, goos, goarch);
 
-	remove(outfile);
+	unlink(outfile);
 	cout = create(outfile, 1, 0775);
 	if(cout < 0) {
 		diag("cannot create %s", outfile);
@@ -235,52 +232,30 @@ addlibpath(char *srcref, char *objref, char *file, char *pkg)
 }
 
 void
-loadinternal(char *name)
+loadlib(void)
 {
 	char pname[1024];
 	int i, found;
 
 	found = 0;
 	for(i=0; i<nlibdir; i++) {
-		snprint(pname, sizeof pname, "%s/%s.a", libdir[i], name);
+		snprint(pname, sizeof pname, "%s/runtime.a", libdir[i]);
 		if(debug['v'])
-			Bprint(&bso, "searching for %s.a in %s\n", name, pname);
+			Bprint(&bso, "searching for runtime.a in %s\n", pname);
 		if(access(pname, AEXIST) >= 0) {
-			addlibpath("internal", "internal", pname, name);
+			addlibpath("internal", "internal", pname, "runtime");
 			found = 1;
 			break;
 		}
 	}
 	if(!found)
-		Bprint(&bso, "warning: unable to find %s.a\n", name);
-}
-
-void
-loadlib(void)
-{
-	int i;
-
-	loadinternal("runtime");
-	if(thechar == '5')
-		loadinternal("math");
+		Bprint(&bso, "warning: unable to find runtime.a\n");
 
 	for(i=0; i<libraryp; i++) {
 		if(debug['v'])
 			Bprint(&bso, "%5.2f autolib: %s (from %s)\n", cputime(), library[i].file, library[i].objref);
 		objfile(library[i].file, library[i].pkg);
 	}
-	
-	// We've loaded all the code now.
-	// If there are no dynamic libraries needed, gcc disables dynamic linking.
-	// Because of this, glibc's dynamic ELF loader occasionally (like in version 2.13)
-	// assumes that a dynamic binary always refers to at least one dynamic library.
-	// Rather than be a source of test cases for glibc, disable dynamic linking
-	// the same way that gcc would.
-	//
-	// Exception: on OS X, programs such as Shark only work with dynamic
-	// binaries, so leave it enabled on OS X (Mach-O) binaries.
-	if(!havedynamic && HEADTYPE != Hdarwin)
-		debug['d'] = 1;
 }
 
 /*
@@ -403,11 +378,15 @@ ldobj(Biobuf *f, char *pkg, int64 len, char *pn, int whence)
 	int n, c1, c2, c3, c4;
 	uint32 magic;
 	vlong import0, import1, eof;
-	char *t;
+	char src[1024];
 
 	eof = Boffset(f) + len;
+	src[0] = '\0';
 
 	pn = strdup(pn);
+	
+	USED(c4);
+	USED(magic);
 
 	c1 = Bgetc(f);
 	c2 = Bgetc(f);
@@ -417,7 +396,7 @@ ldobj(Biobuf *f, char *pkg, int64 len, char *pn, int whence)
 	Bungetc(f);
 	Bungetc(f);
 	Bungetc(f);
-
+	
 	magic = c1<<24 | c2<<16 | c3<<8 | c4;
 	if(magic == 0x7f454c46) {	// \x7F E L F
 		ldelf(f, pkg, len, pn);
@@ -436,34 +415,22 @@ ldobj(Biobuf *f, char *pkg, int64 len, char *pn, int whence)
 	line = Brdline(f, '\n');
 	if(line == nil) {
 		if(Blinelen(f) > 0) {
-			diag("%s: not an object file", pn);
+			diag("%s: malformed object file", pn);
 			return;
 		}
 		goto eof;
 	}
 	n = Blinelen(f) - 1;
-	line[n] = '\0';
-	if(strncmp(line, "go object ", 10) != 0) {
+	if(n != strlen(thestring) || strncmp(line, thestring, n) != 0) {
+		if(line)
+			line[n] = '\0';
 		if(strlen(pn) > 3 && strcmp(pn+strlen(pn)-3, ".go") == 0) {
 			print("%cl: input %s is not .%c file (use %cg to compile .go files)\n", thechar, pn, thechar, thechar);
 			errorexit();
 		}
-		if(strcmp(line, thestring) == 0) {
-			// old header format: just $GOOS
-			diag("%s: stale object file", pn);
-			return;
-		}
-		diag("%s: not an object file", pn);
+		diag("file not %s [%s]\n", thestring, line);
 		return;
 	}
-	t = smprint("%s %s %s", getgoos(), thestring, getgoversion());
-	if(strcmp(line+10, t) != 0 && !debug['f']) {
-		diag("%s: object is [%s] expected [%s]", pn, line+10, t);
-		free(t);
-		return;
-	}
-	free(t);
-	line[n] = '\n';
 
 	/* skip over exports and other info -- ends with \n!\n */
 	import0 = Boffset(f);
@@ -490,8 +457,8 @@ eof:
 	diag("truncated object file: %s", pn);
 }
 
-static Sym*
-_lookup(char *symb, int v, int creat)
+Sym*
+lookup(char *symb, int v)
 {
 	Sym *s;
 	char *p;
@@ -506,10 +473,9 @@ _lookup(char *symb, int v, int creat)
 	h &= 0xffffff;
 	h %= NHASH;
 	for(s = hash[h]; s != S; s = s->hash)
+		if(s->version == v)
 		if(memcmp(s->name, symb, l) == 0)
 			return s;
-	if(!creat)
-		return nil;
 
 	s = mal(sizeof(*s));
 	if(debug['v'] > 1)
@@ -529,23 +495,7 @@ _lookup(char *symb, int v, int creat)
 	s->size = 0;
 	hash[h] = s;
 	nsymbol++;
-
-	s->allsym = allsym;
-	allsym = s;
 	return s;
-}
-
-Sym*
-lookup(char *name, int v)
-{
-	return _lookup(name, v, 1);
-}
-
-// read-only lookup
-Sym*
-rlookup(char *name, int v)
-{
-	return _lookup(name, v, 0);
 }
 
 void
@@ -556,6 +506,7 @@ copyhistfrog(char *buf, int nbuf)
 
 	p = buf;
 	ep = buf + nbuf;
+	i = 0;
 	for(i=0; i<histfrogp; i++) {
 		p = seprint(p, ep, "%s", histfrog[i]->name+1);
 		if(i+1<histfrogp && (p == buf || p[-1] != '/'))
@@ -865,7 +816,7 @@ unmal(void *v, uint32 n)
 // Copied from ../gc/subr.c:/^pathtoprefix; must stay in sync.
 /*
  * Convert raw string to the prefix that will be used in the symbol table.
- * Invalid bytes turn into %xx.	 Right now the only bytes that need
+ * Invalid bytes turn into %xx.  Right now the only bytes that need
  * escaping are %, ., and ", but we escape all control characters too.
  */
 static char*
@@ -1050,7 +1001,7 @@ mkfwd(void)
 	Prog *p;
 	int i;
 	int32 dwn[LOG], cnt[LOG];
-	Prog *lst[LOG];
+	Prog *lst[LOG], *last;
 
 	for(i=0; i<LOG; i++) {
 		if(i == 0)
@@ -1061,6 +1012,7 @@ mkfwd(void)
 		lst[i] = P;
 	}
 	i = 0;
+	last = nil;
 	for(cursym = textp; cursym != nil; cursym = cursym->next) {
 		for(p = cursym->text; p != P; p = p->link) {
 			if(p->link == P) {
@@ -1121,241 +1073,3 @@ be64(uchar *b)
 
 Endian be = { be16, be32, be64 };
 Endian le = { le16, le32, le64 };
-
-typedef struct Chain Chain;
-struct Chain
-{
-	Sym *sym;
-	Chain *up;
-	int limit;  // limit on entry to sym
-};
-
-static int stkcheck(Chain*, int);
-static void stkprint(Chain*, int);
-static void stkbroke(Chain*, int);
-static Sym *morestack;
-static Sym *newstack;
-
-enum
-{
-	HasLinkRegister = (thechar == '5'),
-	CallSize = (!HasLinkRegister)*PtrSize,	// bytes of stack required for a call
-};
-
-void
-dostkcheck(void)
-{
-	Chain ch;
-	Sym *s;
-	
-	morestack = lookup("runtime.morestack", 0);
-	newstack = lookup("runtime.newstack", 0);
-
-	// First the nosplits on their own.
-	for(s = textp; s != nil; s = s->next) {
-		if(s->text == nil || s->text->link == nil || (s->text->textflag & NOSPLIT) == 0)
-			continue;
-		cursym = s;
-		ch.up = nil;
-		ch.sym = s;
-		ch.limit = StackLimit - CallSize;
-		stkcheck(&ch, 0);
-		s->stkcheck = 1;
-	}
-	
-	// Check calling contexts.
-	// Some nosplits get called a little further down,
-	// like newproc and deferproc.	We could hard-code
-	// that knowledge but it's more robust to look at
-	// the actual call sites.
-	for(s = textp; s != nil; s = s->next) {
-		if(s->text == nil || s->text->link == nil || (s->text->textflag & NOSPLIT) != 0)
-			continue;
-		cursym = s;
-		ch.up = nil;
-		ch.sym = s;
-		ch.limit = StackLimit - CallSize;
-		stkcheck(&ch, 0);
-	}
-}
-
-static int
-stkcheck(Chain *up, int depth)
-{
-	Chain ch, ch1;
-	Prog *p;
-	Sym *s;
-	int limit, prolog;
-	
-	limit = up->limit;
-	s = up->sym;
-	p = s->text;
-	
-	// Small optimization: don't repeat work at top.
-	if(s->stkcheck && limit == StackLimit-CallSize)
-		return 0;
-	
-	if(depth > 100) {
-		diag("nosplit stack check too deep");
-		stkbroke(up, 0);
-		return -1;
-	}
-
-	if(p == nil || p->link == nil) {
-		// external function.
-		// should never be called directly.
-		// only diagnose the direct caller.
-		if(depth == 1)
-			diag("call to external function %s", s->name);
-		return -1;
-	}
-
-	if(limit < 0) {
-		stkbroke(up, limit);
-		return -1;
-	}
-
-	// morestack looks like it calls functions,
-	// but it switches the stack pointer first.
-	if(s == morestack)
-		return 0;
-
-	ch.up = up;
-	prolog = (s->text->textflag & NOSPLIT) == 0;
-	for(p = s->text; p != P; p = p->link) {
-		limit -= p->spadj;
-		if(prolog && p->spadj != 0) {
-			// The first stack adjustment in a function with a
-			// split-checking prologue marks the end of the
-			// prologue.  Assuming the split check is correct,
-			// after the adjustment there should still be at least
-			// StackLimit bytes available below the stack pointer.
-			// If this is not the top call in the chain, no need
-			// to duplicate effort, so just stop.
-			if(depth > 0)
-				return 0;
-			prolog = 0;
-			limit = StackLimit;
-		}
-		if(limit < 0) {
-			stkbroke(up, limit);
-			return -1;
-		}
-		if(iscall(p)) {
-			limit -= CallSize;
-			ch.limit = limit;
-			if(p->to.type == D_BRANCH) {
-				// Direct call.
-				ch.sym = p->to.sym;
-				if(stkcheck(&ch, depth+1) < 0)
-					return -1;
-			} else {
-				// Indirect call.  Assume it is a splitting function,
-				// so we have to make sure it can call morestack.
-				limit -= CallSize;
-				ch.sym = nil;
-				ch1.limit = limit;
-				ch1.up = &ch;
-				ch1.sym = morestack;
-				if(stkcheck(&ch1, depth+2) < 0)
-					return -1;
-				limit += CallSize;
-			}
-			limit += CallSize;
-		}
-		
-	}
-	return 0;
-}
-
-static void
-stkbroke(Chain *ch, int limit)
-{
-	diag("nosplit stack overflow");
-	stkprint(ch, limit);
-}
-
-static void
-stkprint(Chain *ch, int limit)
-{
-	char *name;
-
-	if(ch->sym)
-		name = ch->sym->name;
-	else
-		name = "function pointer";
-
-	if(ch->up == nil) {
-		// top of chain.  ch->sym != nil.
-		if(ch->sym->text->textflag & NOSPLIT)
-			print("\t%d\tassumed on entry to %s\n", ch->limit, name);
-		else
-			print("\t%d\tguaranteed after split check in %s\n", ch->limit, name);
-	} else {
-		stkprint(ch->up, ch->limit + (!HasLinkRegister)*PtrSize);
-		if(!HasLinkRegister)
-			print("\t%d\ton entry to %s\n", ch->limit, name);
-	}
-	if(ch->limit != limit)
-		print("\t%d\tafter %s uses %d\n", limit, name, ch->limit - limit);
-}
-
-int
-headtype(char *name)
-{
-	int i;
-
-	for(i=0; headers[i].name; i++)
-		if(strcmp(name, headers[i].name) == 0) {
-			headstring = headers[i].name;
-			return headers[i].val;
-		}
-	fprint(2, "unknown header type -H %s\n", name);
-	errorexit();
-	return -1;  // not reached
-}
-
-void
-undef(void)
-{
-	Sym *s;
-
-	for(s = allsym; s != S; s = s->allsym)
-		if(s->type == SXREF)
-			diag("%s(%d): not defined", s->name, s->version);
-}
-
-int
-Yconv(Fmt *fp)
-{
-	Sym *s;
-	Fmt fmt;
-	int i;
-	char *str;
-
-	s = va_arg(fp->args, Sym*);
-	if (s == S) {
-		fmtprint(fp, "<nil>");
-	} else {
-		fmtstrinit(&fmt);
-		fmtprint(&fmt, "%s @0x%08x [%d]", s->name, s->value, s->size);
-		for (i = 0; i < s->size; i++) {
-			if (!(i%8)) fmtprint(&fmt,  "\n\t0x%04x ", i);
-			fmtprint(&fmt, "%02x ", s->p[i]);
-		}
-		fmtprint(&fmt, "\n");
-		for (i = 0; i < s->nr; i++) {
-			fmtprint(&fmt, "\t0x%04x[%x] %d %s[%llx]\n",
-			      s->r[i].off,
-			      s->r[i].siz,
-			      s->r[i].type,
-			      s->r[i].sym->name,
-			      (vlong)s->r[i].add);
-		}
-		str = fmtstrflush(&fmt);
-		fmtstrcpy(fp, str);
-		free(str);
-	}
-
-	return 0;
-}

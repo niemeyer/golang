@@ -32,9 +32,22 @@
 
 #include	"l.h"
 #include	"../ld/lib.h"
-#include "../../pkg/runtime/stack.h"
 
 static void xfol(Prog*, Prog**);
+
+// see ../../pkg/runtime/proc.c:/StackGuard
+enum
+{
+#ifdef __WINDOWS__
+	// use larger stacks to compensate for larger stack guard,
+	// needed for exception handling.
+	StackSmall = 256,
+	StackBig = 8192,
+#else
+	StackSmall = 128,
+	StackBig = 4096,
+#endif
+};
 
 Prog*
 brchain(Prog *p)
@@ -237,7 +250,6 @@ patch(void)
 	Prog *p, *q;
 	Sym *s;
 	int32 vexit;
-	Sym *plan9_tos;
 
 	if(debug['v'])
 		Bprint(&bso, "%5.2f mkfwd\n", cputime());
@@ -248,14 +260,9 @@ patch(void)
 	Bflush(&bso);
 	s = lookup("exit", 0);
 	vexit = s->value;
-	
-	plan9_tos = S;
-	if(HEADTYPE == Hplan9x32)
-		plan9_tos = lookup("_tos", 0);
-	
 	for(cursym = textp; cursym != nil; cursym = cursym->next) {
 		for(p = cursym->text; p != P; p = p->link) {
-			if(HEADTYPE == Hwindows) {
+			if(HEADTYPE == 10) {	// Windows
 				// Convert
 				//   op	  n(GS), reg
 				// to
@@ -276,7 +283,7 @@ patch(void)
 					p->from.offset = 0x2C;
 				}
 			}
-			if(HEADTYPE == Hlinux) {
+			if(HEADTYPE == 7) {	// Linux
 				// Running binaries under Xen requires using
 				//	MOVL 0(GS), reg
 				// and then off(reg) instead of saying off(GS) directly
@@ -293,18 +300,12 @@ patch(void)
 					p->from.offset = 0;
 				}
 			}
-			if(HEADTYPE == Hplan9x32) {
+			if(HEADTYPE == 2) {	// Plan 9
 				if(p->from.type == D_INDIR+D_GS
 				&& p->to.type >= D_AX && p->to.type <= D_DI) {
-					q = appendp(p);
-					q->from = p->from;
-					q->from.type = D_INDIR + p->to.type;
-					q->to = p->to;
-					q->as = p->as;
 					p->as = AMOVL;
-					p->from.type = D_EXTERN;
-					p->from.sym = plan9_tos;
-					p->from.offset = 0;
+					p->from.type = D_ADDR+D_STATIC;
+					p->from.offset += 0xdfffefc0;
 				}
 			}
 			if(p->as == ACALL || (p->as == AJMP && p->to.type != D_BRANCH)) {
@@ -388,7 +389,6 @@ dostkoff(void)
 	int a;
 	Prog *pmorestack;
 	Sym *symmorestack;
-	Sym *plan9_tos;
 
 	pmorestack = P;
 	symmorestack = lookup("runtime.morestack", 0);
@@ -399,10 +399,6 @@ dostkoff(void)
 		pmorestack = symmorestack->text;
 		symmorestack->text->from.scale |= NOSPLIT;
 	}
-	
-	plan9_tos = S;
-	if(HEADTYPE == Hplan9x32)
-		plan9_tos = lookup("_tos", 0);
 
 	for(cursym = textp; cursym != nil; cursym = cursym->next) {
 		if(cursym->text == nil || cursym->text->link == nil)
@@ -414,11 +410,12 @@ dostkoff(void)
 			autoffset = 0;
 
 		q = P;
+		q1 = P;
 		if(pmorestack != P)
 		if(!(p->from.scale & NOSPLIT)) {
 			p = appendp(p);	// load g into CX
 			switch(HEADTYPE) {
-			case Hwindows:
+			case 10:	// Windows
 				p->as = AMOVL;
 				p->from.type = D_INDIR+D_FS;
 				p->from.offset = 0x2c;
@@ -431,7 +428,7 @@ dostkoff(void)
 				p->to.type = D_CX;
 				break;
 			
-			case Hlinux:
+			case 7:	// Linux
 				p->as = AMOVL;
 				p->from.type = D_INDIR+D_GS;
 				p->from.offset = 0;
@@ -444,17 +441,11 @@ dostkoff(void)
 				p->to.type = D_CX;
 				break;
 			
-			case Hplan9x32:
+			case 2:	// Plan 9
 				p->as = AMOVL;
-				p->from.type = D_EXTERN;
-				p->from.sym = plan9_tos;
+				p->from.type = D_ADDR+D_STATIC;
+				p->from.offset = 0xdfffefc0;
 				p->to.type = D_CX;
-				
-				p = appendp(p);
-				p->as = AMOVL;
-				p->from.type = D_INDIR+D_CX;
-				p->from.offset = tlsoffset + 0;
-				p->to.type = D_CX;				
 				break;
 			
 			default:
@@ -526,7 +517,7 @@ dostkoff(void)
 			p->to.type = D_DX;
 			/* 160 comes from 3 calls (3*8) 4 safes (4*8) and 104 guard */
 			p->from.type = D_CONST;
-			if(autoffset+160+cursym->text->to.offset2 > 4096)
+			if(autoffset+160 > 4096)
 				p->from.offset = (autoffset+160) & ~7LL;
 
 			p = appendp(p);	// save arg size in AX
@@ -600,17 +591,14 @@ dostkoff(void)
 				diag("unbalanced PUSH/POP");
 	
 			if(autoffset) {
-				p->as = AADJSP;
-				p->from.type = D_CONST;
-				p->from.offset = -autoffset;
-				p->spadj = -autoffset;
+				q = p;
 				p = appendp(p);
 				p->as = ARET;
-				// If there are instructions following
-				// this ARET, they come from a branch
-				// with the same stackframe, so undo
-				// the cleanup.
-				p->spadj = +autoffset;
+	
+				q->as = AADJSP;
+				q->from.type = D_CONST;
+				q->from.offset = -autoffset;
+				p->spadj = -autoffset;
 			}
 		}
 	}
@@ -654,4 +642,16 @@ atolwhex(char *s)
 	if(f)
 		n = -n;
 	return n;
+}
+
+void
+undef(void)
+{
+	int i;
+	Sym *s;
+
+	for(i=0; i<NHASH; i++)
+	for(s = hash[i]; s != S; s = s->hash)
+		if(s->type == SXREF)
+			diag("%s(%d): not defined", s->name, s->version);
 }

@@ -138,7 +138,6 @@ typedef	struct	Sym	Sym;
 typedef	struct	Node	Node;
 typedef	struct	NodeList	NodeList;
 typedef	struct	Type	Type;
-typedef	struct	Label	Label;
 
 struct	Type
 {
@@ -225,7 +224,6 @@ struct	Node
 	Type*	realtype;	// as determined by typecheck
 	NodeList*	list;
 	NodeList*	rlist;
-	Node*	orig;		// original form, for printing, and tracking copies of ONAMEs
 
 	// for-body
 	NodeList*	ninit;
@@ -254,7 +252,6 @@ struct	Node
 	Node*	ntype;
 	Node*	defn;
 	Node*	pack;	// real package for import . names
-	Node*	curfn;	// function for local variables
 
 	// ONAME func param with PHEAP
 	Node*	heapaddr;	// temp holding heap address of param
@@ -273,12 +270,10 @@ struct	Node
 	int32	lineno;
 	int32	endlineno;
 	vlong	xoffset;
-	int32	stkdelta;	// offset added by stack frame compaction phase.
 	int32	ostk;
 	int32	iota;
 };
 #define	N	((Node*)0)
-EXTERN	int32	walkgen;
 
 struct	NodeList
 {
@@ -307,19 +302,15 @@ struct	Sym
 	Pkg*	pkg;
 	char*	name;		// variable name
 	Node*	def;		// definition: ONAME OTYPE OPACK or OLITERAL
-	Label*	label;	// corresponding label (ephemeral)
 	int32	block;		// blocknumber to catch redeclaration
 	int32	lastlineno;	// last declaration for diagnostic
 };
 #define	S	((Sym*)0)
 
-EXTERN	Sym*	dclstack;
-
 struct	Pkg
 {
 	char*	name;
 	Strlit*	path;
-	Sym*	pathsym;
 	char*	prefix;
 	Pkg*	link;
 	char	exported;	// import line written in export data
@@ -365,11 +356,12 @@ enum
 	OARRAY,
 	OARRAYBYTESTR, OARRAYRUNESTR,
 	OSTRARRAYBYTE, OSTRARRAYRUNE,
-	OAS, OAS2, OAS2MAPW, OAS2FUNC, OAS2RECV, OAS2MAPR, OAS2DOTTYPE, OASOP,
+	OAS, OAS2, OAS2MAPW, OAS2FUNC, OAS2RECV, OAS2RECVCLOSED, OAS2MAPR, OAS2DOTTYPE, OASOP,
 	OBAD,
 	OCALL, OCALLFUNC, OCALLMETH, OCALLINTER,
 	OCAP,
 	OCLOSE,
+	OCLOSED,
 	OCLOSURE,
 	OCMPIFACE, OCMPSTR,
 	OCOMPLIT, OMAPLIT, OSTRUCTLIT, OARRAYLIT,
@@ -391,13 +383,12 @@ enum
 	ONOT, OCOM, OPLUS, OMINUS,
 	OOROR,
 	OPANIC, OPRINT, OPRINTN,
-	OSEND,
+	OSEND, OSENDNB,
 	OSLICE, OSLICEARR, OSLICESTR,
 	ORECOVER,
 	ORECV,
 	ORUNESTR,
 	OSELRECV,
-	OSELRECV2,
 	OIOTA,
 	OREAL, OIMAG, OCOMPLEX,
 
@@ -450,28 +441,27 @@ enum
 	TCOMPLEX64,		// 12
 	TCOMPLEX128,
 
-	TFLOAT32,		// 14
+	TFLOAT32,		// 15
 	TFLOAT64,
 
-	TBOOL,			// 16
+	TBOOL,			// 18
 
-	TPTR32, TPTR64,		// 17
+	TPTR32, TPTR64,		// 19
 
-	TFUNC,			// 19
+	TFUNC,			// 21
 	TARRAY,
 	T_old_DARRAY,
-	TSTRUCT,		// 22
+	TSTRUCT,		// 24
 	TCHAN,
 	TMAP,
-	TINTER,			// 25
+	TINTER,			// 27
 	TFORW,
 	TFIELD,
 	TANY,
 	TSTRING,
-	TUNSAFEPTR,
 
 	// pseudo-types for literals
-	TIDEAL,			// 31
+	TIDEAL,			// 32
 	TNIL,
 	TBLANK,
 
@@ -520,16 +510,15 @@ enum
 
 enum
 {
-	Etop = 1<<1,		// evaluated at statement level
-	Erv = 1<<2,		// evaluated in value context
+	Etop = 1<<1,	// evaluated at statement level
+	Erv = 1<<2,	// evaluated in value context
 	Etype = 1<<3,
-	Ecall = 1<<4,		// call-only expressions are ok
+	Ecall = 1<<4,	// call-only expressions are ok
 	Efnstruct = 1<<5,	// multivalue function returns are ok
 	Eiota = 1<<6,		// iota is ok
 	Easgn = 1<<7,		// assigning to expression
 	Eindir = 1<<8,		// indirecting through expression
 	Eaddr = 1<<9,		// taking address of expression
-	Eproc = 1<<10,		// inside a go statement
 };
 
 #define	BITS	5
@@ -549,7 +538,6 @@ struct	Var
 	vlong	offset;
 	Sym*	sym;
 	Sym*	gotype;
-	Node*	node;
 	int	width;
 	char	name;
 	char	etype;
@@ -588,7 +576,6 @@ struct	Io
 	Biobuf*	bin;
 	int32	ilineno;
 	int	nlsemi;
-	int	eofnl;
 	int	peekc;
 	int	peekc1;	// second peekc for ...
 	char*	cp;	// used for content when bin==nil
@@ -631,21 +618,20 @@ struct	Magic
 
 typedef struct	Prog Prog;
 
+typedef	struct	Label Label;
 struct	Label
 {
-	uchar	used;
+	uchar	op;		// OGOTO/OLABEL
 	Sym*	sym;
-	Node*	def;
-	NodeList*	use;
-	Label*	link;
-	
-	// for use during gen
-	Prog*	gotopc;	// pointer to unresolved gotos
-	Prog*	labelpc;	// pointer to code
+	Node*	stmt;
+	Prog*	label;		// pointer to code
 	Prog*	breakpc;	// pointer to code
 	Prog*	continpc;	// pointer to code
+	Label*	link;
 };
 #define	L	((Label*)0)
+
+EXTERN	Label*	labellist;
 
 /*
  * note this is the runtime representation
@@ -691,7 +677,6 @@ EXTERN	char*	infile;
 EXTERN	char*	outfile;
 EXTERN	Biobuf*	bout;
 EXTERN	int	nerrors;
-EXTERN	int	nsavederrors;
 EXTERN	int	nsyntaxerrors;
 EXTERN	int	safemode;
 EXTERN	char	namebuf[NSYMB];
@@ -820,9 +805,8 @@ int	bset(Bits a, uint n);
  */
 Node*	closurebody(NodeList *body);
 void	closurehdr(Node *ntype);
-void	typecheckclosure(Node *func, int top);
+void	typecheckclosure(Node *func);
 Node*	walkclosure(Node *func, NodeList **init);
-void	walkcallclosure(Node *n, NodeList **init);
 
 /*
  *	const.c
@@ -865,6 +849,7 @@ NodeList*	checkarglist(NodeList *all, int input);
 Node*	colas(NodeList *left, NodeList *right);
 void	colasdefn(NodeList *left, Node *defn);
 NodeList*	constiter(NodeList *vl, Node *t, NodeList *cl);
+void	dclchecks(void);
 Node*	dclname(Sym *s);
 void	declare(Node *n, int ctxt);
 Type*	dostruct(NodeList *l, int et);
@@ -875,7 +860,6 @@ void	funcbody(Node *n);
 void	funccompile(Node *n, int isclosure);
 void	funchdr(Node *n);
 Type*	functype(Node *this, NodeList *in, NodeList *out);
-void	ifacedcl(Node *n);
 int	isifacemethod(Type *f);
 void	markdcl(void);
 Node*	methodname(Node *n, Type *t);
@@ -914,7 +898,6 @@ Type*	pkgtype(Sym *s);
 void	allocparams(void);
 void	cgen_as(Node *nl, Node *nr);
 void	cgen_callmeth(Node *n, int proc);
-void	clearlabels(void);
 void	checklabels(void);
 int	dotoffset(Node *n, int *oary, Node **nn);
 void	gen(Node *n);
@@ -1010,10 +993,8 @@ int	duint32(Sym *s, int off, uint32 v);
 int	duint64(Sym *s, int off, uint64 v);
 int	duint8(Sym *s, int off, uint8 v);
 int	duintptr(Sym *s, int off, uint64 v);
-int	dsname(Sym *s, int off, char *dat, int ndat);
 void	dumpobj(void);
 void	ieeedtod(uint64 *ieee, double native);
-Sym*	stringsym(char*, int);
 
 /*
  *	print.c
@@ -1110,7 +1091,6 @@ int	istype(Type *t, int et);
 void	linehist(char *file, int32 off, int relative);
 NodeList*	list(NodeList *l, Node *n);
 NodeList*	list1(Node *n);
-void	listsort(NodeList**, int(*f)(Node*, Node*));
 Node*	liststmt(NodeList *l);
 NodeList*	listtreecopy(NodeList *l);
 Sym*	lookup(char *name);
@@ -1133,7 +1113,6 @@ Type*	ptrto(Type *t);
 void*	remal(void *p, int32 on, int32 n);
 Sym*	restrictlookup(char *name, Pkg *pkg);
 Node*	safeexpr(Node *n, NodeList **init);
-void	saveerrors(void);
 Node*	cheapexpr(Node *n, NodeList **init);
 int32	setlineno(Node *n);
 void	setmaxarg(Type *t);
@@ -1170,11 +1149,6 @@ int	exportassignok(Type *t, char *desc);
 int	islvalue(Node *n);
 Node*	typecheck(Node **np, int top);
 void	typechecklist(NodeList *l, int top);
-Node*	typecheckdef(Node *n);
-void	resumetypecopy(void);
-void	copytype(Node *n, Type *t);
-void	defertypecopy(Node *n, Type *t);
-void	queuemethod(Node *n);
 
 /*
  *	unsafe.c
@@ -1188,8 +1162,10 @@ Node*	callnew(Type *t);
 Node*	chanfn(char *name, int n, Type *t);
 Node*	mkcall(char *name, Type *t, NodeList **init, ...);
 Node*	mkcall1(Node *fn, Type *t, NodeList **init, ...);
+void	queuemethod(Node *n);
 int	vmatch1(Node *l, Node *r);
 void	walk(Node *fn);
+Node*	walkdef(Node *n);
 void	walkexpr(Node **np, NodeList **init);
 void	walkexprlist(NodeList *l, NodeList **init);
 void	walkexprlistsafe(NodeList *l, NodeList **init);
@@ -1197,7 +1173,7 @@ void	walkstmt(Node **np);
 void	walkstmtlist(NodeList *l);
 
 /*
- *	arch-specific ggen.c/gsubr.c/gobj.c/pgen.c
+ *	arch-specific ggen.c/gsubr.c/gobj.c
  */
 #define	P	((Prog*)0)
 
@@ -1217,7 +1193,6 @@ EXTERN	Prog*	continpc;
 EXTERN	Prog*	breakpc;
 EXTERN	Prog*	pc;
 EXTERN	Prog*	firstpc;
-EXTERN	Prog*	retpc;
 
 EXTERN	Node*	nodfp;
 
@@ -1231,7 +1206,6 @@ void	cgen_callinter(Node *n, Node *res, int proc);
 void	cgen_ret(Node *n);
 void	clearfat(Node *n);
 void	compile(Node*);
-void	defframe(Prog*);
 int	dgostringptr(Sym*, int off, char *str);
 int	dgostrlitptr(Sym*, int off, Strlit*);
 int	dstringptr(Sym *s, int off, char *str);
@@ -1239,7 +1213,6 @@ int	dsymptr(Sym *s, int off, Sym *x, int xoff);
 int	duintxx(Sym *s, int off, uint64 v, int wid);
 void	dumpdata(void);
 void	dumpfuncs(void);
-void	fixautoused(Prog*);
 void	gdata(Node*, Node*, int);
 void	gdatacomplex(Node*, Mpcplx*);
 void	gdatastring(Node*, Strlit*);
@@ -1249,15 +1222,10 @@ void	ggloblsym(Sym *s, int32 width, int dupok);
 Prog*	gjmp(Prog*);
 void	gused(Node*);
 int	isfat(Type*);
-void	markautoused(Prog*);
 Plist*	newplist(void);
 Node*	nodarg(Type*, int);
 void	nopout(Prog*);
 void	patch(Prog*, Prog*);
-Prog*	unpatch(Prog*);
 void	zfile(Biobuf *b, char *p, int n);
 void	zhist(Biobuf *b, int line, vlong offset);
 void	zname(Biobuf *b, Sym *s, int t);
-void	data(void);
-void	text(void);
-

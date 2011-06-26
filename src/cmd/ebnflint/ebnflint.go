@@ -13,7 +13,7 @@ import (
 	"go/token"
 	"io/ioutil"
 	"os"
-	"path/filepath"
+	"path"
 )
 
 
@@ -88,21 +88,18 @@ func main() {
 	src, err := ioutil.ReadFile(filename)
 	if err != nil {
 		scanner.PrintError(os.Stderr, err)
-		os.Exit(1)
 	}
 
-	if filepath.Ext(filename) == ".html" {
+	if path.Ext(filename) == ".html" {
 		src = extractEBNF(src)
 	}
 
 	grammar, err := ebnf.Parse(fset, filename, src)
 	if err != nil {
 		scanner.PrintError(os.Stderr, err)
-		os.Exit(1)
 	}
 
 	if err = ebnf.Verify(fset, grammar, *start); err != nil {
 		scanner.PrintError(os.Stderr, err)
-		os.Exit(1)
 	}
 }

@@ -11,7 +11,7 @@ import (
 )
 
 func testTimeout(t *testing.T, network, addr string, readFrom bool) {
-	fd, err := Dial(network, addr)
+	fd, err := Dial(network, "", addr)
 	if err != nil {
 		t.Errorf("dial %s %s failed: %v", network, addr, err)
 		return
@@ -46,12 +46,8 @@ func TestTimeoutUDP(t *testing.T) {
 }
 
 func TestTimeoutTCP(t *testing.T) {
-	// set up a listener that won't talk back
-	listening := make(chan string)
-	done := make(chan int)
-	go runServe(t, "tcp", "127.0.0.1:0", listening, done)
-	addr := <-listening
-
-	testTimeout(t, "tcp", addr, false)
-	<-done
+	// 74.125.19.99 is www.google.com.
+	// could use dns, but dns depends on
+	// timeouts and this is the timeout test.
+	testTimeout(t, "tcp", "74.125.19.99:80", false)
 }

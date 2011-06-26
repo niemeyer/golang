@@ -28,16 +28,10 @@ Options new in this version:
 -e
 	Emit an extra ELF-compatible symbol table useful with tools such as
 	nm, gdb, and oprofile. This option makes the binary file considerably larger.
--Hdarwin
+-H6
 	Write Apple Mach-O binaries (default when $GOOS is darwin)
--Hlinux
+-H7
 	Write Linux ELF binaries (default when $GOOS is linux)
--Hfreebsd
-	Write FreeBSD ELF binaries (default when $GOOS is freebsd)
--Hwindows
-	Write Windows PE32+ binaries (default when $GOOS is windows)
--I interpreter
-	Set the ELF dynamic linker to use.
 -L dir1 -L dir2
 	Search for libraries (package files) in dir1, dir2, etc.
 	The default is the single location $GOROOT/pkg/$GOOS_amd64.

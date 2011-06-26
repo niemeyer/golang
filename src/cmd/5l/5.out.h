@@ -53,6 +53,8 @@
 #define	REGLINK		14
 #define	REGPC		15
 
+#define	REGTMPT		7	/* used by the loader for thumb code */
+
 #define	NFREG		8
 #define	FREGRET		0
 #define	FREGEXT		7
@@ -124,8 +126,6 @@ enum	as
 	AMULD,
 	ADIVF,
 	ADIVD,
-	ASQRTF,
-	ASQRTD,
 
 	ASRL,
 	ASRA,
@@ -179,9 +179,6 @@ enum	as
 
 	ALDREX,
 	ASTREX,
-	
-	ALDREXD,
-	ASTREXD,
 
 	ALAST,
 };

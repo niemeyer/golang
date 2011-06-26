@@ -277,7 +277,7 @@ func (t *thread) ptraceDetach() os.Error {
 }
 
 /*
- * Logging utilities
+ * Logging utilties
  */
 
 var logLock sync.Mutex
@@ -1184,7 +1184,7 @@ func (p *process) attachThread(tid int) (*thread, os.Error) {
 // attachAllThreads attaches to all threads in a process.
 func (p *process) attachAllThreads() os.Error {
 	taskPath := "/proc/" + strconv.Itoa(p.pid) + "/task"
-	taskDir, err := os.Open(taskPath)
+	taskDir, err := os.Open(taskPath, os.O_RDONLY, 0)
 	if err != nil {
 		return err
 	}
@@ -1192,7 +1192,7 @@ func (p *process) attachAllThreads() os.Error {
 
 	// We stop threads as we attach to them; however, because new
 	// threads can appear while we're looping over all of them, we
-	// have to repeatedly scan until we know we're attached to all
+	// have to repeatly scan until we know we're attached to all
 	// of them.
 	for again := true; again; {
 		again = false
@@ -1214,7 +1214,7 @@ func (p *process) attachAllThreads() os.Error {
 			_, err = p.attachThread(tid)
 			if err != nil {
 				// There could have been a race, or
-				// this process could be a zombie.
+				// this process could be a zobmie.
 				statFile, err2 := ioutil.ReadFile(taskPath + "/" + tidStr + "/stat")
 				if err2 != nil {
 					switch err2 := err2.(type) {
@@ -1279,33 +1279,25 @@ func Attach(pid int) (Process, os.Error) {
 	return p, nil
 }
 
-// StartProcess forks the current process and execs argv0, stopping the
-// new process after the exec syscall.  See os.StartProcess for additional
+// ForkExec forks the current process and execs argv0, stopping the
+// new process after the exec syscall.  See os.ForkExec for additional
 // details.
-func StartProcess(argv0 string, argv []string, attr *os.ProcAttr) (Process, os.Error) {
-	sysattr := &syscall.ProcAttr{
-		Dir: attr.Dir,
-		Env: attr.Env,
-		Sys: &syscall.SysProcAttr{
-			Ptrace: true,
-		},
-	}
+func ForkExec(argv0 string, argv []string, envv []string, dir string, fd []*os.File) (Process, os.Error) {
 	p := newProcess(-1)
 
 	// Create array of integer (system) fds.
-	intfd := make([]int, len(attr.Files))
-	for i, f := range attr.Files {
+	intfd := make([]int, len(fd))
+	for i, f := range fd {
 		if f == nil {
 			intfd[i] = -1
 		} else {
 			intfd[i] = f.Fd()
 		}
 	}
-	sysattr.Files = intfd
 
 	// Fork from the monitor thread so we get the right tracer pid.
 	err := p.do(func() os.Error {
-		pid, _, errno := syscall.StartProcess(argv0, argv, sysattr)
+		pid, errno := syscall.PtraceForkExec(argv0, argv, envv, dir, intfd)
 		if errno != 0 {
 			return &os.PathError{"fork/exec", argv0, os.Errno(errno)}
 		}

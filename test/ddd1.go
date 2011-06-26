@@ -15,7 +15,7 @@ var (
 	_ = sum()
 	_ = sum(1.0, 2.0)
 	_ = sum(1.5)      // ERROR "integer"
-	_ = sum("hello")  // ERROR "string.*as type int|incompatible"
+	_ = sum("hello")  // ERROR "convert|incompatible"
 	_ = sum([]int{1}) // ERROR "slice literal.*as type int|incompatible"
 )
 
@@ -35,6 +35,7 @@ func bad(args ...int) {
 	ch := make(chan int)
 	close(ch...)	// ERROR "[.][.][.]"
 	_ = len(args...)	// ERROR "[.][.][.]"
+	_ = closed(ch...)	// ERROR "[.][.][.]"
 	_ = new(int...)	// ERROR "[.][.][.]"
 	n := 10
 	_ = make([]byte, n...)	// ERROR "[.][.][.]"
@@ -43,5 +44,4 @@ func bad(args ...int) {
 	var x int
 	_ = unsafe.Pointer(&x...)	// ERROR "[.][.][.]"
 	_ = unsafe.Sizeof(x...)	// ERROR "[.][.][.]"
-	_ = [...]byte("foo") // ERROR "[.][.][.]"
 }

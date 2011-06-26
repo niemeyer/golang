@@ -39,7 +39,6 @@
 
 enum
 {
-	thechar = '6',
 	PtrSize = 8
 };
 
@@ -112,7 +111,6 @@ struct	Prog
 };
 #define	datasize	from.scale
 #define	textflag	from.scale
-#define	iscall(p)	((p)->as == ACALL)
 
 struct	Auto
 {
@@ -131,14 +129,11 @@ struct	Sym
 	uchar	reachable;
 	uchar	dynexport;
 	uchar	special;
-	uchar	stkcheck;
-	uchar	hide;
 	int32	dynid;
 	int32	sig;
 	int32	plt;
 	int32	got;
 	Sym*	hash;	// in hash table
-	Sym*	allsym;	// in all symbol list
 	Sym*	next;	// in text or data list
 	Sym*	sub;	// in SSUB list
 	Sym*	outer;	// container of sub
@@ -148,7 +143,6 @@ struct	Sym
 	char*	file;
 	char*	dynimpname;
 	char*	dynimplib;
-	char*	dynimpvers;
 	
 	// STEXT
 	Auto*	autom;
@@ -180,6 +174,29 @@ struct	Movtab
 
 enum
 {
+	Sxxx,
+	
+	/* order here is order in output file */
+	STEXT		= 1,
+	SELFDATA,
+	SMACHOPLT,
+	SRODATA,
+	SDATA,
+	SMACHOGOT,
+	SWINDOWS,
+	SBSS,
+
+	SXREF,
+	SMACHODYNSTR,
+	SMACHODYNSYM,
+	SMACHOINDIRECTPLT,
+	SMACHOINDIRECTGOT,
+	SFILE,
+	SCONST,
+	SDYNIMPORT,
+	SSUB	= 1<<8,
+
+	NHASH		= 10007,
 	MINSIZ		= 8,
 	STRINGSZ	= 200,
 	MINLC		= 1,
@@ -335,7 +352,6 @@ EXTERN	int	nerrors;
 EXTERN	char*	noname;
 EXTERN	char*	outfile;
 EXTERN	vlong	pc;
-EXTERN	char*	interpreter;
 EXTERN	char*	rpath;
 EXTERN	int32	spsize;
 EXTERN	Sym*	symlist;
@@ -350,6 +366,10 @@ EXTERN	Sym*	fromgotype;	// type symbol on last p->from read
 
 EXTERN	vlong	textstksiz;
 EXTERN	vlong	textarg;
+extern	char	thechar;
+EXTERN	int	elfstrsize;
+EXTERN	char*	elfstrdat;
+EXTERN	int	elftextsh;
 
 extern	Optab	optab[];
 extern	Optab*	opindex[];
@@ -408,7 +428,6 @@ vlong	rnd(vlong, vlong);
 void	span(void);
 void	undef(void);
 vlong	symaddr(Sym*);
-void	vputb(uint64);
 void	vputl(uint64);
 void	wputb(uint16);
 void	wputl(uint16);

@@ -490,7 +490,7 @@ var escapeTests = []URLEscapeTest{
 	},
 	{
 		" ?&=#+%!<>#\"{}|\\^[]`☺\t",
-		"+%3F%26%3D%23%2B%25!%3C%3E%23%22%7B%7D%7C%5C%5E%5B%5D%60%E2%98%BA%09",
+		"+%3f%26%3d%23%2b%25!%3c%3e%23%22%7b%7d%7c%5c%5e%5b%5d%60%e2%98%ba%09",
 		nil,
 	},
 }
@@ -519,7 +519,7 @@ type UserinfoTest struct {
 var userinfoTests = []UserinfoTest{
 	{"user", "password", "user:password"},
 	{"foo:bar", "~!@#$%^&*()_+{}|[]\\-=`:;'\"<>?,./",
-		"foo%3Abar:~!%40%23$%25%5E&*()_+%7B%7D%7C%5B%5D%5C-=%60%3A;'%22%3C%3E?,.%2F"},
+		"foo%3abar:~!%40%23$%25%5e&*()_+%7b%7d%7c%5b%5d%5c-=%60%3a;'%22%3c%3e?,.%2f"},
 }
 
 func TestEscapeUserinfo(t *testing.T) {
@@ -538,21 +538,23 @@ func TestUnescapeUserinfo(t *testing.T) {
 	}
 }
 
+type qMap map[string][]string
+
 type EncodeQueryTest struct {
-	m         Values
+	m         qMap
 	expected  string
 	expected1 string
 }
 
 var encodeQueryTests = []EncodeQueryTest{
 	{nil, "", ""},
-	{Values{"q": {"puppies"}, "oe": {"utf8"}}, "q=puppies&oe=utf8", "oe=utf8&q=puppies"},
-	{Values{"q": {"dogs", "&", "7"}}, "q=dogs&q=%26&q=7", "q=dogs&q=%26&q=7"},
+	{qMap{"q": {"puppies"}, "oe": {"utf8"}}, "q=puppies&oe=utf8", "oe=utf8&q=puppies"},
+	{qMap{"q": {"dogs", "&", "7"}}, "q=dogs&q=%26&q=7", "q=dogs&q=%26&q=7"},
 }
 
 func TestEncodeQuery(t *testing.T) {
 	for _, tt := range encodeQueryTests {
-		if q := tt.m.Encode(); q != tt.expected && q != tt.expected1 {
+		if q := EncodeQuery(tt.m); q != tt.expected && q != tt.expected1 {
 			t.Errorf(`EncodeQuery(%+v) = %q, want %q`, tt.m, q, tt.expected)
 		}
 	}
@@ -670,29 +672,4 @@ func TestResolveReference(t *testing.T) {
 		t.Errorf("Expected an error from ParseURL wrapper parsing an empty string.")
 	}
 
-}
-
-func TestQueryValues(t *testing.T) {
-	u, _ := ParseURL("http://x.com?foo=bar&bar=1&bar=2")
-	v := u.Query()
-	if len(v) != 2 {
-		t.Errorf("got %d keys in Query values, want 2", len(v))
-	}
-	if g, e := v.Get("foo"), "bar"; g != e {
-		t.Errorf("Get(foo) = %q, want %q", g, e)
-	}
-	// Case sensitive:
-	if g, e := v.Get("Foo"), ""; g != e {
-		t.Errorf("Get(Foo) = %q, want %q", g, e)
-	}
-	if g, e := v.Get("bar"), "1"; g != e {
-		t.Errorf("Get(bar) = %q, want %q", g, e)
-	}
-	if g, e := v.Get("baz"), ""; g != e {
-		t.Errorf("Get(baz) = %q, want %q", g, e)
-	}
-	v.Del("bar")
-	if g, e := v.Get("bar"), ""; g != e {
-		t.Errorf("second Get(bar) = %q, want %q", g, e)
-	}
 }

@@ -43,7 +43,7 @@ func BenchmarkContendedSemaphore(b *testing.B) {
 	s := new(uint32)
 	*s = 1
 	c := make(chan bool)
-	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(2))
+	runtime.GOMAXPROCS(2)
 	b.StartTimer()
 
 	go HammerSemaphore(s, b.N/2, c)
@@ -81,24 +81,11 @@ func BenchmarkContendedMutex(b *testing.B) {
 	b.StopTimer()
 	m := new(Mutex)
 	c := make(chan bool)
-	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(2))
+	runtime.GOMAXPROCS(2)
 	b.StartTimer()
 
 	go HammerMutex(m, b.N/2, c)
 	go HammerMutex(m, b.N/2, c)
 	<-c
 	<-c
-}
-
-func TestMutexPanic(t *testing.T) {
-	defer func() {
-		if recover() == nil {
-			t.Fatalf("unlock of unlocked mutex did not panic")
-		}
-	}()
-
-	var mu Mutex
-	mu.Lock()
-	mu.Unlock()
-	mu.Unlock()
 }

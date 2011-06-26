@@ -213,8 +213,8 @@ func urlEscape(s string, mode encoding) string {
 			j++
 		case shouldEscape(c, mode):
 			t[j] = '%'
-			t[j+1] = "0123456789ABCDEF"[c>>4]
-			t[j+2] = "0123456789ABCDEF"[c&15]
+			t[j+1] = "0123456789abcdef"[c>>4]
+			t[j+2] = "0123456789abcdef"[c&15]
 			j += 3
 		default:
 			t[j] = s[i]
@@ -299,7 +299,7 @@ func getscheme(rawurl string) (scheme, path string, err os.Error) {
 			}
 		case c == ':':
 			if i == 0 {
-				return "", "", os.NewError("missing protocol scheme")
+				return "", "", os.ErrorString("missing protocol scheme")
 			}
 			return rawurl[0:i], rawurl[i+1:], nil
 		default:
@@ -348,13 +348,8 @@ func ParseRequestURL(rawurl string) (url *URL, err os.Error) {
 // in which case only absolute URLs or path-absolute relative URLs are allowed.
 // If viaRequest is false, all forms of relative URLs are allowed.
 func parseURL(rawurl string, viaRequest bool) (url *URL, err os.Error) {
-	var (
-		leadingSlash bool
-		path         string
-	)
-
 	if rawurl == "" {
-		err = os.NewError("empty url")
+		err = os.ErrorString("empty url")
 		goto Error
 	}
 	url = new(URL)
@@ -362,10 +357,12 @@ func parseURL(rawurl string, viaRequest bool) (url *URL, err os.Error) {
 
 	// Split off possible leading "http:", "mailto:", etc.
 	// Cannot contain escaped characters.
+	var path string
 	if url.Scheme, path, err = getscheme(rawurl); err != nil {
 		goto Error
 	}
-	leadingSlash = strings.HasPrefix(path, "/")
+
+	leadingSlash := strings.HasPrefix(path, "/")
 
 	if url.Scheme != "" && !leadingSlash {
 		// RFC 2396:
@@ -380,7 +377,7 @@ func parseURL(rawurl string, viaRequest bool) (url *URL, err os.Error) {
 		url.OpaquePath = true
 	} else {
 		if viaRequest && !leadingSlash {
-			err = os.NewError("invalid URI for request")
+			err = os.ErrorString("invalid URI for request")
 			goto Error
 		}
 
@@ -414,7 +411,7 @@ func parseURL(rawurl string, viaRequest bool) (url *URL, err os.Error) {
 
 		if strings.Contains(rawHost, "%") {
 			// Host cannot contain escaped characters.
-			err = os.NewError("hexadecimal escape in host")
+			err = os.ErrorString("hexadecimal escape in host")
 			goto Error
 		}
 		url.Host = rawHost
@@ -452,7 +449,7 @@ func ParseURLReference(rawurlref string) (url *URL, err os.Error) {
 //
 // There are redundant fields stored in the URL structure:
 // the String method consults Scheme, Path, Host, RawUserinfo,
-// RawQuery, and Fragment, but not Raw, RawPath or RawAuthority.
+// RawQuery, and Fragment, but not Raw, RawPath or Authority.
 func (url *URL) String() string {
 	result := ""
 	if url.Scheme != "" {
@@ -489,14 +486,10 @@ func (url *URL) String() string {
 	return result
 }
 
-// Encode encodes the values into ``URL encoded'' form.
-// e.g. "foo=bar&bar=baz"
-func (v Values) Encode() string {
-	if v == nil {
-		return ""
-	}
-	parts := make([]string, 0, len(v)) // will be large enough for most uses
-	for k, vs := range v {
+// EncodeQuery encodes the query represented as a multimap.
+func EncodeQuery(m map[string][]string) string {
+	parts := make([]string, 0, len(m)) // will be large enough for most uses
+	for k, vs := range m {
 		prefix := URLEscape(k) + "="
 		for _, v := range vs {
 			parts = append(parts, prefix+URLEscape(v))
@@ -599,10 +592,4 @@ func (base *URL) ResolveReference(ref *URL) *URL {
 	}
 	url.Raw = url.String()
 	return url
-}
-
-// Query parses RawQuery and returns the corresponding values.
-func (u *URL) Query() Values {
-	v, _ := ParseQuery(u.RawQuery)
-	return v
 }

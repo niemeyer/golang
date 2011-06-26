@@ -51,12 +51,6 @@ exportname(char *s)
 	return isupperrune(r);
 }
 
-static int
-initname(char *s)
-{
-	return strcmp(s, "init") == 0;
-}
-
 void
 autoexport(Node *n, int ctxt)
 {
@@ -66,7 +60,7 @@ autoexport(Node *n, int ctxt)
 		return;
 	if(n->ntype && n->ntype->op == OTFUNC && n->ntype->left)	// method
 		return;
-	if(exportname(n->sym->name) || initname(n->sym->name))
+	if(exportname(n->sym->name) || strcmp(n->sym->name, "init") == 0)
 		exportsym(n);
 	else
 		packagesym(n);
@@ -75,15 +69,10 @@ autoexport(Node *n, int ctxt)
 static void
 dumppkg(Pkg *p)
 {
-	char *suffix;
-
 	if(p == nil || p == localpkg || p->exported)
 		return;
 	p->exported = 1;
-	suffix = "";
-	if(!p->direct)
-		suffix = " // indirect";
-	Bprint(bout, "\timport %s \"%Z\"%s\n", p->name, p->path, suffix);
+	Bprint(bout, "\timport %s \"%Z\"\n", p->name, p->path);
 }
 
 static void
@@ -270,8 +259,7 @@ void
 dumpexport(void)
 {
 	NodeList *l;
-	int32 i, lno;
-	Pkg *p;
+	int32 lno;
 
 	lno = lineno;
 
@@ -282,11 +270,6 @@ dumpexport(void)
 	if(safemode)
 		Bprint(bout, " safe");
 	Bprint(bout, "\n");
-
-	for(i=0; i<nelem(phash); i++)
-		for(p=phash[i]; p; p=p->link)
-			if(p->direct)
-				dumppkg(p);
 
 	for(l=exportlist; l; l=l->next) {
 		lineno = l->n->lineno;
@@ -321,7 +304,7 @@ importsym(Sym *s, int op)
 
 	// mark the symbol so it is not reexported
 	if(s->def == N) {
-		if(exportname(s->name) || initname(s->name))
+		if(exportname(s->name))
 			s->flags |= SymExport;
 		else
 			s->flags |= SymPackage;	// package scope
@@ -391,7 +374,7 @@ importvar(Sym *s, Type *t, int ctxt)
 {
 	Node *n;
 
-	if(!exportname(s->name) && !initname(s->name) && !mypackage(s))
+	if(!exportname(s->name) && !mypackage(s))
 		return;
 
 	importsym(s, ONAME);

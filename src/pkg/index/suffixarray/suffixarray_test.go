@@ -99,16 +99,10 @@ var testCases = []testCase{
 			"to (come|the)?",
 		},
 	},
-
-	{
-		"godoc simulation",
-		"package main\n\nimport(\n    \"rand\"\n    ",
-		[]string{},
-	},
 }
 
 
-// find all occurrences of s in source; report at most n occurrences
+// find all occurrences of s in source; report at most n occurences
 func find(src, s string, n int) []int {
 	var res vector.IntVector
 	if s != "" && n != 0 {

@@ -10,13 +10,13 @@ func use(x interface{}) {}
 
 // Formatting of if-statement headers.
 func _() {
-	if true {}
-	if; true {}  // no semicolon printed
+	if {}
+	if;{}  // no semicolon printed
 	if expr{}
 	if;expr{}  // no semicolon printed
 	if (expr){}  // no parens printed
 	if;((expr)){}  // no semicolon and parens printed
-	if x:=expr;true{
+	if x:=expr;{
 	use(x)}
 	if x:=expr; expr {use(x)}
 }
@@ -88,19 +88,6 @@ func _() {
 	/* and more */
 	case 5:
 	}
-}
-
-
-// Formatting of selected select statements.
-func _() {
-	select {
-	}
-	select { /* this comment should not be tab-aligned because the closing } is on the same line */ }
-	select { /* this comment should be tab-aligned */
-	}
-	select { // this comment should be tab-aligned
-	}
-	select { case <-c: }
 }
 
 
@@ -284,14 +271,14 @@ func _() {
 
 
 func _() {
-	if true {
+	if {
 		_ = 0
 	}
 	_ = 0  // the indentation here should not be affected by the long label name
 AnOverlongLabel:
 	_ = 0
 	
-	if true {
+	if {
 		_ = 0
 	}
 	_ = 0

@@ -82,7 +82,7 @@ LIB9OFILES=\
 	time.$O\
 	tokenize.$O\
 
-ifeq ($(GOHOSTOS),windows)
+ifeq ($(GOOS),windows)
 LIB9OFILES+=\
 	win32.$O\
 

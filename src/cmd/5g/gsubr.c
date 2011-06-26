@@ -102,19 +102,6 @@ patch(Prog *p, Prog *to)
 	p->to.offset = to->loc;
 }
 
-Prog*
-unpatch(Prog *p)
-{
-	Prog *q;
-
-	if(p->to.type != D_BRANCH)
-		fatal("unpatch: not a branch");
-	q = p->to.branch;
-	p->to.branch = P;
-	p->to.offset = 0;
-	return q;
-}
-
 /*
  * start a new Prog list.
  */
@@ -136,64 +123,6 @@ newplist(void)
 
 	return pl;
 }
-
-void
-clearstk(void)
-{
-	Plist *pl;
-	Prog *p, *p1, *p2, *p3;
-	Node dst, end, zero, con;
-
-	if(plast->firstpc->to.offset <= 0)
-		return;
-
-	// reestablish context for inserting code
-	// at beginning of function.
-	pl = plast;
-	p1 = pl->firstpc;
-	p2 = p1->link;
-	pc = mal(sizeof(*pc));
-	clearp(pc);
-	p1->link = pc;
-	
-	// zero stack frame
-
-	// MOVW $4(SP), R1
-	nodreg(&dst, types[tptr], 1);
-	p = gins(AMOVW, N, &dst);
-	p->from.type = D_CONST;
-	p->from.reg = REGSP;
-	p->from.offset = 4;
-
-	// MOVW $n(R1), R2
-	nodreg(&end, types[tptr], 2);
-	p = gins(AMOVW, N, &end);
-	p->from.type = D_CONST;
-	p->from.reg = 1;
-	p->from.offset = p1->to.offset;
-	
-	// MOVW $0, R3
-	nodreg(&zero, types[TUINT32], 3);
-	nodconst(&con, types[TUINT32], 0);
-	gmove(&con, &zero);
-
-	// L:
-	//	MOVW.P R3, 0(R1) +4
-	//	CMP R1, R2
-	//	BNE L
-	p = gins(AMOVW, &zero, &dst);
-	p->to.type = D_OREG;
-	p->to.offset = 4;
-	p->scond |= C_PBIT;
-	p3 = p;
-	p = gins(ACMP, &dst, N);
-	raddr(&end, p);
-	patch(gbranch(ABNE, T), p3);
-
-	// continue with original code.
-	gins(ANOP, N, N)->link = p2;
-	pc = P;
-}	
 
 void
 gused(Node *n)
@@ -1172,7 +1101,6 @@ naddr(Node *n, Addr *a, int canemitcode)
 	a->type = D_NONE;
 	a->name = D_NONE;
 	a->reg = NREG;
-	a->node = N;
 	if(n == N)
 		return;
 
@@ -1240,7 +1168,6 @@ naddr(Node *n, Addr *a, int canemitcode)
 			a->etype = simtype[n->type->etype];
 			a->width = n->type->width;
 		}
-		a->pun = n->pun;
 		a->offset = n->xoffset;
 		a->sym = n->sym;
 		if(a->sym == S)
@@ -1261,8 +1188,6 @@ naddr(Node *n, Addr *a, int canemitcode)
 			break;
 		case PAUTO:
 			a->name = D_AUTO;
-			if (n->sym)
-				a->node = n->orig;
 			break;
 		case PPARAM:
 		case PPARAMOUT:

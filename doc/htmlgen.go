@@ -5,7 +5,7 @@
 // Process plain text into HTML.
 //	- h2's are made from lines followed by a line "----\n"
 //	- tab-indented blocks become <pre> blocks
-//	- blank lines become <p> marks (except inside <pre> tags)
+//	- blank lines become <p> marks
 //	- "quoted strings" become <code>quoted strings</code>
 
 package main
@@ -18,13 +18,13 @@ import (
 )
 
 var (
-	lines = make([][]byte, 0, 2000) // probably big enough; grows if not
+	lines   = make([][]byte, 0, 10000) // assume big enough
+	linebuf = make([]byte, 10000)      // assume big enough
 
 	empty   = []byte("")
 	newline = []byte("\n")
 	tab     = []byte("\t")
 	quote   = []byte(`"`)
-	indent  = []byte{' ', ' ', ' ', ' '}
 
 	sectionMarker = []byte("----\n")
 	preStart      = []byte("<pre>")
@@ -35,9 +35,9 @@ var (
 func main() {
 	read()
 	headings()
+	paragraphs()
 	coalesce(preStart, foldPre)
 	coalesce(tab, foldTabs)
-	paragraphs()
 	quotes()
 	write()
 }
@@ -50,9 +50,11 @@ func read() {
 			break
 		}
 		if err != nil {
-			log.Fatal(err)
+			log.Exit(err)
 		}
-		lines = append(lines, line)
+		n := len(lines)
+		lines = lines[0 : n+1]
+		lines[n] = line
 	}
 }
 
@@ -171,7 +173,19 @@ func trim(l []byte) []byte {
 	return l
 }
 
-// expand tabs to spaces. don't worry about columns.
+// expand tabs to 4 spaces. don't worry about columns.
 func expandTabs(l []byte) []byte {
-	return bytes.Replace(l, tab, indent, -1)
+	j := 0 // position in linebuf.
+	for _, c := range l {
+		if c == '\t' {
+			for k := 0; k < 4; k++ {
+				linebuf[j] = ' '
+				j++
+			}
+		} else {
+			linebuf[j] = c
+			j++
+		}
+	}
+	return linebuf[0:j]
 }

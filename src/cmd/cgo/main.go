@@ -18,9 +18,9 @@ import (
 	"go/token"
 	"io"
 	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
+	"runtime"
 )
 
 // A Package collects information about the package we're going to write.
@@ -29,7 +29,6 @@ type Package struct {
 	PackagePath string
 	PtrSize     int64
 	GccOptions  []string
-	CgoFlags    map[string]string // #cgo flags (CFLAGS, LDFLAGS)
 	Written     map[string]bool
 	Name        map[string]*Name    // accumulated Name from Files
 	Typedef     map[string]ast.Expr // accumulated Typedef from Files
@@ -82,17 +81,11 @@ type ExpFunc struct {
 	ExpName string // name to use from C
 }
 
-// A TypeRepr contains the string representation of a type.
-type TypeRepr struct {
-	Repr       string
-	FormatArgs []interface{}
-}
-
 // A Type collects information about a type in both the C and Go worlds.
 type Type struct {
 	Size       int64
 	Align      int64
-	C          *TypeRepr
+	C          string
 	Go         ast.Expr
 	EnumValues map[string]int64
 }
@@ -105,8 +98,7 @@ type FuncType struct {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, "usage: cgo -- [compiler options] file.go ...\n")
-	flag.PrintDefaults()
+	fmt.Fprint(os.Stderr, "usage: cgo [compiler options] file.go ...\n")
 	os.Exit(2)
 }
 
@@ -135,7 +127,20 @@ func main() {
 		// instead of needing to make the linkers duplicate all the
 		// specialized knowledge gcc has about where to look for imported
 		// symbols and which ones to use.
-		dynimport(*dynobj)
+		syms, imports := dynimport(*dynobj)
+		if runtime.GOOS == "windows" {
+			for _, sym := range syms {
+				ss := strings.Split(sym, ":", -1)
+				fmt.Printf("#pragma dynimport %s %s %q\n", ss[0], ss[0], strings.ToLower(ss[1]))
+			}
+			return
+		}
+		for _, sym := range syms {
+			fmt.Printf("#pragma dynimport %s %s %q\n", sym, sym, "")
+		}
+		for _, p := range imports {
+			fmt.Printf("#pragma dynimport %s %s %q\n", "_", "_", p)
+		}
 		return
 	}
 
@@ -155,20 +160,15 @@ func main() {
 	if i == len(args) {
 		usage()
 	}
-
-	// Copy it to a new slice so it can grow.
-	gccOptions := make([]string, i)
-	copy(gccOptions, args[0:i])
-
-	goFiles := args[i:]
+	gccOptions, goFiles := args[0:i], args[i:]
 
 	arch := os.Getenv("GOARCH")
 	if arch == "" {
-		fatalf("$GOARCH is not set")
+		fatal("$GOARCH is not set")
 	}
 	ptrSize := ptrSizeMap[arch]
 	if ptrSize == 0 {
-		fatalf("unknown $GOARCH %q", arch)
+		fatal("unknown $GOARCH %q", arch)
 	}
 
 	// Clear locale variables so gcc emits English errors [sic].
@@ -179,7 +179,6 @@ func main() {
 	p := &Package{
 		PtrSize:    ptrSize,
 		GccOptions: gccOptions,
-		CgoFlags:   make(map[string]string),
 		Written:    make(map[string]bool),
 	}
 
@@ -190,30 +189,20 @@ func main() {
 	// Use the beginning of the md5 of the input to disambiguate.
 	h := md5.New()
 	for _, input := range goFiles {
-		f, err := os.Open(input)
+		f, err := os.Open(input, os.O_RDONLY, 0)
 		if err != nil {
-			fatalf("%s", err)
+			fatal("%s", err)
 		}
 		io.Copy(h, f)
 		f.Close()
 	}
 	cPrefix = fmt.Sprintf("_%x", h.Sum()[0:6])
 
-	fs := make([]*File, len(goFiles))
-	for i, input := range goFiles {
-		// Parse flags for all files before translating due to CFLAGS.
+	for _, input := range goFiles {
 		f := new(File)
+		// Reset f.Preamble so that we don't end up with conflicting headers / defines
+		f.Preamble = ""
 		f.ReadGo(input)
-		p.ParseFlags(f, input)
-		fs[i] = f
-	}
-
-	// make sure that _obj directory exists, so that we can write
-	// all the output files there.
-	os.Mkdir("_obj", 0777)
-
-	for i, input := range goFiles {
-		f := fs[i]
 		p.Translate(f)
 		for _, cref := range f.Ref {
 			switch cref.Context {
@@ -229,7 +218,7 @@ func main() {
 		}
 		pkg := f.Package
 		if dir := os.Getenv("CGOPKGPATH"); dir != "" {
-			pkg = filepath.Join(dir, pkg)
+			pkg = dir + "/" + pkg
 		}
 		p.PackagePath = pkg
 		p.writeOutput(f, input)

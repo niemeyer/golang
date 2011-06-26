@@ -8,52 +8,31 @@ import (
 	"bytes"
 	"fmt"
 	"image"
-	"io/ioutil"
+	"io"
 	"os"
 	"testing"
 )
 
 func diff(m0, m1 image.Image) os.Error {
 	b0, b1 := m0.Bounds(), m1.Bounds()
-	if !b0.Size().Eq(b1.Size()) {
+	if !b0.Eq(b1) {
 		return fmt.Errorf("dimensions differ: %v vs %v", b0, b1)
 	}
-	dx := b1.Min.X - b0.Min.X
-	dy := b1.Min.Y - b0.Min.Y
 	for y := b0.Min.Y; y < b0.Max.Y; y++ {
 		for x := b0.Min.X; x < b0.Max.X; x++ {
-			c0 := m0.At(x, y)
-			c1 := m1.At(x+dx, y+dy)
-			r0, g0, b0, a0 := c0.RGBA()
-			r1, g1, b1, a1 := c1.RGBA()
+			r0, g0, b0, a0 := m0.At(x, y).RGBA()
+			r1, g1, b1, a1 := m1.At(x, y).RGBA()
 			if r0 != r1 || g0 != g1 || b0 != b1 || a0 != a1 {
-				return fmt.Errorf("colors differ at (%d, %d): %v vs %v", x, y, c0, c1)
+				return fmt.Errorf("colors differ at (%d, %d): %v vs %v", x, y, m0.At(x, y), m1.At(x, y))
 			}
 		}
 	}
 	return nil
 }
 
-func encodeDecode(m image.Image) (image.Image, os.Error) {
-	b := bytes.NewBuffer(nil)
-	err := Encode(b, m)
-	if err != nil {
-		return nil, err
-	}
-	m, err = Decode(b)
-	if err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
 func TestWriter(t *testing.T) {
 	// The filenames variable is declared in reader_test.go.
-	names := filenames
-	if testing.Short() {
-		names = filenamesShort
-	}
-	for _, fn := range names {
+	for _, fn := range filenames {
 		qfn := "testdata/pngsuite/" + fn + ".png"
 		// Read the image.
 		m0, err := readPng(qfn)
@@ -61,16 +40,26 @@ func TestWriter(t *testing.T) {
 			t.Error(fn, err)
 			continue
 		}
-		// Read the image again, encode it, and decode it.
-		m1, err := readPng(qfn)
+		// Read the image again, and push it through a pipe that encodes at the write end, and decodes at the read end.
+		pr, pw := io.Pipe()
+		defer pr.Close()
+		go func() {
+			defer pw.Close()
+			m1, err := readPng(qfn)
+			if err != nil {
+				t.Error(fn, err)
+				return
+			}
+			err = Encode(pw, m1)
+			if err != nil {
+				t.Error(fn, err)
+				return
+			}
+		}()
+		m2, err := Decode(pr)
 		if err != nil {
 			t.Error(fn, err)
-			return
-		}
-		m2, err := encodeDecode(m1)
-		if err != nil {
-			t.Error(fn, err)
-			return
+			continue
 		}
 		// Compare the two.
 		err = diff(m0, m2)
@@ -81,26 +70,6 @@ func TestWriter(t *testing.T) {
 	}
 }
 
-func TestSubimage(t *testing.T) {
-	m0 := image.NewRGBA(256, 256)
-	for y := 0; y < 256; y++ {
-		for x := 0; x < 256; x++ {
-			m0.Set(x, y, image.RGBAColor{uint8(x), uint8(y), 0, 255})
-		}
-	}
-	m0.Rect = image.Rect(50, 30, 250, 130)
-	m1, err := encodeDecode(m0)
-	if err != nil {
-		t.Error(err)
-		return
-	}
-	err = diff(m0, m1)
-	if err != nil {
-		t.Error(err)
-		return
-	}
-}
-
 func BenchmarkEncodePaletted(b *testing.B) {
 	b.StopTimer()
 	img := image.NewPaletted(640, 480,
@@ -108,42 +77,10 @@ func BenchmarkEncodePaletted(b *testing.B) {
 			image.RGBAColor{0, 0, 0, 255},
 			image.RGBAColor{255, 255, 255, 255},
 		})
-	b.SetBytes(640 * 480 * 1)
 	b.StartTimer()
+	buffer := new(bytes.Buffer)
 	for i := 0; i < b.N; i++ {
-		Encode(ioutil.Discard, img)
-	}
-}
-
-func BenchmarkEncodeRGBOpaque(b *testing.B) {
-	b.StopTimer()
-	img := image.NewRGBA(640, 480)
-	// Set all pixels to 0xFF alpha to force opaque mode.
-	bo := img.Bounds()
-	for y := bo.Min.Y; y < bo.Max.Y; y++ {
-		for x := bo.Min.X; x < bo.Max.X; x++ {
-			img.Set(x, y, image.RGBAColor{0, 0, 0, 255})
-		}
-	}
-	if !img.Opaque() {
-		panic("expected image to be opaque")
-	}
-	b.SetBytes(640 * 480 * 4)
-	b.StartTimer()
-	for i := 0; i < b.N; i++ {
-		Encode(ioutil.Discard, img)
-	}
-}
-
-func BenchmarkEncodeRGBA(b *testing.B) {
-	b.StopTimer()
-	img := image.NewRGBA(640, 480)
-	if img.Opaque() {
-		panic("expected image to not be opaque")
-	}
-	b.SetBytes(640 * 480 * 4)
-	b.StartTimer()
-	for i := 0; i < b.N; i++ {
-		Encode(ioutil.Discard, img)
+		buffer.Reset()
+		Encode(buffer, img)
 	}
 }

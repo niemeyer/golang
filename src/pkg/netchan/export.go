@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 /*
-	Package netchan implements type-safe networked channels:
+	The netchan package implements type-safe networked channels:
 	it allows the two ends of a channel to appear on different
 	computers connected by a network.  It does this by transporting
 	data sent to a channel on one machine so it can be recovered
@@ -23,7 +23,6 @@ package netchan
 
 import (
 	"log"
-	"io"
 	"net"
 	"os"
 	"reflect"
@@ -44,6 +43,7 @@ func expLog(args ...interface{}) {
 // but they must use different ports.
 type Exporter struct {
 	*clientSet
+	listener net.Listener
 }
 
 type expClient struct {
@@ -57,7 +57,7 @@ type expClient struct {
 	seqLock sync.Mutex       // guarantees messages are in sequence, only locked under mu
 }
 
-func newClient(exp *Exporter, conn io.ReadWriter) *expClient {
+func newClient(exp *Exporter, conn net.Conn) *expClient {
 	client := new(expClient)
 	client.exp = exp
 	client.encDec = newEncDec(conn)
@@ -111,16 +111,14 @@ func (client *expClient) getChan(hdr *header, dir Dir) *netChan {
 // data arrives from the client.
 func (client *expClient) run() {
 	hdr := new(header)
-	hdrValue := reflect.ValueOf(hdr)
+	hdrValue := reflect.NewValue(hdr)
 	req := new(request)
-	reqValue := reflect.ValueOf(req)
+	reqValue := reflect.NewValue(req)
 	error := new(error)
 	for {
 		*hdr = header{}
 		if err := client.decode(hdrValue); err != nil {
-			if err != os.EOF {
-				expLog("error decoding client header:", err)
-			}
+			expLog("error decoding client header:", err)
 			break
 		}
 		switch hdr.PayloadType {
@@ -171,7 +169,7 @@ func (client *expClient) run() {
 				nch.acked()
 			}
 		default:
-			log.Fatal("netchan export: unknown payload type", hdr.PayloadType)
+			log.Exit("netchan export: unknown payload type", hdr.PayloadType)
 		}
 	}
 	client.exp.delClient(client)
@@ -181,8 +179,8 @@ func (client *expClient) run() {
 // The header is passed by value to avoid issues of overwriting.
 func (client *expClient) serveRecv(nch *netChan, hdr header, count int64) {
 	for {
-		val, ok := nch.recv()
-		if !ok {
+		val, closed := nch.recv()
+		if closed {
 			if err := client.encode(&hdr, payClosed, nil); err != nil {
 				expLog("error encoding server closed message:", err)
 			}
@@ -221,7 +219,7 @@ func (client *expClient) serveSend(hdr header) {
 		return
 	}
 	// Create a new value for each received item.
-	val := reflect.New(nch.ch.Type().Elem()).Elem()
+	val := reflect.MakeZero(nch.ch.Type().(*reflect.ChanType).Elem())
 	if err := client.decode(val); err != nil {
 		expLog("value decode:", err, "; type ", nch.ch.Type())
 		return
@@ -260,50 +258,39 @@ func (client *expClient) ack() int64 {
 	return n
 }
 
-// Serve waits for incoming connections on the listener
-// and serves the Exporter's channels on each.
-// It blocks until the listener is closed.
-func (exp *Exporter) Serve(listener net.Listener) {
+// Wait for incoming connections, start a new runner for each
+func (exp *Exporter) listen() {
 	for {
-		conn, err := listener.Accept()
+		conn, err := exp.listener.Accept()
 		if err != nil {
 			expLog("listen:", err)
 			break
 		}
-		go exp.ServeConn(conn)
+		client := exp.addClient(conn)
+		go client.run()
 	}
 }
 
-// ServeConn exports the Exporter's channels on conn.
-// It blocks until the connection is terminated.
-func (exp *Exporter) ServeConn(conn io.ReadWriter) {
-	exp.addClient(conn).run()
-}
-
-// NewExporter creates a new Exporter that exports a set of channels.
-func NewExporter() *Exporter {
+// NewExporter creates a new Exporter to export channels
+// on the network and local address defined as in net.Listen.
+func NewExporter(network, localaddr string) (*Exporter, os.Error) {
+	listener, err := net.Listen(network, localaddr)
+	if err != nil {
+		return nil, err
+	}
 	e := &Exporter{
+		listener: listener,
 		clientSet: &clientSet{
 			names:   make(map[string]*chanDir),
 			clients: make(map[unackedCounter]bool),
 		},
 	}
-	return e
-}
-
-// ListenAndServe exports the exporter's channels through the
-// given network and local address defined as in net.Listen.
-func (exp *Exporter) ListenAndServe(network, localaddr string) os.Error {
-	listener, err := net.Listen(network, localaddr)
-	if err != nil {
-		return err
-	}
-	go exp.Serve(listener)
-	return nil
+	go e.listen()
+	return e, nil
 }
 
 // addClient creates a new expClient and records its existence
-func (exp *Exporter) addClient(conn io.ReadWriter) *expClient {
+func (exp *Exporter) addClient(conn net.Conn) *expClient {
 	client := newClient(exp, conn)
 	exp.mu.Lock()
 	exp.clients[client] = true
@@ -340,26 +327,29 @@ func (exp *Exporter) Sync(timeout int64) os.Error {
 	return exp.clientSet.sync(timeout)
 }
 
-func checkChan(chT interface{}, dir Dir) (reflect.Value, os.Error) {
-	chanType := reflect.TypeOf(chT)
-	if chanType.Kind() != reflect.Chan {
-		return reflect.Value{}, os.NewError("not a channel")
+// Addr returns the Exporter's local network address.
+func (exp *Exporter) Addr() net.Addr { return exp.listener.Addr() }
+
+func checkChan(chT interface{}, dir Dir) (*reflect.ChanValue, os.Error) {
+	chanType, ok := reflect.Typeof(chT).(*reflect.ChanType)
+	if !ok {
+		return nil, os.ErrorString("not a channel")
 	}
 	if dir != Send && dir != Recv {
-		return reflect.Value{}, os.NewError("unknown channel direction")
+		return nil, os.ErrorString("unknown channel direction")
 	}
-	switch chanType.ChanDir() {
+	switch chanType.Dir() {
 	case reflect.BothDir:
 	case reflect.SendDir:
 		if dir != Recv {
-			return reflect.Value{}, os.NewError("to import/export with Send, must provide <-chan")
+			return nil, os.ErrorString("to import/export with Send, must provide <-chan")
 		}
 	case reflect.RecvDir:
 		if dir != Send {
-			return reflect.Value{}, os.NewError("to import/export with Recv, must provide chan<-")
+			return nil, os.ErrorString("to import/export with Recv, must provide chan<-")
 		}
 	}
-	return reflect.ValueOf(chT), nil
+	return reflect.NewValue(chT).(*reflect.ChanValue), nil
 }
 
 // Export exports a channel of a given type and specified direction.  The
@@ -376,7 +366,7 @@ func (exp *Exporter) Export(name string, chT interface{}, dir Dir) os.Error {
 	defer exp.mu.Unlock()
 	_, present := exp.names[name]
 	if present {
-		return os.NewError("channel name already being exported:" + name)
+		return os.ErrorString("channel name already being exported:" + name)
 	}
 	exp.names[name] = &chanDir{ch, dir}
 	return nil
@@ -393,7 +383,7 @@ func (exp *Exporter) Hangup(name string) os.Error {
 	// TODO drop all instances of channel from client sets
 	exp.mu.Unlock()
 	if !ok {
-		return os.NewError("netchan export: hangup: no such channel: " + name)
+		return os.ErrorString("netchan export: hangup: no such channel: " + name)
 	}
 	chDir.ch.Close()
 	return nil

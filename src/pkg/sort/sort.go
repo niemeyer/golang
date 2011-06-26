@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package sort provides primitives for sorting slices and user-defined
-// collections.
+// The sort package provides primitives for sorting arrays
+// and user-defined collections.
 package sort
 
 // A type, typically a collection, that satisfies sort.Interface can be
@@ -82,7 +82,7 @@ func doPivot(data Interface, lo, hi int) (midlo, midhi int) {
 	//	data[d <= i < hi] = pivot
 	//
 	// Once b meets c, can swap the "= pivot" sections
-	// into the middle of the slice.
+	// into the middle of the array.
 	pivot := lo
 	a, b, c, d := lo+1, lo+1, hi, hi
 	for b < c {
@@ -155,52 +155,52 @@ func IsSorted(data Interface) bool {
 
 // Convenience types for common cases
 
-// IntSlice attaches the methods of Interface to []int, sorting in increasing order.
-type IntSlice []int
+// IntArray attaches the methods of Interface to []int, sorting in increasing order.
+type IntArray []int
 
-func (p IntSlice) Len() int           { return len(p) }
-func (p IntSlice) Less(i, j int) bool { return p[i] < p[j] }
-func (p IntSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
-
-// Sort is a convenience method.
-func (p IntSlice) Sort() { Sort(p) }
-
-
-// Float64Slice attaches the methods of Interface to []float64, sorting in increasing order.
-type Float64Slice []float64
-
-func (p Float64Slice) Len() int           { return len(p) }
-func (p Float64Slice) Less(i, j int) bool { return p[i] < p[j] }
-func (p Float64Slice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
+func (p IntArray) Len() int           { return len(p) }
+func (p IntArray) Less(i, j int) bool { return p[i] < p[j] }
+func (p IntArray) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
 // Sort is a convenience method.
-func (p Float64Slice) Sort() { Sort(p) }
+func (p IntArray) Sort() { Sort(p) }
 
 
-// StringSlice attaches the methods of Interface to []string, sorting in increasing order.
-type StringSlice []string
+// Float64Array attaches the methods of Interface to []float64, sorting in increasing order.
+type Float64Array []float64
 
-func (p StringSlice) Len() int           { return len(p) }
-func (p StringSlice) Less(i, j int) bool { return p[i] < p[j] }
-func (p StringSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
+func (p Float64Array) Len() int           { return len(p) }
+func (p Float64Array) Less(i, j int) bool { return p[i] < p[j] }
+func (p Float64Array) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
 // Sort is a convenience method.
-func (p StringSlice) Sort() { Sort(p) }
+func (p Float64Array) Sort() { Sort(p) }
+
+
+// StringArray attaches the methods of Interface to []string, sorting in increasing order.
+type StringArray []string
+
+func (p StringArray) Len() int           { return len(p) }
+func (p StringArray) Less(i, j int) bool { return p[i] < p[j] }
+func (p StringArray) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
+
+// Sort is a convenience method.
+func (p StringArray) Sort() { Sort(p) }
 
 
 // Convenience wrappers for common cases
 
-// SortInts sorts a slice of ints in increasing order.
-func SortInts(a []int) { Sort(IntSlice(a)) }
-// SortFloat64s sorts a slice of float64s in increasing order.
-func SortFloat64s(a []float64) { Sort(Float64Slice(a)) }
-// SortStrings sorts a slice of strings in increasing order.
-func SortStrings(a []string) { Sort(StringSlice(a)) }
+// SortInts sorts an array of ints in increasing order.
+func SortInts(a []int) { Sort(IntArray(a)) }
+// SortFloat64s sorts an array of float64s in increasing order.
+func SortFloat64s(a []float64) { Sort(Float64Array(a)) }
+// SortStrings sorts an array of strings in increasing order.
+func SortStrings(a []string) { Sort(StringArray(a)) }
 
 
-// IntsAreSorted tests whether a slice of ints is sorted in increasing order.
-func IntsAreSorted(a []int) bool { return IsSorted(IntSlice(a)) }
-// Float64sAreSorted tests whether a slice of float64s is sorted in increasing order.
-func Float64sAreSorted(a []float64) bool { return IsSorted(Float64Slice(a)) }
-// StringsAreSorted tests whether a slice of strings is sorted in increasing order.
-func StringsAreSorted(a []string) bool { return IsSorted(StringSlice(a)) }
+// IntsAreSorted tests whether an array of ints is sorted in increasing order.
+func IntsAreSorted(a []int) bool { return IsSorted(IntArray(a)) }
+// Float64sAreSorted tests whether an array of float64s is sorted in increasing order.
+func Float64sAreSorted(a []float64) bool { return IsSorted(Float64Array(a)) }
+// StringsAreSorted tests whether an array of strings is sorted in increasing order.
+func StringsAreSorted(a []string) bool { return IsSorted(StringArray(a)) }

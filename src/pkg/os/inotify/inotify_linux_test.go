@@ -17,8 +17,8 @@ func TestInotifyEvents(t *testing.T) {
 		t.Fatalf("NewWatcher() failed: %s", err)
 	}
 
-	// Add a watch for "_test"
-	err = watcher.Watch("_test")
+	// Add a watch for "_obj"
+	err = watcher.Watch("_obj")
 	if err != nil {
 		t.Fatalf("Watcher.Watch() failed: %s", err)
 	}
@@ -30,12 +30,11 @@ func TestInotifyEvents(t *testing.T) {
 		}
 	}()
 
-	const testFile string = "_test/TestInotifyEvents.testfile"
+	const testFile string = "_obj/TestInotifyEvents.testfile"
 
 	// Receive events on the event channel on a separate goroutine
 	eventstream := watcher.Event
 	var eventsReceived = 0
-	done := make(chan bool)
 	go func() {
 		for event := range eventstream {
 			// Only count relevant events
@@ -46,12 +45,11 @@ func TestInotifyEvents(t *testing.T) {
 				t.Logf("unexpected event received: %s", event)
 			}
 		}
-		done <- true
 	}()
 
 	// Create a file
 	// This should add at least one event to the inotify event queue
-	_, err = os.OpenFile(testFile, os.O_WRONLY|os.O_CREATE, 0666)
+	_, err = os.Open(testFile, os.O_WRONLY|os.O_CREAT, 0666)
 	if err != nil {
 		t.Fatalf("creating test file failed: %s", err)
 	}
@@ -66,12 +64,16 @@ func TestInotifyEvents(t *testing.T) {
 	t.Log("calling Close()")
 	watcher.Close()
 	t.Log("waiting for the event channel to become closed...")
-	select {
-	case <-done:
-		t.Log("event channel closed")
-	case <-time.After(1e9):
-		t.Fatal("event stream was not closed after 1 second")
+	var i = 0
+	for !closed(eventstream) {
+		if i >= 20 {
+			t.Fatal("event stream was not closed after 1 second, as expected")
+		}
+		t.Log("waiting for 50 ms...")
+		time.Sleep(50e6) // 50 ms
+		i++
 	}
+	t.Log("event channel closed")
 }
 
 
@@ -90,7 +92,7 @@ func TestInotifyClose(t *testing.T) {
 		t.Fatal("double Close() test failed: second Close() call didn't return")
 	}
 
-	err := watcher.Watch("_test")
+	err := watcher.Watch("_obj")
 	if err == nil {
 		t.Fatal("expected error on Watch() after Close(), got nil")
 	}

@@ -373,7 +373,7 @@ outcode(void)
 		}
 	}
 
-	Bprint(&outbuf, "go object %s %s %s\n", getgoos(), thestring, getgoversion());
+	Bprint(&outbuf, "%s\n", thestring);
 	if(ndynimp > 0 || ndynexp > 0) {
 		int i;
 
@@ -665,9 +665,7 @@ align(int32 i, Type *t, int op, int32 *maxalign)
 
 	case Aarg2:	/* width of a parameter */
 		o += t->width;
-		w = t->width;
-		if(w > SZ_LONG)
-			w = SZ_LONG;
+		w = SZ_LONG;
 		break;
 
 	case Aaut3:	/* total align of automatic */

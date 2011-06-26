@@ -6,7 +6,6 @@ package regexp
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 )
 
@@ -189,12 +188,6 @@ func TestFindIndex(t *testing.T) {
 func TestFindStringIndex(t *testing.T) {
 	for _, test := range findTests {
 		testFindIndex(&test, MustCompile(test.pat).FindStringIndex(test.text), t)
-	}
-}
-
-func TestFindReaderIndex(t *testing.T) {
-	for _, test := range findTests {
-		testFindIndex(&test, MustCompile(test.pat).FindReaderIndex(strings.NewReader(test.text)), t)
 	}
 }
 
@@ -388,15 +381,9 @@ func TestFindSubmatchIndex(t *testing.T) {
 	}
 }
 
-func TestFindStringSubmatchIndex(t *testing.T) {
+func TestFindStringSubmatchndex(t *testing.T) {
 	for _, test := range findTests {
 		testFindSubmatchIndex(&test, MustCompile(test.pat).FindStringSubmatchIndex(test.text), t)
-	}
-}
-
-func TestFindReaderSubmatchIndex(t *testing.T) {
-	for _, test := range findTests {
-		testFindSubmatchIndex(&test, MustCompile(test.pat).FindReaderSubmatchIndex(strings.NewReader(test.text)), t)
 	}
 }
 
@@ -465,7 +452,7 @@ func TestFindAllSubmatchIndex(t *testing.T) {
 	}
 }
 
-func TestFindAllStringSubmatchIndex(t *testing.T) {
+func TestFindAllStringSubmatchndex(t *testing.T) {
 	for _, test := range findTests {
 		testFindAllSubmatchIndex(&test, MustCompile(test.pat).FindAllStringSubmatchIndex(test.text, -1), t)
 	}

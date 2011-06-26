@@ -43,8 +43,6 @@ Flags:
 		disable optimization
 	-S
 		write assembly language text to standard output
-	-u
-		disallow importing packages not marked as safe
 	-V
 		print the compiler version
 

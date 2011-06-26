@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// Experimental Go package installer; see doc.go.
+
 package main
 
 import (
@@ -9,11 +11,11 @@ import (
 	"exec"
 	"flag"
 	"fmt"
-	"go/build"
 	"go/token"
+	"io"
 	"io/ioutil"
 	"os"
-	"path/filepath"
+	"path"
 	"runtime"
 	"strings"
 )
@@ -30,18 +32,16 @@ var (
 	argv0         = os.Args[0]
 	errors        = false
 	parents       = make(map[string]string)
+	root          = runtime.GOROOT()
 	visit         = make(map[string]status)
-	logfile       = filepath.Join(runtime.GOROOT(), "goinstall.log")
+	logfile       = path.Join(root, "goinstall.log")
 	installedPkgs = make(map[string]bool)
 
 	allpkg            = flag.Bool("a", false, "install all previously installed packages")
 	reportToDashboard = flag.Bool("dashboard", true, "report public packages at "+dashboardURL)
 	logPkgs           = flag.Bool("log", true, "log installed packages to $GOROOT/goinstall.log for use by -a")
 	update            = flag.Bool("u", false, "update already-downloaded packages")
-	doInstall         = flag.Bool("install", true, "build and install")
 	clean             = flag.Bool("clean", false, "clean the package directory before installing")
-	nuke              = flag.Bool("nuke", false, "clean the package directory and target before installing")
-	useMake           = flag.Bool("make", true, "use make to build and install")
 	verbose           = flag.Bool("v", false, "verbose")
 )
 
@@ -52,30 +52,14 @@ const (
 	done
 )
 
-func logf(format string, args ...interface{}) {
-	format = "%s: " + format
-	args = append([]interface{}{argv0}, args...)
-	fmt.Fprintf(os.Stderr, format, args...)
-}
-
-func printf(format string, args ...interface{}) {
-	if *verbose {
-		logf(format, args...)
-	}
-}
-
-func errorf(format string, args ...interface{}) {
-	errors = true
-	logf(format, args...)
-}
-
 func main() {
 	flag.Usage = usage
 	flag.Parse()
-	if runtime.GOROOT() == "" {
+	if root == "" {
 		fmt.Fprintf(os.Stderr, "%s: no $GOROOT\n", argv0)
 		os.Exit(1)
 	}
+	root += "/src/pkg/"
 
 	// special case - "unsafe" is already installed
 	visit["unsafe"] = done
@@ -104,11 +88,6 @@ func main() {
 		usage()
 	}
 	for _, path := range args {
-		if strings.HasPrefix(path, "http://") {
-			errorf("'http://' used in remote path, try '%s'\n", path[7:])
-			continue
-		}
-
 		install(path, "")
 	}
 	if errors {
@@ -141,7 +120,7 @@ func logPackage(pkg string) {
 	if installedPkgs[pkg] {
 		return
 	}
-	fout, err := os.OpenFile(logfile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	fout, err := os.Open(logfile, os.O_WRONLY|os.O_APPEND|os.O_CREAT, 0644)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %s\n", argv0, err)
 		return
@@ -162,94 +141,83 @@ func install(pkg, parent string) {
 		fmt.Fprintf(os.Stderr, "\t%s\n", pkg)
 		os.Exit(2)
 	}
-	parents[pkg] = parent
 	visit[pkg] = visiting
-	defer func() {
-		visit[pkg] = done
-	}()
+	parents[pkg] = parent
+	if *verbose {
+		fmt.Println(pkg)
+	}
 
 	// Check whether package is local or remote.
 	// If remote, download or update it.
-	tree, pkg, err := build.FindTree(pkg)
-	// Don't build the standard library.
-	if err == nil && tree.Goroot && isStandardPath(pkg) {
-		if parent == "" {
-			errorf("%s: can not goinstall the standard library\n", pkg)
-		} else {
-			printf("%s: skipping standard library\n", pkg)
+	var dir string
+	local := false
+	if strings.HasPrefix(pkg, "http://") {
+		fmt.Fprintf(os.Stderr, "%s: %s: 'http://' used in remote path, try '%s'\n", argv0, pkg, pkg[7:])
+		errors = true
+		return
+	}
+	if isLocalPath(pkg) {
+		dir = pkg
+		local = true
+	} else if isStandardPath(pkg) {
+		dir = path.Join(root, pkg)
+		local = true
+	} else {
+		var err os.Error
+		dir, err = download(pkg)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %s: %s\n", argv0, pkg, err)
+			errors = true
+			visit[pkg] = done
+			return
 		}
-		return
 	}
-	// Download remote packages if not found or forced with -u flag.
-	remote := isRemote(pkg)
-	if remote && (err == build.ErrNotFound || (err == nil && *update)) {
-		printf("%s: download\n", pkg)
-		err = download(pkg, tree.SrcDir())
-	}
-	if err != nil {
-		errorf("%s: %v\n", pkg, err)
-		return
-	}
-	dir := filepath.Join(tree.SrcDir(), pkg)
 
 	// Install prerequisites.
-	dirInfo, err := build.ScanDir(dir, parent == "")
+	dirInfo, err := scanDir(dir, parent == "")
 	if err != nil {
-		errorf("%s: %v\n", pkg, err)
+		fmt.Fprintf(os.Stderr, "%s: %s: %s\n", argv0, pkg, err)
+		errors = true
+		visit[pkg] = done
 		return
 	}
-	if len(dirInfo.GoFiles)+len(dirInfo.CgoFiles) == 0 {
-		errorf("%s: package has no files\n", pkg)
+	if len(dirInfo.goFiles) == 0 {
+		fmt.Fprintf(os.Stderr, "%s: %s: package has no files\n", argv0, pkg)
+		errors = true
+		visit[pkg] = done
 		return
 	}
-	for _, p := range dirInfo.Imports {
+	for _, p := range dirInfo.imports {
 		if p != "C" {
 			install(p, pkg)
 		}
 	}
-	if errors {
+	if dirInfo.pkgName == "main" {
+		if !errors {
+			fmt.Fprintf(os.Stderr, "%s: %s's dependencies are installed.\n", argv0, pkg)
+		}
+		errors = true
+		visit[pkg] = done
 		return
 	}
 
 	// Install this package.
-	if *useMake {
-		err := domake(dir, pkg, tree, dirInfo.IsCommand())
-		if err != nil {
-			errorf("%s: install: %v\n", pkg, err)
-			return
-		}
-	} else {
-		script, err := build.Build(tree, pkg, dirInfo)
-		if err != nil {
-			errorf("%s: install: %v\n", pkg, err)
-			return
-		}
-		if *nuke {
-			printf("%s: nuke\n", pkg)
-			script.Nuke()
-		} else if *clean {
-			printf("%s: clean\n", pkg)
-			script.Clean()
-		}
-		if *doInstall {
-			if script.Stale() {
-				printf("%s: install\n", pkg)
-				if err := script.Run(); err != nil {
-					errorf("%s: install: %v\n", pkg, err)
-					return
-				}
-			} else {
-				printf("%s: up-to-date\n", pkg)
-			}
+	if !errors {
+		if err := domake(dir, pkg, local); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: installing %s: %s\n", argv0, pkg, err)
+			errors = true
+		} else if !local && *logPkgs {
+			// mark this package as installed in $GOROOT/goinstall.log
+			logPackage(pkg)
 		}
 	}
-	if remote {
-		// mark package as installed in $GOROOT/goinstall.log
-		logPackage(pkg)
-	}
-	return
+	visit[pkg] = done
 }
 
+// Is this a local path?  /foo ./foo ../foo . ..
+func isLocalPath(s string) bool {
+	return strings.HasPrefix(s, "/") || strings.HasPrefix(s, "./") || strings.HasPrefix(s, "../") || s == "." || s == ".."
+}
 
 // Is this a standard package path?  strings container/vector etc.
 // Assume that if the first element has a dot, it's a domain name
@@ -273,22 +241,41 @@ func quietRun(dir string, stdin []byte, cmd ...string) os.Error {
 }
 
 // genRun implements run and quietRun.
-func genRun(dir string, stdin []byte, arg []string, quiet bool) os.Error {
-	cmd := exec.Command(arg[0], arg[1:]...)
-	cmd.Stdin = bytes.NewBuffer(stdin)
-	cmd.Dir = dir
-	printf("%s: %s %s\n", dir, cmd.Path, strings.Join(arg[1:], " "))
-	out, err := cmd.CombinedOutput()
+func genRun(dir string, stdin []byte, cmd []string, quiet bool) os.Error {
+	bin, err := exec.LookPath(cmd[0])
 	if err != nil {
+		// report binary as well as the error
+		return os.NewError(cmd[0] + ": " + err.String())
+	}
+	p, err := exec.Run(bin, cmd, os.Environ(), dir, exec.Pipe, exec.Pipe, exec.MergeWithStdout)
+	if *verbose {
+		fmt.Fprintf(os.Stderr, "%s: %s; %s %s\n", argv0, dir, bin, strings.Join(cmd[1:], " "))
+	}
+	if err != nil {
+		return err
+	}
+	go func() {
+		p.Stdin.Write(stdin)
+		p.Stdin.Close()
+	}()
+	var buf bytes.Buffer
+	io.Copy(&buf, p.Stdout)
+	io.Copy(&buf, p.Stdout)
+	w, err := p.Wait(0)
+	p.Close()
+	if err != nil {
+		return err
+	}
+	if !w.Exited() || w.ExitStatus() != 0 {
 		if !quiet || *verbose {
 			if dir != "" {
 				dir = "cd " + dir + "; "
 			}
-			fmt.Fprintf(os.Stderr, "%s: === %s%s\n", cmd.Path, dir, strings.Join(cmd.Args, " "))
-			os.Stderr.Write(out)
-			fmt.Fprintf(os.Stderr, "--- %s\n", err)
+			fmt.Fprintf(os.Stderr, "%s: === %s%s\n", argv0, dir, strings.Join(cmd, " "))
+			os.Stderr.Write(buf.Bytes())
+			fmt.Fprintf(os.Stderr, "--- %s\n", w)
 		}
-		return os.NewError("running " + arg[0] + ": " + err.String())
+		return os.ErrorString("running " + cmd[0] + ": " + w.String())
 	}
 	return nil
 }

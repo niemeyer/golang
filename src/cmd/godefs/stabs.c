@@ -149,7 +149,7 @@ Intrange intranges[] = {
 	16, 0, Void,
 };
 
-int kindsize[] = {
+static int kindsize[] = {
 	0,
 	0,
 	8,
@@ -219,7 +219,7 @@ parsedef(char **pp, char *name)
 	t = emalloc(sizeof *t);
 	switch(*p) {
 	default:
-		fprint(2, "unknown type char %c in %s\n", *p, p);
+		fprint(2, "unknown type char %c\n", *p);
 		*pp = "";
 		return t;
 
@@ -284,7 +284,6 @@ parsedef(char **pp, char *name)
 			return nil;
 		break;
 
-	case 'B':	// volatile
 	case 'k':	// const
 		++*pp;
 		return parsedef(pp, nil);
@@ -381,6 +380,14 @@ parsedef(char **pp, char *name)
 
 			while(f->type->kind == Typedef)
 				f->type = f->type->type;
+			if(f->type->kind == 0 && f->size <= 64 && (f->size&(f->size-1)) == 0) {
+				// unknown type but <= 64 bits and bit size is a power of two.
+				// could be enum - make Uint64 and then let it reduce
+				tt = emalloc(sizeof *tt);
+				*tt = *f->type;
+				f->type = tt;
+				tt->kind = Uint64;
+			}
 
 			// rewrite
 			//	uint32 x : 8;

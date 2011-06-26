@@ -224,6 +224,12 @@ int isalpharune(Rune r);
 int isdigitrune(Rune r);
 
 
+// isideographicrune tests for ideographic characters and numbers, as
+// defined by the Unicode standard.
+
+int isideographicrune(Rune r);
+
+
 // isspacerune tests for whitespace characters, including "C" locale
 // whitespace, Unicode defined whitespace, and the "zero-width
 // non-break space" character.

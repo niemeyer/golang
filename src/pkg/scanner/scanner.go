@@ -2,11 +2,10 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package scanner provides a scanner and tokenizer for UTF-8-encoded text.
-// It takes an io.Reader providing the source, which then can be tokenized
-// through repeated calls to the Scan function.  For compatibility with
-// existing tools, the NUL character is not allowed (implementation
-// restriction).
+// A scanner and tokenizer for UTF-8-encoded text.  Takes an io.Reader
+// providing the source, which then can be tokenized through repeated calls
+// to the Scan function.  For compatibility with existing tools, the NUL
+// character is not allowed (implementation restriction).
 //
 // By default, a Scanner skips white space and Go comments and recognizes all
 // literals as defined by the Go language specification.  It may be
@@ -116,7 +115,7 @@ func TokenString(tok int) string {
 	if s, found := tokenString[tok]; found {
 		return s
 	}
-	return fmt.Sprintf("%q", string(tok))
+	return fmt.Sprintf("U+%04X", tok)
 }
 
 
@@ -332,7 +331,7 @@ func (s *Scanner) error(msg string) {
 		s.Error(s, msg)
 		return
 	}
-	fmt.Fprintf(os.Stderr, "%s: %s\n", s.Position, msg)
+	fmt.Fprintf(os.Stderr, "%s: %s", s.Position, msg)
 }
 
 
@@ -504,32 +503,41 @@ func (s *Scanner) scanChar() {
 }
 
 
-func (s *Scanner) scanComment(ch int) int {
-	// ch == '/' || ch == '*'
-	if ch == '/' {
-		// line comment
-		ch = s.next() // read character after "//"
-		for ch != '\n' && ch >= 0 {
-			ch = s.next()
+func (s *Scanner) scanLineComment() {
+	ch := s.next() // read character after "//"
+	for ch != '\n' {
+		if ch < 0 {
+			s.error("comment not terminated")
+			return
 		}
-		return ch
+		ch = s.next()
 	}
+}
 
-	// general comment
-	ch = s.next() // read character after "/*"
+
+func (s *Scanner) scanGeneralComment() {
+	ch := s.next() // read character after "/*"
 	for {
 		if ch < 0 {
 			s.error("comment not terminated")
-			break
+			return
 		}
 		ch0 := ch
 		ch = s.next()
 		if ch0 == '*' && ch == '/' {
-			ch = s.next()
 			break
 		}
 	}
-	return ch
+}
+
+
+func (s *Scanner) scanComment(ch int) {
+	// ch == '/' || ch == '*'
+	if ch == '/' {
+		s.scanLineComment()
+		return
+	}
+	s.scanGeneralComment()
 }
 
 
@@ -611,11 +619,13 @@ redo:
 			if (ch == '/' || ch == '*') && s.Mode&ScanComments != 0 {
 				if s.Mode&SkipComments != 0 {
 					s.tokPos = -1 // don't collect token text
-					ch = s.scanComment(ch)
+					s.scanComment(ch)
+					ch = s.next()
 					goto redo
 				}
-				ch = s.scanComment(ch)
+				s.scanComment(ch)
 				tok = Comment
+				ch = s.next()
 			}
 		case '`':
 			if s.Mode&ScanRawStrings != 0 {

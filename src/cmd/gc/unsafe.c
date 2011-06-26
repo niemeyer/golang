@@ -41,7 +41,6 @@ unsafenmagic(Node *nn)
 		tr = r->type;
 		if(tr == T)
 			goto bad;
-		dowidth(tr);
 		v = tr->width;
 		goto yes;
 	}
@@ -92,6 +91,6 @@ ret:
 	mpmovecfix(val.u.xval, v);
 	n = nod(OLITERAL, N, N);
 	n->val = val;
-	n->type = types[TUINTPTR];
+	n->type = types[TINT];
 	return n;
 }

@@ -21,34 +21,24 @@ DIRS=\
 	bufio\
 	bytes\
 	cmath\
-	compress/bzip2\
 	compress/flate\
 	compress/gzip\
-	compress/lzw \
 	compress/zlib\
 	container/heap\
 	container/list\
 	container/ring\
 	container/vector\
-	crypto\
 	crypto/aes\
+	crypto/block\
 	crypto/blowfish\
 	crypto/cast5\
 	crypto/cipher\
-	crypto/des\
 	crypto/dsa\
-	crypto/ecdsa\
 	crypto/elliptic\
 	crypto/hmac\
 	crypto/md4\
 	crypto/md5\
 	crypto/ocsp\
-	crypto/openpgp\
-	crypto/openpgp/armor\
-	crypto/openpgp/elgamal\
-	crypto/openpgp/error\
-	crypto/openpgp/packet\
-	crypto/openpgp/s2k\
 	crypto/rand\
 	crypto/rc4\
 	crypto/ripemd160\
@@ -60,7 +50,6 @@ DIRS=\
 	crypto/tls\
 	crypto/twofish\
 	crypto/x509\
-	crypto/x509/pkix\
 	crypto/xtea\
 	debug/dwarf\
 	debug/macho\
@@ -75,52 +64,39 @@ DIRS=\
 	encoding/binary\
 	encoding/git85\
 	encoding/hex\
+	encoding/line\
 	encoding/pem\
 	exec\
 	exp/datafmt\
+	exp/draw\
+	exp/draw/x11\
 	exp/eval\
-	exp/gui\
-	exp/gui/x11\
-	exp/regexp/syntax\
 	expvar\
 	flag\
 	fmt\
 	go/ast\
-	go/build\
 	go/doc\
 	go/parser\
 	go/printer\
 	go/scanner\
 	go/token\
 	go/typechecker\
-	go/types\
 	gob\
 	hash\
 	hash/adler32\
 	hash/crc32\
 	hash/crc64\
-	hash/fnv\
 	html\
 	http\
-	http/cgi\
-	http/fcgi\
 	http/pprof\
-	http/httptest\
-	http/spdy\
 	image\
-	image/bmp\
-	image/draw\
-	image/gif\
 	image/jpeg\
 	image/png\
-	image/tiff\
-	image/ycbcr\
 	index/suffixarray\
 	io\
 	io/ioutil\
 	json\
 	log\
-	mail\
 	math\
 	mime\
 	mime/multipart\
@@ -130,10 +106,8 @@ DIRS=\
 	netchan\
 	os\
 	os/signal\
-	os/user\
 	patch\
 	path\
-	path/filepath\
 	rand\
 	reflect\
 	regexp\
@@ -149,7 +123,6 @@ DIRS=\
 	strconv\
 	strings\
 	sync\
-	sync/atomic\
 	syscall\
 	syslog\
 	tabwriter\
@@ -168,11 +141,8 @@ DIRS=\
 	../cmd/cgo\
 	../cmd/ebnflint\
 	../cmd/godoc\
-	../cmd/gofix\
 	../cmd/gofmt\
 	../cmd/goinstall\
-	../cmd/gotest\
-	../cmd/gotype\
 	../cmd/govet\
 	../cmd/goyacc\
 	../cmd/hgpatch\
@@ -183,54 +153,20 @@ DIRS+=\
 
 endif
 
-ifeq ($(GOOS),plan9)
-NOPLAN9BUILD=\
-	crypto/tls\
+NOTEST=\
 	debug/proc\
-	exp/gui/x11\
-	expvar\
-	http\
-	http/cgi\
-	http/fcgi\
-	http/httptest\
-	http/pprof\
-	http/spdy\
-	mail\
-	mime/multipart\
-	net\
-	net/dict\
-	net/textproto\
-	netchan\
-	os/signal\
-	rpc\
-	rpc/jsonrpc\
-	smtp\
-	syslog\
-	websocket\
-	../cmd/godoc\
-	../cmd/goinstall\
-
-DIRS:=$(filter-out $(NOPLAN9BUILD),$(DIRS))
-endif
-
-NOTEST+=\
-	crypto\
-	crypto/openpgp/error\
-	crypto/x509/pkix\
-	debug/proc\
-	exp/gui\
-	exp/gui/x11\
+	exp/draw/x11\
 	go/ast\
 	go/doc\
 	go/token\
 	hash\
 	http/pprof\
-	http/httptest\
-	image/bmp\
-	image/gif\
+	image\
+	image/jpeg\
 	net/dict\
 	rand\
 	runtime/cgo\
+	runtime/pprof\
 	syscall\
 	testing\
 	testing/iotest\
@@ -238,18 +174,24 @@ NOTEST+=\
 	../cmd/cgo\
 	../cmd/ebnflint\
 	../cmd/godoc\
+	../cmd/gofmt\
 	../cmd/goinstall\
-	../cmd/gotest\
 	../cmd/govet\
 	../cmd/goyacc\
 	../cmd/hgpatch\
 
-NOBENCH+=\
+NOBENCH=\
 	container/vector\
+
+# Disable tests that depend on an external network.
+ifeq ($(DISABLE_NET_TESTS),1)
+NOTEST+=http net
+endif
 
 # Disable tests that windows cannot run yet.
 ifeq ($(GOOS),windows)
 NOTEST+=os/signal    # no signals
+NOTEST+=path         # tree walking does not work
 NOTEST+=syslog       # no network
 NOTEST+=time         # no syscall.Kill, syscall.SIGCHLD for sleep tests
 endif
@@ -264,37 +206,28 @@ clean.dirs: $(addsuffix .clean, $(DIRS))
 install.dirs: $(addsuffix .install, $(DIRS))
 nuke.dirs: $(addsuffix .nuke, $(DIRS))
 test.dirs: $(addsuffix .test, $(TEST))
-testshort.dirs: $(addsuffix .testshort, $(TEST))
 bench.dirs: $(addsuffix .bench, $(BENCH))
 
 %.clean:
-	+$(MAKE) -C $* clean
+	+cd $* && gomake clean
 
 %.install:
-	+@echo install $*
-	+@$(MAKE) -C $* install.clean >$*/build.out 2>&1 || (echo INSTALL FAIL $*; cat $*/build.out; exit 1)
+	+cd $* && gomake install
 
 %.nuke:
-	+$(MAKE) -C $* nuke
+	+cd $* && gomake nuke
 
 %.test:
-	+@echo test $*
-	+@$(MAKE) -C $* test.clean >$*/test.out 2>&1 || (echo TEST FAIL $*; cat $*/test.out; exit 1)
-
-%.testshort:
-	+@echo test $*
-	+@$(MAKE) -C $* testshort.clean >$*/test.out 2>&1 || (echo TEST FAIL $*; cat $*/test.out; exit 1)
+	+cd $* && gomake test
 
 %.bench:
-	+$(MAKE) -C $* bench	
+	+cd $* && gomake bench
 
 clean: clean.dirs
 
 install: install.dirs
 
 test:	test.dirs
-
-testshort: testshort.dirs
 
 bench:	bench.dirs ../../test/garbage.bench
 

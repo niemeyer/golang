@@ -56,7 +56,7 @@ void
 main(int argc, char *argv[])
 {
 	char *p;
-	int c;
+	int nout, nproc, i, c;
 
 	thechar = '8';
 	thestring = "386";
@@ -96,9 +96,45 @@ main(int argc, char *argv[])
 		print("usage: %ca [-options] file.s\n", thechar);
 		errorexit();
 	}
-	if(argc > 1){
-		print("can't assemble multiple files\n");
+	if(argc > 1 && systemtype(Windows)){
+		print("can't assemble multiple files on windows\n");
 		errorexit();
+	}
+	if(argc > 1 && !systemtype(Windows)) {
+		nproc = 1;
+		if(p = getenv("NPROC"))
+			nproc = atol(p);	/* */
+		c = 0;
+		nout = 0;
+		for(;;) {
+			Waitmsg *w;
+
+			while(nout < nproc && argc > 0) {
+				i = fork();
+				if(i < 0) {
+					fprint(2, "fork: %r\n");
+					errorexit();
+				}
+				if(i == 0) {
+					print("%s:\n", *argv);
+					if(assemble(*argv))
+						errorexit();
+					exits(0);
+				}
+				nout++;
+				argc--;
+				argv++;
+			}
+			w = wait();
+			if(w == nil) {
+				if(c)
+					errorexit();
+				exits(0);
+			}
+			if(w->msg[0])
+				c++;
+			nout--;
+		}
 	}
 	if(assemble(argv[0]))
 		errorexit();
@@ -108,7 +144,7 @@ main(int argc, char *argv[])
 int
 assemble(char *file)
 {
-	char *ofile, *p;
+	char *ofile, incfile[20], *p;
 	int i, of;
 
 	ofile = alloc(strlen(file)+3); // +3 for .x\0 (x=thechar)
@@ -133,6 +169,15 @@ assemble(char *file)
 		} else
 			outfile = "/dev/null";
 	}
+	p = getenv("INCLUDE");
+	if(p) {
+		setinclude(p);
+	} else {
+		if(systemtype(Plan9)) {
+			sprint(incfile,"/%s/include", thestring);
+			setinclude(strdup(incfile));
+		}
+	}
 
 	of = create(outfile, OWRITE, 0664);
 	if(of < 0) {
@@ -144,7 +189,7 @@ assemble(char *file)
 	pass = 1;
 	pinit(file);
 
-	Bprint(&obuf, "go object %s %s %s\n", getgoos(), thestring, getgoversion());
+	Bprint(&obuf, "%s\n", thestring);
 
 	for(i=0; i<nDlist; i++)
 		dodefine(Dlist[i]);
@@ -287,7 +332,6 @@ struct
 	"CMPSB",	LTYPE0,	ACMPSB,
 	"CMPSL",	LTYPE0,	ACMPSL,
 	"CMPSW",	LTYPE0,	ACMPSW,
-	"CMPXCHG8B",	LTYPE1,	ACMPXCHG8B,
 	"CMPXCHGB",	LTYPE3,	ACMPXCHGB,
 	"CMPXCHGL",	LTYPE3,	ACMPXCHGL,
 	"CMPXCHGW",	LTYPE3,	ACMPXCHGW,
@@ -502,9 +546,6 @@ struct
 	"VERW",		LTYPE2,	AVERW,
 	"WAIT",		LTYPE0,	AWAIT,
 	"WORD",		LTYPE2,	AWORD,
-	"XADDB",	LTYPE3,	AXADDB,
-	"XADDL",	LTYPE3,	AXADDL,
-	"XADDW",	LTYPE3,	AXADDW,
 	"XCHGB",	LTYPE3,	AXCHGB,
 	"XCHGL",	LTYPE3,	AXCHGL,
 	"XCHGW",	LTYPE3,	AXCHGW,

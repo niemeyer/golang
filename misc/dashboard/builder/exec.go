@@ -1,74 +1,65 @@
-// Copyright 2011 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package main
 
 import (
 	"bytes"
 	"exec"
 	"io"
-	"log"
 	"os"
 	"strings"
 )
 
 // run is a simple wrapper for exec.Run/Close
 func run(envv []string, dir string, argv ...string) os.Error {
-	if *verbose {
-		log.Println("run", argv)
+	bin, err := pathLookup(argv[0])
+	if err != nil {
+		return err
 	}
-	argv = useBash(argv)
-	cmd := exec.Command(argv[0], argv[1:]...)
-	cmd.Dir = dir
-	cmd.Env = envv
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	p, err := exec.Run(bin, argv, envv, dir,
+		exec.DevNull, exec.DevNull, exec.PassThrough)
+	if err != nil {
+		return err
+	}
+	return p.Close()
 }
 
 // runLog runs a process and returns the combined stdout/stderr, 
-// as well as writing it to logfile (if specified). It returns
-// process combined stdout and stderr output, exit status and error.
-// The error returned is nil, if process is started successfully,
-// even if exit status is not 0.
-func runLog(envv []string, logfile, dir string, argv ...string) (string, int, os.Error) {
-	if *verbose {
-		log.Println("runLog", argv)
+// as well as writing it to logfile (if specified).
+func runLog(envv []string, logfile, dir string, argv ...string) (output string, exitStatus int, err os.Error) {
+	bin, err := pathLookup(argv[0])
+	if err != nil {
+		return
 	}
-	argv = useBash(argv)
-
+	p, err := exec.Run(bin, argv, envv, dir,
+		exec.DevNull, exec.Pipe, exec.MergeWithStdout)
+	if err != nil {
+		return
+	}
+	defer p.Close()
 	b := new(bytes.Buffer)
 	var w io.Writer = b
 	if logfile != "" {
-		f, err := os.OpenFile(logfile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+		f, err := os.Open(logfile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
 		if err != nil {
-			return "", 0, err
+			return
 		}
 		defer f.Close()
 		w = io.MultiWriter(f, b)
 	}
-
-	cmd := exec.Command(argv[0], argv[1:]...)
-	cmd.Dir = dir
-	cmd.Env = envv
-	cmd.Stdout = w
-	cmd.Stderr = w
-
-	err := cmd.Run()
+	_, err = io.Copy(w, p.Stdout)
 	if err != nil {
-		if ws, ok := err.(*os.Waitmsg); ok {
-			return b.String(), ws.ExitStatus(), nil
-		}
+		return
 	}
-	return b.String(), 0, nil
+	wait, err := p.Wait(0)
+	if err != nil {
+		return
+	}
+	return b.String(), wait.WaitStatus.ExitStatus(), nil
 }
 
-// useBash prefixes a list of args with 'bash' if the first argument
-// is a bash script.
-func useBash(argv []string) []string {
-	// TODO(brainman): choose a more reliable heuristic here.
-	if strings.HasSuffix(argv[0], ".bash") {
-		argv = append([]string{"bash"}, argv...)
+// Find bin in PATH if a relative or absolute path hasn't been specified
+func pathLookup(s string) (string, os.Error) {
+	if strings.HasPrefix(s, "/") || strings.HasPrefix(s, "./") || strings.HasPrefix(s, "../") {
+		return s, nil
 	}
-	return argv
+	return exec.LookPath(s)
 }

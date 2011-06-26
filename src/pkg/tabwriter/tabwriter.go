@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package tabwriter implements a write filter (tabwriter.Writer) that
-// translates tabbed columns in input into properly aligned text.
+// The tabwriter package implements a write filter (tabwriter.Writer)
+// that translates tabbed columns in input into properly aligned text.
 //
 // The package is using the Elastic Tabstops algorithm described at
 // http://nickgravgaard.com/elastictabstops/index.html.
@@ -158,7 +158,7 @@ const (
 	TabIndent
 
 	// Print a vertical bar ('|') between columns (after formatting).
-	// Discarded columns appear as zero-width columns ("||").
+	// Discarded colums appear as zero-width columns ("||").
 	Debug
 )
 

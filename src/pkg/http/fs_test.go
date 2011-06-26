@@ -2,21 +2,88 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package http_test
+package http
 
 import (
 	"fmt"
-	. "http"
-	"http/httptest"
 	"io/ioutil"
+	"net"
 	"os"
+	"sync"
 	"testing"
 )
+
+var ParseRangeTests = []struct {
+	s      string
+	length int64
+	r      []httpRange
+}{
+	{"", 0, nil},
+	{"foo", 0, nil},
+	{"bytes=", 0, nil},
+	{"bytes=5-4", 10, nil},
+	{"bytes=0-2,5-4", 10, nil},
+	{"bytes=0-9", 10, []httpRange{{0, 10}}},
+	{"bytes=0-", 10, []httpRange{{0, 10}}},
+	{"bytes=5-", 10, []httpRange{{5, 5}}},
+	{"bytes=0-20", 10, []httpRange{{0, 10}}},
+	{"bytes=15-,0-5", 10, nil},
+	{"bytes=-5", 10, []httpRange{{5, 5}}},
+	{"bytes=-15", 10, []httpRange{{0, 10}}},
+	{"bytes=0-499", 10000, []httpRange{{0, 500}}},
+	{"bytes=500-999", 10000, []httpRange{{500, 500}}},
+	{"bytes=-500", 10000, []httpRange{{9500, 500}}},
+	{"bytes=9500-", 10000, []httpRange{{9500, 500}}},
+	{"bytes=0-0,-1", 10000, []httpRange{{0, 1}, {9999, 1}}},
+	{"bytes=500-600,601-999", 10000, []httpRange{{500, 101}, {601, 399}}},
+	{"bytes=500-700,601-999", 10000, []httpRange{{500, 201}, {601, 399}}},
+}
+
+func TestParseRange(t *testing.T) {
+	for _, test := range ParseRangeTests {
+		r := test.r
+		ranges, err := parseRange(test.s, test.length)
+		if err != nil && r != nil {
+			t.Errorf("parseRange(%q) returned error %q", test.s, err)
+		}
+		if len(ranges) != len(r) {
+			t.Errorf("len(parseRange(%q)) = %d, want %d", test.s, len(ranges), len(r))
+			continue
+		}
+		for i := range r {
+			if ranges[i].start != r[i].start {
+				t.Errorf("parseRange(%q)[%d].start = %d, want %d", test.s, i, ranges[i].start, r[i].start)
+			}
+			if ranges[i].length != r[i].length {
+				t.Errorf("parseRange(%q)[%d].length = %d, want %d", test.s, i, ranges[i].length, r[i].length)
+			}
+		}
+	}
+}
 
 const (
 	testFile       = "testdata/file"
 	testFileLength = 11
 )
+
+var (
+	serverOnce sync.Once
+	serverAddr string
+)
+
+func startServer(t *testing.T) {
+	serverOnce.Do(func() {
+		HandleFunc("/ServeFile", func(w ResponseWriter, r *Request) {
+			ServeFile(w, r, "testdata/file")
+		})
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal("listen:", err)
+		}
+		serverAddr = l.Addr().String()
+		go Serve(l, nil)
+	})
+}
 
 var ServeFileRangeTests = []struct {
 	start, end int
@@ -32,11 +99,7 @@ var ServeFileRangeTests = []struct {
 }
 
 func TestServeFile(t *testing.T) {
-	ts := httptest.NewServer(HandlerFunc(func(w ResponseWriter, r *Request) {
-		ServeFile(w, r, "testdata/file")
-	}))
-	defer ts.Close()
-
+	startServer(t)
 	var err os.Error
 
 	file, err := ioutil.ReadFile(testFile)
@@ -46,8 +109,8 @@ func TestServeFile(t *testing.T) {
 
 	// set up the Request (re-used for all tests)
 	var req Request
-	req.Header = make(Header)
-	if req.URL, err = ParseURL(ts.URL); err != nil {
+	req.Header = make(map[string]string)
+	if req.URL, err = ParseURL("http://" + serverAddr + "/ServeFile"); err != nil {
 		t.Fatal("ParseURL:", err)
 	}
 	req.Method = "GET"
@@ -60,9 +123,9 @@ func TestServeFile(t *testing.T) {
 
 	// Range tests
 	for _, rt := range ServeFileRangeTests {
-		req.Header.Set("Range", "bytes="+rt.r)
+		req.Header["Range"] = "bytes=" + rt.r
 		if rt.r == "" {
-			req.Header["Range"] = nil
+			req.Header["Range"] = ""
 		}
 		r, body := getBody(t, req)
 		if r.StatusCode != rt.code {
@@ -75,9 +138,8 @@ func TestServeFile(t *testing.T) {
 		if rt.r == "" {
 			h = ""
 		}
-		cr := r.Header.Get("Content-Range")
-		if cr != h {
-			t.Errorf("header mismatch: range=%q: got %q, want %q", rt.r, cr, h)
+		if r.Header["Content-Range"] != h {
+			t.Errorf("header mismatch: range=%q: got %q, want %q", rt.r, r.Header["Content-Range"], h)
 		}
 		if !equal(body, file[rt.start:rt.end]) {
 			t.Errorf("body mismatch: range=%q: got %q, want %q", rt.r, body, file[rt.start:rt.end])
@@ -85,47 +147,8 @@ func TestServeFile(t *testing.T) {
 	}
 }
 
-func TestServeFileContentType(t *testing.T) {
-	const ctype = "icecream/chocolate"
-	override := false
-	ts := httptest.NewServer(HandlerFunc(func(w ResponseWriter, r *Request) {
-		if override {
-			w.Header().Set("Content-Type", ctype)
-		}
-		ServeFile(w, r, "testdata/file")
-	}))
-	defer ts.Close()
-	get := func(want string) {
-		resp, err := Get(ts.URL)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if h := resp.Header.Get("Content-Type"); h != want {
-			t.Errorf("Content-Type mismatch: got %d, want %d", h, want)
-		}
-	}
-	get("text/plain; charset=utf-8")
-	override = true
-	get(ctype)
-}
-
-func TestServeFileWithContentEncoding(t *testing.T) {
-	ts := httptest.NewServer(HandlerFunc(func(w ResponseWriter, r *Request) {
-		w.Header().Set("Content-Encoding", "foo")
-		ServeFile(w, r, "testdata/file")
-	}))
-	defer ts.Close()
-	resp, err := Get(ts.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if g, e := resp.ContentLength, int64(-1); g != e {
-		t.Errorf("Content-Length mismatch: got %q, want %q", g, e)
-	}
-}
-
 func getBody(t *testing.T, req Request) (*Response, []byte) {
-	r, err := DefaultClient.Do(&req)
+	r, err := send(&req)
 	if err != nil {
 		t.Fatal(req.URL.String(), "send:", err)
 	}

@@ -18,7 +18,7 @@ type parser struct {
 	scanner scanner.Scanner
 	pos     token.Pos   // token position
 	tok     token.Token // one token look-ahead
-	lit     string      // token literal
+	lit     []byte      // token literal
 }
 
 
@@ -44,7 +44,7 @@ func (p *parser) errorExpected(pos token.Pos, msg string) {
 		// make the error message more specific
 		msg += ", found '" + p.tok.String() + "'"
 		if p.tok.IsLiteral() {
-			msg += " " + p.lit
+			msg += " " + string(p.lit)
 		}
 	}
 	p.error(pos, msg)
@@ -63,7 +63,7 @@ func (p *parser) expect(tok token.Token) token.Pos {
 
 func (p *parser) parseIdentifier() *Name {
 	pos := p.pos
-	name := p.lit
+	name := string(p.lit)
 	p.expect(token.IDENT)
 	return &Name{pos, name}
 }
@@ -73,7 +73,7 @@ func (p *parser) parseToken() *Token {
 	pos := p.pos
 	value := ""
 	if p.tok == token.STRING {
-		value, _ = strconv.Unquote(p.lit)
+		value, _ = strconv.Unquote(string(p.lit))
 		// Unquote may fail with an error, but only if the scanner found
 		// an illegal string in the first place. In this case the error
 		// has already been reported.
@@ -85,7 +85,6 @@ func (p *parser) parseToken() *Token {
 }
 
 
-// ParseTerm returns nil if no term was found.
 func (p *parser) parseTerm() (x Expression) {
 	pos := p.pos
 
@@ -96,8 +95,7 @@ func (p *parser) parseTerm() (x Expression) {
 	case token.STRING:
 		tok := p.parseToken()
 		x = tok
-		const ellipsis = "…" // U+2026, the horizontal ellipsis character
-		if p.tok == token.ILLEGAL && p.lit == ellipsis {
+		if p.tok == token.ELLIPSIS {
 			p.next()
 			x = &Range{tok, p.parseToken()}
 		}
@@ -132,8 +130,7 @@ func (p *parser) parseSequence() Expression {
 	// no need for a sequence if list.Len() < 2
 	switch len(list) {
 	case 0:
-		p.errorExpected(p.pos, "term")
-		return &Bad{p.pos, "term expected"}
+		return nil
 	case 1:
 		return list[0]
 	}
@@ -146,16 +143,20 @@ func (p *parser) parseExpression() Expression {
 	var list Alternative
 
 	for {
-		list = append(list, p.parseSequence())
+		if x := p.parseSequence(); x != nil {
+			list = append(list, x)
+		}
 		if p.tok != token.OR {
 			break
 		}
 		p.next()
 	}
-	// len(list) > 0
 
 	// no need for an Alternative node if list.Len() < 2
-	if len(list) == 1 {
+	switch len(list) {
+	case 0:
+		return nil
+	case 1:
 		return list[0]
 	}
 
@@ -166,10 +167,7 @@ func (p *parser) parseExpression() Expression {
 func (p *parser) parseProduction() *Production {
 	name := p.parseIdentifier()
 	p.expect(token.ASSIGN)
-	var expr Expression
-	if p.tok != token.PERIOD {
-		expr = p.parseExpression()
-	}
+	expr := p.parseExpression()
 	p.expect(token.PERIOD)
 	return &Production{name, expr}
 }
@@ -179,7 +177,7 @@ func (p *parser) parse(fset *token.FileSet, filename string, src []byte) Grammar
 	// initialize parser
 	p.fset = fset
 	p.ErrorVector.Reset()
-	p.scanner.Init(fset.AddFile(filename, fset.Base(), len(src)), src, p, scanner.AllowIllegalChars)
+	p.scanner.Init(fset.AddFile(filename, fset.Base(), len(src)), src, p, 0)
 	p.next() // initializes pos, tok, lit
 
 	grammar := make(Grammar)

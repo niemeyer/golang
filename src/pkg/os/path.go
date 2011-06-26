@@ -24,16 +24,16 @@ func MkdirAll(path string, perm uint32) Error {
 
 	// Doesn't already exist; make sure parent does.
 	i := len(path)
-	for i > 0 && IsPathSeparator(path[i-1]) { // Skip trailing path separator.
+	for i > 0 && path[i-1] == '/' { // Skip trailing slashes.
 		i--
 	}
 
 	j := i
-	for j > 0 && !IsPathSeparator(path[j-1]) { // Scan backward over element.
+	for j > 0 && path[j-1] != '/' { // Scan backward over element.
 		j--
 	}
 
-	if j > 1 {
+	if j > 0 {
 		// Create parent
 		err = MkdirAll(path[0:j-1], perm)
 		if err != nil {
@@ -80,7 +80,7 @@ func RemoveAll(path string) Error {
 	}
 
 	// Directory.
-	fd, err := Open(path)
+	fd, err := Open(path, O_RDONLY, 0)
 	if err != nil {
 		return err
 	}
@@ -90,13 +90,10 @@ func RemoveAll(path string) Error {
 	for {
 		names, err1 := fd.Readdirnames(100)
 		for _, name := range names {
-			err1 := RemoveAll(path + string(PathSeparator) + name)
+			err1 := RemoveAll(path + "/" + name)
 			if err == nil {
 				err = err1
 			}
-		}
-		if err1 == EOF {
-			break
 		}
 		// If Readdirnames returned an error, use it.
 		if err == nil {

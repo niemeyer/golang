@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package strings implements simple functions to manipulate strings.
+// A package of simple functions to manipulate strings.
 package strings
 
 import (
@@ -119,19 +119,9 @@ func LastIndex(s, sep string) int {
 // IndexRune returns the index of the first instance of the Unicode code point
 // rune, or -1 if rune is not present in s.
 func IndexRune(s string, rune int) int {
-	switch {
-	case rune < 0x80:
-		b := byte(rune)
-		for i := 0; i < len(s); i++ {
-			if s[i] == b {
-				return i
-			}
-		}
-	default:
-		for i, c := range s {
-			if c == rune {
-				return i
-			}
+	for i, c := range s {
+		if c == rune {
+			return i
 		}
 	}
 	return -1
@@ -275,10 +265,20 @@ func Join(a []string, sep string) string {
 	}
 
 	b := make([]byte, n)
-	bp := copy(b, a[0])
-	for _, s := range a[1:] {
-		bp += copy(b[bp:], sep)
-		bp += copy(b[bp:], s)
+	bp := 0
+	for i := 0; i < len(a); i++ {
+		s := a[i]
+		for j := 0; j < len(s); j++ {
+			b[bp] = s[j]
+			bp++
+		}
+		if i+1 < len(a) {
+			s = sep
+			for j := 0; j < len(s); j++ {
+				b[bp] = s[j]
+				bp++
+			}
+		}
 	}
 	return string(b)
 }
@@ -302,19 +302,9 @@ func Map(mapping func(rune int) int, s string) string {
 	// fine.  It could also shrink but that falls out naturally.
 	maxbytes := len(s) // length of b
 	nbytes := 0        // number of bytes encoded in b
-	// The output buffer b is initialized on demand, the first
-	// time a character differs.
-	var b []byte
-
-	for i, c := range s {
+	b := make([]byte, maxbytes)
+	for _, c := range s {
 		rune := mapping(c)
-		if b == nil {
-			if rune == c {
-				continue
-			}
-			b = make([]byte, maxbytes)
-			nbytes = copy(b, s[:i])
-		}
 		if rune >= 0 {
 			wid := 1
 			if rune >= utf8.RuneSelf {
@@ -329,9 +319,6 @@ func Map(mapping func(rune int) int, s string) string {
 			}
 			nbytes += utf8.EncodeRune(b[nbytes:maxbytes], rune)
 		}
-	}
-	if b == nil {
-		return s
 	}
 	return string(b[0:nbytes])
 }

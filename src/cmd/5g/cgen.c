@@ -43,8 +43,6 @@ cgen(Node *n, Node *res)
 	}
 
 	if(isfat(n->type)) {
-		if(n->type->width < 0)
-			fatal("forgot to compute width for %T", n->type);
 		sgen(n, res, n->type->width);
 		goto ret;
 	}
@@ -962,7 +960,7 @@ bgen(Node *n, int true, Prog *to)
 		}
 
 		// make simplest on right
-		if(nl->op == OLITERAL || (nl->ullman < UINF && nl->ullman < nr->ullman)) {
+		if(nl->op == OLITERAL || nl->ullman < nr->ullman) {
 			a = brrev(a);
 			r = nl;
 			nl = nr;
@@ -1073,18 +1071,18 @@ bgen(Node *n, int true, Prog *to)
 		a = optoas(a, nr->type);
 
 		if(nr->ullman >= UINF) {
-			regalloc(&n1, nl->type, N);
-			cgen(nl, &n1);
+			regalloc(&n1, nr->type, N);
+			cgen(nr, &n1);
 
-			tempname(&tmp, nl->type);
+			tempname(&tmp, nr->type);
 			gmove(&n1, &tmp);
 			regfree(&n1);
 
-			regalloc(&n2, nr->type, N);
-			cgen(nr, &n2);
-
 			regalloc(&n1, nl->type, N);
-			cgen(&tmp, &n1);
+			cgen(nl, &n1);
+
+			regalloc(&n2, nr->type, N);
+			cgen(&tmp, &n2);
 
 			gcmp(optoas(OCMP, nr->type), &n1, &n2);
 			patch(gbranch(a, nr->type), to);
@@ -1190,8 +1188,7 @@ void
 sgen(Node *n, Node *res, int32 w)
 {
 	Node dst, src, tmp, nend;
-	int32 c, odst, osrc;
-	int dir, align, op;
+	int32 c, q, odst, osrc;
 	Prog *p, *ploop;
 
 	if(debug['g']) {
@@ -1201,39 +1198,17 @@ sgen(Node *n, Node *res, int32 w)
 	}
 	if(w == 0)
 		return;
+	if(n->ullman >= UINF && res->ullman >= UINF) {
+		fatal("sgen UINF");
+	}
+
 	if(w < 0)
 		fatal("sgen copy %d", w);
-	if(n->ullman >= UINF && res->ullman >= UINF)
-		fatal("sgen UINF");
-	if(n->type == T)
-		fatal("sgen: missing type");
-
-	// determine alignment.
-	// want to avoid unaligned access, so have to use
-	// smaller operations for less aligned types.
-	// for example moving [4]byte must use 4 MOVB not 1 MOVW.
-	align = n->type->align;
-	op = 0;
-	switch(align) {
-	default:
-		fatal("sgen: invalid alignment %d for %T", align, n->type);
-	case 1:
-		op = AMOVB;
-		break;
-	case 2:
-		op = AMOVH;
-		break;
-	case 4:
-		op = AMOVW;
-		break;
-	}
-	if(w%align)
-		fatal("sgen: unaligned size %d (align=%d) for %T", w, align, n->type);
-	c = w / align;
 
 	// offset on the stack
 	osrc = stkof(n);
 	odst = stkof(res);
+
 	if(osrc != -1000 && odst != -1000 && (osrc == 1000 || odst == 1000)) {
 		// osrc and odst both on stack, and at least one is in
 		// an unknown position.  Could generate code to test
@@ -1244,15 +1219,12 @@ sgen(Node *n, Node *res, int32 w)
 		sgen(&tmp, res, w);
 		return;
 	}
-	if(osrc%align != 0 || odst%align != 0)
-		fatal("sgen: unaligned offset src %d or dst %d (align %d)", osrc, odst, align);
-	// if we are copying forward on the stack and
-	// the src and dst overlap, then reverse direction
-	dir = align;
-	if(osrc < odst && odst < osrc+w)
-		dir = -dir;
+
+	if(osrc % 4 != 0 || odst %4 != 0)
+		fatal("sgen: non word(4) aligned offset src %d or dst %d", osrc, odst);
 
 	regalloc(&dst, types[tptr], res);
+
 	if(n->ullman >= res->ullman) {
 		agen(n, &dst);	// temporarily use dst
 		regalloc(&src, types[tptr], N);
@@ -1266,64 +1238,141 @@ sgen(Node *n, Node *res, int32 w)
 
 	regalloc(&tmp, types[TUINT32], N);
 
-	// set up end marker
-	memset(&nend, 0, sizeof nend);
-	if(c >= 4) {
-		regalloc(&nend, types[TUINT32], N);
+	c = w % 4;	// bytes
+	q = w / 4;	// quads
 
-		p = gins(AMOVW, &src, &nend);
-		p->from.type = D_CONST;
-		if(dir < 0)
-			p->from.offset = dir;
-		else
-			p->from.offset = w;
-	}
+	// if we are copying forward on the stack and
+	// the src and dst overlap, then reverse direction
+	if(osrc < odst && odst < osrc+w) {
+		if(c != 0)
+			fatal("sgen: reverse character copy not implemented");
+		if(q >= 4) {
+			regalloc(&nend, types[TUINT32], N);
+			// set up end marker to 4 bytes before source
+			p = gins(AMOVW, &src, &nend);
+			p->from.type = D_CONST;
+			p->from.offset = -4;
 
-	// move src and dest to the end of block if necessary
-	if(dir < 0) {
-		p = gins(AMOVW, &src, &src);
-		p->from.type = D_CONST;
-		p->from.offset = w + dir;
+			// move src and dest to the end of block
+			p = gins(AMOVW, &src, &src);
+			p->from.type = D_CONST;
+			p->from.offset = (q-1)*4;
 
-		p = gins(AMOVW, &dst, &dst);
-		p->from.type = D_CONST;
-		p->from.offset = w + dir;
-	}
-	
-	// move
-	if(c >= 4) {
-		p = gins(op, &src, &tmp);
-		p->from.type = D_OREG;
-		p->from.offset = dir;
-		p->scond |= C_PBIT;
-		ploop = p;
+			p = gins(AMOVW, &dst, &dst);
+			p->from.type = D_CONST;
+			p->from.offset = (q-1)*4;
 
-		p = gins(op, &tmp, &dst);
-		p->to.type = D_OREG;
-		p->to.offset = dir;
-		p->scond |= C_PBIT;
-
-		p = gins(ACMP, &src, N);
-		raddr(&nend, p);
-
-		patch(gbranch(ABNE, T), ploop);
- 		regfree(&nend);
-	} else {
-		while(c-- > 0) {
-			p = gins(op, &src, &tmp);
+			p = gins(AMOVW, &src, &tmp);
 			p->from.type = D_OREG;
-			p->from.offset = dir;
+			p->from.offset = -4;
 			p->scond |= C_PBIT;
 			ploop = p;
-	
-			p = gins(op, &tmp, &dst);
+
+			p = gins(AMOVW, &tmp, &dst);
 			p->to.type = D_OREG;
-			p->to.offset = dir;
+			p->to.offset = -4;
 			p->scond |= C_PBIT;
+
+			p = gins(ACMP, &src, N);
+			raddr(&nend, p);
+
+			patch(gbranch(ABNE, T), ploop);
+
+ 			regfree(&nend);
+		} else {
+			// move src and dest to the end of block
+			p = gins(AMOVW, &src, &src);
+			p->from.type = D_CONST;
+			p->from.offset = (q-1)*4;
+
+			p = gins(AMOVW, &dst, &dst);
+			p->from.type = D_CONST;
+			p->from.offset = (q-1)*4;
+
+			while(q > 0) {
+				p = gins(AMOVW, &src, &tmp);
+				p->from.type = D_OREG;
+				p->from.offset = -4;
+ 				p->scond |= C_PBIT;
+
+				p = gins(AMOVW, &tmp, &dst);
+				p->to.type = D_OREG;
+				p->to.offset = -4;
+ 				p->scond |= C_PBIT;
+
+				q--;
+			}
+		}
+	} else {
+		// normal direction
+		if(q >= 4) {
+			regalloc(&nend, types[TUINT32], N);
+			p = gins(AMOVW, &src, &nend);
+			p->from.type = D_CONST;
+			p->from.offset = q*4;
+
+			p = gins(AMOVW, &src, &tmp);
+			p->from.type = D_OREG;
+			p->from.offset = 4;
+			p->scond |= C_PBIT;
+			ploop = p;
+
+			p = gins(AMOVW, &tmp, &dst);
+			p->to.type = D_OREG;
+			p->to.offset = 4;
+			p->scond |= C_PBIT;
+
+			p = gins(ACMP, &src, N);
+			raddr(&nend, p);
+
+			patch(gbranch(ABNE, T), ploop);
+
+ 			regfree(&nend);
+		} else
+		while(q > 0) {
+			p = gins(AMOVW, &src, &tmp);
+			p->from.type = D_OREG;
+			p->from.offset = 4;
+ 			p->scond |= C_PBIT;
+
+			p = gins(AMOVW, &tmp, &dst);
+			p->to.type = D_OREG;
+			p->to.offset = 4;
+ 			p->scond |= C_PBIT;
+
+			q--;
+		}
+
+		if (c != 0) {
+			//	MOVW	(src), tmp
+			p = gins(AMOVW, &src, &tmp);
+			p->from.type = D_OREG;
+
+			//	MOVW	tmp<<((4-c)*8),src
+			gshift(AMOVW, &tmp, SHIFT_LL, ((4-c)*8), &src);
+
+			//	MOVW	src>>((4-c)*8),src
+			gshift(AMOVW, &src, SHIFT_LR, ((4-c)*8), &src);
+
+			//	MOVW	(dst), tmp
+			p = gins(AMOVW, &dst, &tmp);
+			p->from.type = D_OREG;
+
+			//	MOVW	tmp>>(c*8),tmp
+			gshift(AMOVW, &tmp, SHIFT_LR, (c*8), &tmp);
+
+			//	MOVW	tmp<<(c*8),tmp
+			gshift(AMOVW, &tmp, SHIFT_LL, c*8, &tmp);
+
+			//	ORR		src, tmp
+			gins(AORR, &src, &tmp);
+
+			//	MOVW	tmp, (dst)
+			p = gins(AMOVW, &tmp, &dst);
+			p->to.type = D_OREG;
 		}
 	}
-
-	regfree(&dst);
+ 	regfree(&dst);
 	regfree(&src);
 	regfree(&tmp);
 }

@@ -32,6 +32,7 @@ TEXT runtime·memmove(SB), 7, $0
 
 /*
  * check and set for backwards
+ * should we look closer for overlap?
  */
 	CMPL	SI, DI
 	JLS	back
@@ -39,7 +40,6 @@ TEXT runtime·memmove(SB), 7, $0
 /*
  * forward copy loop
  */
-forward:	
 	MOVL	BX, CX
 	SHRL	$2, CX
 	ANDL	$3, BX
@@ -51,18 +51,10 @@ forward:
 	MOVL	to+0(FP),AX
 	RET
 /*
- * check overlap
- */
-back:
-	MOVL	SI, CX
-	ADDL	BX, CX
-	CMPL	CX, DI
-	JLS	forward
-/*
  * whole thing backwards has
  * adjusted addresses
  */
-
+back:
 	ADDL	BX, DI
 	ADDL	BX, SI
 	STD

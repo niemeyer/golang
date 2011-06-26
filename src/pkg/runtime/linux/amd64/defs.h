@@ -58,9 +58,6 @@ enum {
 	BUS_OBJERR = 0x3,
 	SEGV_MAPERR = 0x1,
 	SEGV_ACCERR = 0x2,
-	ITIMER_REAL = 0,
-	ITIMER_VIRTUAL = 0x1,
-	ITIMER_PROF = 0x2,
 };
 
 // Types
@@ -91,14 +88,8 @@ struct Siginfo {
 	int32 si_signo;
 	int32 si_errno;
 	int32 si_code;
-	byte pad_godefs_0[4];
+	byte pad0[4];
 	byte _sifields[112];
-};
-
-typedef struct Itimerval Itimerval;
-struct Itimerval {
-	Timeval it_interval;
-	Timeval it_value;
 };
 #pragma pack off
 // godefs -f -m64 defs1.c
@@ -179,7 +170,7 @@ typedef struct Sigaltstack Sigaltstack;
 struct Sigaltstack {
 	void *ss_sp;
 	int32 ss_flags;
-	byte pad_godefs_0[4];
+	byte pad0[4];
 	uint64 ss_size;
 };
 

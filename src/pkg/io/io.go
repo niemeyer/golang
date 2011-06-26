@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package io provides basic interfaces to I/O primitives.
+// This package provides basic interfaces to I/O primitives.
 // Its primary job is to wrap existing implementations of such primitives,
 // such as those in package os, into shared public interfaces that
 // abstract the functionality, plus some other related primitives.
@@ -12,10 +12,8 @@ import "os"
 
 // Error represents an unexpected I/O behavior.
 type Error struct {
-	ErrorString string
+	os.ErrorString
 }
-
-func (err *Error) String() string { return err.ErrorString }
 
 // ErrShortWrite means that a write accepted fewer bytes than requested
 // but failed to return an explicit error.
@@ -31,24 +29,15 @@ var ErrUnexpectedEOF os.Error = &Error{"unexpected EOF"}
 // Reader is the interface that wraps the basic Read method.
 //
 // Read reads up to len(p) bytes into p.  It returns the number of bytes
-// read (0 <= n <= len(p)) and any error encountered.  Even if Read
-// returns n < len(p), it may use all of p as scratch space during the call.
+// read (0 <= n <= len(p)) and any error encountered.
+// Even if Read returns n < len(p),
+// it may use all of p as scratch space during the call.
 // If some data is available but not len(p) bytes, Read conventionally
-// returns what is available instead of waiting for more.
+// returns what is available rather than block waiting for more.
 //
-// When Read encounters an error or end-of-file condition after
-// successfully reading n > 0 bytes, it returns the number of
-// bytes read.  It may return the (non-nil) error from the same call
-// or return the error (and n == 0) from a subsequent call.
-// An instance of this general case is that a Reader returning
-// a non-zero number of bytes at the end of the input stream may
-// return either err == os.EOF or err == nil.  The next Read should
-// return 0, os.EOF regardless.
-//
-// Callers should always process the n > 0 bytes returned before
-// considering the error err.  Doing so correctly handles I/O errors
-// that happen after reading some bytes and also both of the
-// allowed EOF behaviors.
+// At the end of the input stream, Read returns 0, os.EOF.
+// Read may return a non-zero number of bytes with a non-nil err.
+// In particular, a Read that exhausts the input may return n > 0, os.EOF.
 type Reader interface {
 	Read(p []byte) (n int, err os.Error)
 }
@@ -136,24 +125,17 @@ type WriterTo interface {
 // ReaderAt is the interface that wraps the basic ReadAt method.
 //
 // ReadAt reads len(p) bytes into p starting at offset off in the
-// underlying input source.  It returns the number of bytes
+// underlying data stream.  It returns the number of bytes
 // read (0 <= n <= len(p)) and any error encountered.
 //
-// When ReadAt returns n < len(p), it returns a non-nil error
-// explaining why more bytes were not returned.  In this respect,
-// ReadAt is stricter than Read.
+// Even if ReadAt returns n < len(p),
+// it may use all of p as scratch space during the call.
+// If some data is available but not len(p) bytes, ReadAt blocks
+// until either all the data is available or an error occurs.
 //
-// Even if ReadAt returns n < len(p), it may use all of p as scratch
-// space during the call.  If some data is available but not len(p) bytes,
-// ReadAt blocks until either all the data is available or an error occurs.
-// In this respect ReadAt is different from Read.
-//
-// If the n = len(p) bytes returned by ReadAt are at the end of the
-// input source, ReadAt may return either err == os.EOF or err == nil.
-//
-// If ReadAt is reading from an input source with a seek offset,
-// ReadAt should not affect nor be affected by the underlying
-// seek offset.
+// At the end of the input stream, ReadAt returns 0, os.EOF.
+// ReadAt may return a non-zero number of bytes with a non-nil err.
+// In particular, a ReadAt that exhausts the input may return n > 0, os.EOF.
 type ReaderAt interface {
 	ReadAt(p []byte, off int64) (n int, err os.Error)
 }
@@ -168,45 +150,12 @@ type WriterAt interface {
 	WriteAt(p []byte, off int64) (n int, err os.Error)
 }
 
-// ByteReader is the interface that wraps the ReadByte method.
+// ReadByter is the interface that wraps the ReadByte method.
 //
 // ReadByte reads and returns the next byte from the input.
 // If no byte is available, err will be set.
-type ByteReader interface {
+type ReadByter interface {
 	ReadByte() (c byte, err os.Error)
-}
-
-// ByteScanner is the interface that adds the UnreadByte method to the
-// basic ReadByte method.
-//
-// UnreadByte causes the next call to ReadByte to return the same byte
-// as the previous call to ReadByte.
-// It may be an error to call UnreadByte twice without an intervening
-// call to ReadByte.
-type ByteScanner interface {
-	ByteReader
-	UnreadByte() os.Error
-}
-
-// RuneReader is the interface that wraps the ReadRune method.
-//
-// ReadRune reads a single UTF-8 encoded Unicode character
-// and returns the rune and its size in bytes. If no character is
-// available, err will be set.
-type RuneReader interface {
-	ReadRune() (rune int, size int, err os.Error)
-}
-
-// RuneScanner is the interface that adds the UnreadRune method to the
-// basic ReadRune method.
-//
-// UnreadRune causes the next call to ReadRune to return the same rune
-// as the previous call to ReadRune.
-// It may be an error to call UnreadRune twice without an intervening
-// call to ReadRune.
-type RuneScanner interface {
-	RuneReader
-	UnreadRune() os.Error
 }
 
 // WriteString writes the contents of the string s to w, which accepts an array of bytes.
@@ -224,16 +173,16 @@ func ReadAtLeast(r Reader, buf []byte, min int) (n int, err os.Error) {
 	if len(buf) < min {
 		return 0, ErrShortBuffer
 	}
-	for n < min && err == nil {
-		var nn int
-		nn, err = r.Read(buf[n:])
-		n += nn
-	}
-	if err == os.EOF {
-		if n >= min {
-			err = nil
-		} else if n > 0 {
-			err = ErrUnexpectedEOF
+	for n < min {
+		nn, e := r.Read(buf[n:])
+		if nn > 0 {
+			n += nn
+		}
+		if e != nil {
+			if e == os.EOF && n > 0 {
+				e = ErrUnexpectedEOF
+			}
+			return n, e
 		}
 	}
 	return
@@ -249,10 +198,7 @@ func ReadFull(r Reader, buf []byte) (n int, err os.Error) {
 }
 
 // Copyn copies n bytes (or until an error) from src to dst.
-// It returns the number of bytes copied and the earliest
-// error encountered while copying.  Because Read can
-// return the full amount requested as well as an error
-// (including os.EOF), so can Copyn.
+// It returns the number of bytes copied and the error, if any.
 //
 // If dst implements the ReaderFrom interface,
 // the copy is implemented by calling dst.ReadFrom(src).
@@ -298,11 +244,7 @@ func Copyn(dst Writer, src Reader, n int64) (written int64, err os.Error) {
 
 // Copy copies from src to dst until either EOF is reached
 // on src or an error occurs.  It returns the number of bytes
-// copied and the first error encountered while copying, if any.
-//
-// A successful Copy returns err == nil, not err == os.EOF.
-// Because Copy is defined to read from src until EOF, it does
-// not treat an EOF from Read as an error to be reported.
+// copied and the error, if any.
 //
 // If dst implements the ReaderFrom interface,
 // the copy is implemented by calling dst.ReadFrom(src).
@@ -348,26 +290,22 @@ func Copy(dst Writer, src Reader) (written int64, err os.Error) {
 
 // LimitReader returns a Reader that reads from r
 // but stops with os.EOF after n bytes.
-// The underlying implementation is a *LimitedReader.
-func LimitReader(r Reader, n int64) Reader { return &LimitedReader{r, n} }
+func LimitReader(r Reader, n int64) Reader { return &limitedReader{r, n} }
 
-// A LimitedReader reads from R but limits the amount of
-// data returned to just N bytes. Each call to Read
-// updates N to reflect the new amount remaining.
-type LimitedReader struct {
-	R Reader // underlying reader
-	N int64  // max bytes remaining
+type limitedReader struct {
+	r Reader
+	n int64
 }
 
-func (l *LimitedReader) Read(p []byte) (n int, err os.Error) {
-	if l.N <= 0 {
+func (l *limitedReader) Read(p []byte) (n int, err os.Error) {
+	if l.n <= 0 {
 		return 0, os.EOF
 	}
-	if int64(len(p)) > l.N {
-		p = p[0:l.N]
+	if int64(len(p)) > l.n {
+		p = p[0:l.n]
 	}
-	n, err = l.R.Read(p)
-	l.N -= int64(n)
+	n, err = l.r.Read(p)
+	l.n -= int64(n)
 	return
 }
 

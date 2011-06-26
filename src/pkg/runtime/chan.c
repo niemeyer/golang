@@ -5,10 +5,15 @@
 #include "runtime.h"
 #include "type.h"
 
-#define	MAXALIGN	7
-
 static	int32	debug	= 0;
 
+enum
+{
+	Wclosed		= 0x0001,	// writer has closed
+	Rclosed		= 0x0002,	// reader has seen close
+};
+
+typedef	struct	Link	Link;
 typedef	struct	WaitQ	WaitQ;
 typedef	struct	SudoG	SudoG;
 typedef	struct	Select	Select;
@@ -35,41 +40,32 @@ struct	Hchan
 	uint32	qcount;			// total data in the q
 	uint32	dataqsiz;		// size of the circular q
 	uint16	elemsize;
-	bool	closed;
+	uint16	closed;			// Wclosed Rclosed errorcount
 	uint8	elemalign;
 	Alg*	elemalg;		// interface for element type
-	uint32	sendx;	// send index
-	uint32	recvx;	// receive index
+	Link*	senddataq;		// pointer for sender
+	Link*	recvdataq;		// pointer for receiver
 	WaitQ	recvq;			// list of recv waiters
 	WaitQ	sendq;			// list of send waiters
 	SudoG*	free;			// freelist
 	Lock;
 };
 
-// Buffer follows Hchan immediately in memory.
-// chanbuf(c, i) is pointer to the i'th slot in the buffer.
-#define chanbuf(c, i) ((byte*)((c)+1)+(uintptr)(c)->elemsize*(i))
-
-enum
+struct	Link
 {
-	// Scase.kind
-	CaseRecv,
-	CaseSend,
-	CaseDefault,
+	Link*	link;			// asynch queue circular linked list
+	byte	elem[8];		// asynch queue data element (+ more)
 };
 
 struct	Scase
 {
 	Hchan*	chan;			// chan
 	byte*	pc;			// return pc
-	uint16	kind;
+	uint16	send;			// 0-recv 1-send 2-default
 	uint16	so;			// vararg of selected bool
 	union {
-		byte	elem[2*sizeof(void*)];	// element (send)
-		struct {
-			byte*	elemp;		// pointer to element (recv)
-			bool*	receivedp;	// pointer to received bool (recv2)
-		} recv;
+		byte	elem[8];	// element (send)
+		byte*	elemp;		// pointer to element (recv)
 	} u;
 };
 
@@ -94,8 +90,7 @@ Hchan*
 runtime·makechan_c(Type *elem, int64 hint)
 {
 	Hchan *c;
-	int32 n;
-	byte *by;
+	int32 i;
 
 	if(hint < 0 || (int32)hint != hint || hint > ((uintptr)-1) / elem->size)
 		runtime·panicstring("makechan: size out of range");
@@ -105,36 +100,38 @@ runtime·makechan_c(Type *elem, int64 hint)
 		runtime·throw("runtime.makechan: unsupported elem type");
 	}
 
-	// calculate rounded size of Hchan
-	n = sizeof(*c);
-	while(n & MAXALIGN)
-		n++;
-
-	// allocate memory in one call
-	by = runtime·mal(n + hint*elem->size);
-
-	c = (Hchan*)by;
+	c = runtime·mal(sizeof(*c));
 	runtime·addfinalizer(c, destroychan, 0);
 
 	c->elemsize = elem->size;
 	c->elemalg = &runtime·algarray[elem->alg];
 	c->elemalign = elem->align;
-	c->dataqsiz = hint;
+
+	if(hint > 0) {
+		Link *d, *b, *e;
+
+		// make a circular q
+		b = nil;
+		e = nil;
+		for(i=0; i<hint; i++) {
+			d = runtime·mal(sizeof(*d) + c->elemsize - sizeof(d->elem));
+			if(e == nil)
+				e = d;
+			d->link = b;
+			b = d;
+		}
+		e->link = b;
+		c->recvdataq = b;
+		c->senddataq = b;
+		c->qcount = 0;
+		c->dataqsiz = hint;
+	}
 
 	if(debug)
 		runtime·printf("makechan: chan=%p; elemsize=%D; elemalg=%d; elemalign=%d; dataqsiz=%d\n",
 			c, (int64)elem->size, elem->alg, elem->align, c->dataqsiz);
 
 	return c;
-}
-
-// For reflect
-//	func makechan(typ *ChanType, size uint32) (chan)
-void
-reflect·makechan(ChanType *t, uint32 size, Hchan *c)
-{
-	c = runtime·makechan_c(t->elem, size);
-	FLUSH(&c);
 }
 
 static void
@@ -186,7 +183,7 @@ runtime·chansend(Hchan *c, byte *ep, bool *pres)
 
 	runtime·lock(c);
 loop:
-	if(c->closed)
+	if(c->closed & Wclosed)
 		goto closed;
 
 	if(c->dataqsiz > 0)
@@ -231,7 +228,7 @@ loop:
 	return;
 
 asynch:
-	if(c->closed)
+	if(c->closed & Wclosed)
 		goto closed;
 
 	if(c->qcount >= c->dataqsiz) {
@@ -250,9 +247,8 @@ asynch:
 		goto asynch;
 	}
 	if(ep != nil)
-		c->elemalg->copy(c->elemsize, chanbuf(c, c->sendx), ep);
-	if(++c->sendx == c->dataqsiz)
-		c->sendx = 0;
+		c->elemalg->copy(c->elemsize, c->senddataq->elem, ep);
+	c->senddataq = c->senddataq->link;
 	c->qcount++;
 
 	sg = dequeue(&c->recvq, c);
@@ -272,9 +268,8 @@ closed:
 	runtime·panicstring("send on closed channel");
 }
 
-
 void
-runtime·chanrecv(Hchan* c, byte *ep, bool *selected, bool *received)
+runtime·chanrecv(Hchan* c, byte *ep, bool *pres, bool *closed)
 {
 	SudoG *sg;
 	G *gp;
@@ -289,18 +284,19 @@ runtime·chanrecv(Hchan* c, byte *ep, bool *selected, bool *received)
 		runtime·printf("chanrecv: chan=%p\n", c);
 
 	runtime·lock(c);
+	if(closed != nil)
+		*closed = false;
 
 loop:
 	if(c->dataqsiz > 0)
 		goto asynch;
 
-	if(c->closed)
+	if(c->closed & Wclosed)
 		goto closed;
 
 	sg = dequeue(&c->sendq, c);
 	if(sg != nil) {
-		if(ep != nil)
-			c->elemalg->copy(c->elemsize, ep, sg->elem);
+		c->elemalg->copy(c->elemsize, ep, sg->elem);
 		c->elemalg->copy(c->elemsize, sg->elem, nil);
 
 		gp = sg->g;
@@ -308,16 +304,15 @@ loop:
 		runtime·unlock(c);
 		runtime·ready(gp);
 
-		if(selected != nil)
-			*selected = true;
-		if(received != nil)
-			*received = true;
+		if(pres != nil)
+			*pres = true;
 		return;
 	}
 
-	if(selected != nil) {
+	if(pres != nil) {
 		runtime·unlock(c);
-		*selected = false;
+		c->elemalg->copy(c->elemsize, ep, nil);
+		*pres = false;
 		return;
 	}
 
@@ -333,25 +328,21 @@ loop:
 	if(sg == nil)
 		goto loop;
 
-	if(ep != nil)
-		c->elemalg->copy(c->elemsize, ep, sg->elem);
+	c->elemalg->copy(c->elemsize, ep, sg->elem);
 	c->elemalg->copy(c->elemsize, sg->elem, nil);
-	if(received != nil)
-		*received = true;
 	freesg(c, sg);
 	runtime·unlock(c);
 	return;
 
 asynch:
 	if(c->qcount <= 0) {
-		if(c->closed)
+		if(c->closed & Wclosed)
 			goto closed;
 
-		if(selected != nil) {
+		if(pres != nil) {
 			runtime·unlock(c);
-			*selected = false;
-			if(received != nil)
-				*received = false;
+			c->elemalg->copy(c->elemsize, ep, nil);
+			*pres = false;
 			return;
 		}
 		sg = allocsg(c);
@@ -363,11 +354,9 @@ asynch:
 		runtime·lock(c);
 		goto asynch;
 	}
-	if(ep != nil)
-		c->elemalg->copy(c->elemsize, ep, chanbuf(c, c->recvx));
-	c->elemalg->copy(c->elemsize, chanbuf(c, c->recvx), nil);
-	if(++c->recvx == c->dataqsiz)
-		c->recvx = 0;
+	c->elemalg->copy(c->elemsize, ep, c->recvdataq->elem);
+	c->elemalg->copy(c->elemsize, c->recvdataq->elem, nil);
+	c->recvdataq = c->recvdataq->link;
 	c->qcount--;
 	sg = dequeue(&c->sendq, c);
 	if(sg != nil) {
@@ -375,22 +364,23 @@ asynch:
 		freesg(c, sg);
 		runtime·unlock(c);
 		runtime·ready(gp);
-	} else
-		runtime·unlock(c);
+		if(pres != nil)
+			*pres = true;
+		return;
+	}
 
-	if(selected != nil)
-		*selected = true;
-	if(received != nil)
-		*received = true;
+	runtime·unlock(c);
+	if(pres != nil)
+		*pres = true;
 	return;
 
 closed:
-	if(ep != nil)
-		c->elemalg->copy(c->elemsize, ep, nil);
-	if(selected != nil)
-		*selected = true;
-	if(received != nil)
-		*received = false;
+	if(closed != nil)
+		*closed = true;
+	c->elemalg->copy(c->elemsize, ep, nil);
+	c->closed |= Rclosed;
+	if(pres != nil)
+		*pres = true;
 	runtime·unlock(c);
 }
 
@@ -410,6 +400,25 @@ runtime·chansend1(Hchan* c, ...)
 	runtime·chansend(c, ae, nil);
 }
 
+// chansend2(hchan *chan any, elem any) (pres bool);
+#pragma textflag 7
+void
+runtime·chansend2(Hchan* c, ...)
+{
+	int32 o;
+	byte *ae, *ap;
+
+	if(c == nil)
+		runtime·panicstring("send to nil channel");
+
+	o = runtime·rnd(sizeof(c), c->elemalign);
+	ae = (byte*)&c + o;
+	o = runtime·rnd(o+c->elemsize, Structrnd);
+	ap = (byte*)&c + o;
+
+	runtime·chansend(c, ae, ap);
+}
+
 // chanrecv1(hchan *chan any) (elem any);
 #pragma textflag 7
 void
@@ -424,16 +433,29 @@ runtime·chanrecv1(Hchan* c, ...)
 	runtime·chanrecv(c, ae, nil, nil);
 }
 
-// chanrecv2(hchan *chan any) (elem any, received bool);
+// chanrecv2(hchan *chan any) (elem any, pres bool);
 #pragma textflag 7
 void
 runtime·chanrecv2(Hchan* c, ...)
 {
 	int32 o;
+	byte *ae, *ap;
+
+	o = runtime·rnd(sizeof(c), Structrnd);
+	ae = (byte*)&c + o;
+	o = runtime·rnd(o+c->elemsize, 1);
+	ap = (byte*)&c + o;
+
+	runtime·chanrecv(c, ae, ap, nil);
+}
+
+// chanrecv3(hchan *chan any) (elem any, closed bool);
+#pragma textflag 7
+void
+runtime·chanrecv3(Hchan* c, ...)
+{
+	int32 o;
 	byte *ae, *ac;
-	
-	if(c == nil)
-		runtime·panicstring("receive from nil channel");
 
 	o = runtime·rnd(sizeof(c), Structrnd);
 	ae = (byte*)&c + o;
@@ -443,178 +465,17 @@ runtime·chanrecv2(Hchan* c, ...)
 	runtime·chanrecv(c, ae, nil, ac);
 }
 
-// func selectnbsend(c chan any, elem any) bool
-//
-// compiler implements
-//
-//	select {
-//	case c <- v:
-//		... foo
-//	default:
-//		... bar
-//	}
-//
-// as
-//
-//	if c != nil && selectnbsend(c, v) {
-//		... foo
-//	} else {
-//		... bar
-//	}
-//
-#pragma textflag 7
-void
-runtime·selectnbsend(Hchan *c, ...)
-{
-	int32 o;
-	byte *ae, *ap;
-
-	o = runtime·rnd(sizeof(c), c->elemalign);
-	ae = (byte*)&c + o;
-	o = runtime·rnd(o+c->elemsize, Structrnd);
-	ap = (byte*)&c + o;
-
-	runtime·chansend(c, ae, ap);
-}
-
-// func selectnbrecv(elem *any, c chan any) bool
-//
-// compiler implements
-//
-//	select {
-//	case v = <-c:
-//		... foo
-//	default:
-//		... bar
-//	}
-//
-// as
-//
-//	if c != nil && selectnbrecv(&v, c) {
-//		... foo
-//	} else {
-//		... bar
-//	}
-//
-#pragma textflag 7
-void
-runtime·selectnbrecv(byte *v, Hchan *c, bool selected)
-{
-	runtime·chanrecv(c, v, &selected, nil);
-}	
-
-// func selectnbrecv2(elem *any, ok *bool, c chan any) bool
-//
-// compiler implements
-//
-//	select {
-//	case v, ok = <-c:
-//		... foo
-//	default:
-//		... bar
-//	}
-//
-// as
-//
-//	if c != nil && selectnbrecv2(&v, &ok, c) {
-//		... foo
-//	} else {
-//		... bar
-//	}
-//
-#pragma textflag 7
-void
-runtime·selectnbrecv2(byte *v, bool *received, Hchan *c, bool selected)
-{
-	runtime·chanrecv(c, v, &selected, received);
-}	
-
-// For reflect:
-//	func chansend(c chan, val iword, nb bool) (selected bool)
-// where an iword is the same word an interface value would use:
-// the actual data if it fits, or else a pointer to the data.
-//
-// The "uintptr selected" is really "bool selected" but saying
-// uintptr gets us the right alignment for the output parameter block.
-void
-reflect·chansend(Hchan *c, uintptr val, bool nb, uintptr selected)
-{
-	bool *sp;
-	byte *vp;
-	
-	if(c == nil)
-		runtime·panicstring("send to nil channel");
-
-	if(nb) {
-		selected = false;
-		sp = (bool*)&selected;
-	} else {
-		*(bool*)&selected = true;
-		FLUSH(&selected);
-		sp = nil;
-	}
-	if(c->elemsize <= sizeof(val))
-		vp = (byte*)&val;
-	else
-		vp = (byte*)val;
-	runtime·chansend(c, vp, sp);
-}
-
-// For reflect:
-//	func chanrecv(c chan, nb bool) (val iword, selected, received bool)
-// where an iword is the same word an interface value would use:
-// the actual data if it fits, or else a pointer to the data.
-void
-reflect·chanrecv(Hchan *c, bool nb, uintptr val, bool selected, bool received)
-{
-	byte *vp;
-	bool *sp;
-	
-	if(c == nil)
-		runtime·panicstring("receive from nil channel");
-
-	if(nb) {
-		selected = false;
-		sp = &selected;
-	} else {
-		selected = true;
-		FLUSH(&selected);
-		sp = nil;
-	}
-	received = false;
-	FLUSH(&received);
-	if(c->elemsize <= sizeof(val)) {
-		val = 0;
-		vp = (byte*)&val;
-	} else {
-		vp = runtime·mal(c->elemsize);
-		val = (uintptr)vp;
-		FLUSH(&val);
-	}
-	runtime·chanrecv(c, vp, sp, &received);
-}
-
-static void newselect(int32, Select**);
-
 // newselect(size uint32) (sel *byte);
 #pragma textflag 7
 void
 runtime·newselect(int32 size, ...)
 {
-	int32 o;
+	int32 n, o;
 	Select **selp;
+	Select *sel;
 
 	o = runtime·rnd(sizeof(size), Structrnd);
 	selp = (Select**)((byte*)&size + o);
-	newselect(size, selp);
-}
-
-static void
-newselect(int32 size, Select **selp)
-{
-	int32 n;
-	Select *sel;
-
 	n = 0;
 	if(size > 1)
 		n = size-1;
@@ -629,30 +490,19 @@ newselect(int32 size, Select **selp)
 		runtime·printf("newselect s=%p size=%d\n", sel, size);
 }
 
-// cut in half to give stack a chance to split
-static void selectsend(Select **selp, Hchan *c, void *pc);
-
 // selectsend(sel *byte, hchan *chan any, elem any) (selected bool);
 #pragma textflag 7
 void
 runtime·selectsend(Select *sel, Hchan *c, ...)
 {
-	// nil cases do not compete
-	if(c == nil)
-		return;
-	
-	selectsend(&sel, c, runtime·getcallerpc(&sel));
-}
-
-static void
-selectsend(Select **selp, Hchan *c, void *pc)
-{
 	int32 i, eo;
 	Scase *cas;
 	byte *ae;
-	Select *sel;
-	
-	sel = *selp;
+
+	// nil cases do not compete
+	if(c == nil)
+		return;
+
 	i = sel->ncase;
 	if(i >= sel->tcase)
 		runtime·throw("selectsend: too many cases");
@@ -660,54 +510,33 @@ selectsend(Select **selp, Hchan *c, void *pc)
 	cas = runtime·mal(sizeof *cas + c->elemsize - sizeof(cas->u.elem));
 	sel->scase[i] = cas;
 
-	cas->pc = pc;
+	cas->pc = runtime·getcallerpc(&sel);
 	cas->chan = c;
 
 	eo = runtime·rnd(sizeof(sel), sizeof(c));
 	eo = runtime·rnd(eo+sizeof(c), c->elemsize);
 	cas->so = runtime·rnd(eo+c->elemsize, Structrnd);
-	cas->kind = CaseSend;
+	cas->send = 1;
 
-	ae = (byte*)selp + eo;
+	ae = (byte*)&sel + eo;
 	c->elemalg->copy(c->elemsize, cas->u.elem, ae);
 
 	if(debug)
-		runtime·printf("selectsend s=%p pc=%p chan=%p so=%d\n",
-			sel, cas->pc, cas->chan, cas->so);
+		runtime·printf("selectsend s=%p pc=%p chan=%p so=%d send=%d\n",
+			sel, cas->pc, cas->chan, cas->so, cas->send);
 }
-
-// cut in half to give stack a chance to split
-static void selectrecv(Select *sel, Hchan *c, void *pc, void *elem, bool*, int32 so);
 
 // selectrecv(sel *byte, hchan *chan any, elem *any) (selected bool);
 #pragma textflag 7
 void
-runtime·selectrecv(Select *sel, Hchan *c, void *elem, bool selected)
+runtime·selectrecv(Select *sel, Hchan *c, ...)
 {
-	// nil cases do not compete
-	if(c == nil)
-		return;
-
-	selectrecv(sel, c, runtime·getcallerpc(&sel), elem, nil, (byte*)&selected - (byte*)&sel);
-}
-
-// selectrecv2(sel *byte, hchan *chan any, elem *any, received *bool) (selected bool);
-#pragma textflag 7
-void
-runtime·selectrecv2(Select *sel, Hchan *c, void *elem, bool *received, bool selected)
-{
-	// nil cases do not compete
-	if(c == nil)
-		return;
-
-	selectrecv(sel, c, runtime·getcallerpc(&sel), elem, received, (byte*)&selected - (byte*)&sel);
-}
-
-static void
-selectrecv(Select *sel, Hchan *c, void *pc, void *elem, bool *received, int32 so)
-{
-	int32 i;
+	int32 i, eo;
 	Scase *cas;
+
+	// nil cases do not compete
+	if(c == nil)
+		return;
 
 	i = sel->ncase;
 	if(i >= sel->tcase)
@@ -715,33 +544,25 @@ selectrecv(Select *sel, Hchan *c, void *pc, void *elem, bool *received, int32 so
 	sel->ncase = i+1;
 	cas = runtime·mal(sizeof *cas);
 	sel->scase[i] = cas;
-	cas->pc = pc;
+	cas->pc = runtime·getcallerpc(&sel);
 	cas->chan = c;
 
-	cas->so = so;
-	cas->kind = CaseRecv;
-	cas->u.recv.elemp = elem;
-	cas->u.recv.receivedp = nil;
-	cas->u.recv.receivedp = received;
+	eo = runtime·rnd(sizeof(sel), sizeof(c));
+	eo = runtime·rnd(eo+sizeof(c), sizeof(byte*));
+	cas->so = runtime·rnd(eo+sizeof(byte*), Structrnd);
+	cas->send = 0;
+	cas->u.elemp = *(byte**)((byte*)&sel + eo);
 
 	if(debug)
-		runtime·printf("selectrecv s=%p pc=%p chan=%p so=%d\n",
-			sel, cas->pc, cas->chan, cas->so);
+		runtime·printf("selectrecv s=%p pc=%p chan=%p so=%d send=%d\n",
+			sel, cas->pc, cas->chan, cas->so, cas->send);
 }
 
-// cut in half to give stack a chance to split
-static void selectdefault(Select*, void*, int32);
 
-// selectdefault(sel *byte) (selected bool);
+// selectdefaul(sel *byte) (selected bool);
 #pragma textflag 7
 void
-runtime·selectdefault(Select *sel, bool selected)
-{
-	selectdefault(sel, runtime·getcallerpc(&sel), (byte*)&selected - (byte*)&sel);
-}
-
-static void
-selectdefault(Select *sel, void *callerpc, int32 so)
+runtime·selectdefault(Select *sel, ...)
 {
 	int32 i;
 	Scase *cas;
@@ -752,15 +573,16 @@ selectdefault(Select *sel, void *callerpc, int32 so)
 	sel->ncase = i+1;
 	cas = runtime·mal(sizeof *cas);
 	sel->scase[i] = cas;
-	cas->pc = callerpc;
+	cas->pc = runtime·getcallerpc(&sel);
 	cas->chan = nil;
 
-	cas->so = so;
-	cas->kind = CaseDefault;
+	cas->so = runtime·rnd(sizeof(sel), Structrnd);
+	cas->send = 2;
+	cas->u.elemp = nil;
 
 	if(debug)
-		runtime·printf("selectdefault s=%p pc=%p so=%d\n",
-			sel, cas->pc, cas->so);
+		runtime·printf("selectdefault s=%p pc=%p so=%d send=%d\n",
+			sel, cas->pc, cas->so, cas->send);
 }
 
 static void
@@ -803,52 +625,36 @@ selunlock(Select *sel)
 	}
 }
 
-void
-runtime·block(void)
-{
-	g->status = Gwaiting;	// forever
-	runtime·gosched();
-}
-
-static void* selectgo(Select**);
-
 // selectgo(sel *byte);
 //
 // overwrites return pc on stack to signal which case of the select
 // to run, so cannot appear at the top of a split stack.
+// frame has 6 pointers and 4 int32 so 64 bytes max.
+// that's less than StackGuard-StackSmall, so okay.
 #pragma textflag 7
 void
 runtime·selectgo(Select *sel)
 {
-	runtime·setcallerpc(&sel, selectgo(&sel));
-}
-
-static void*
-selectgo(Select **selp)
-{
-	Select *sel;
 	uint32 o, i, j;
 	Scase *cas, *dfl;
 	Hchan *c;
 	SudoG *sg;
 	G *gp;
 	byte *as;
-	void *pc;
 
-	sel = *selp;
 	if(runtime·gcwaiting)
 		runtime·gosched();
 
 	if(debug)
 		runtime·printf("select: sel=%p\n", sel);
 
-	// The compiler rewrites selects that statically have
-	// only 0 or 1 cases plus default into simpler constructs.
-	// The only way we can end up with such small sel->ncase
-	// values here is for a larger select in which most channels
-	// have been nilled out.  The general code handles those
-	// cases correctly, and they are rare enough not to bother
-	// optimizing (and needing to test).
+	if(sel->ncase < 2) {
+		if(sel->ncase < 1) {
+			g->status = Gwaiting;	// forever
+			runtime·gosched();
+		}
+		// TODO: make special case of one.
+	}
 
 	// generate permuted order
 	for(i=0; i<sel->ncase; i++)
@@ -877,8 +683,8 @@ loop:
 		cas = sel->scase[o];
 		c = cas->chan;
 
-		switch(cas->kind) {
-		case CaseRecv:
+		switch(cas->send) {
+		case 0:	// recv
 			if(c->dataqsiz > 0) {
 				if(c->qcount > 0)
 					goto asyncrecv;
@@ -887,12 +693,12 @@ loop:
 				if(sg != nil)
 					goto syncrecv;
 			}
-			if(c->closed)
+			if(c->closed & Wclosed)
 				goto rclose;
 			break;
 
-		case CaseSend:
-			if(c->closed)
+		case 1:	// send
+			if(c->closed & Wclosed)
 				goto sclose;
 			if(c->dataqsiz > 0) {
 				if(c->qcount < c->dataqsiz)
@@ -904,7 +710,7 @@ loop:
 			}
 			break;
 
-		case CaseDefault:
+		case 2:	// default
 			dfl = cas;
 			break;
 		}
@@ -924,14 +730,27 @@ loop:
 		sg = allocsg(c);
 		sg->offset = o;
 
-		switch(cas->kind) {
-		case CaseRecv:
+		switch(cas->send) {
+		case 0:	// recv
+			if(c->dataqsiz > 0) {
+				if(c->qcount > 0)
+					runtime·throw("select: pass 2 async recv");
+			} else {
+				if(dequeue(&c->sendq, c))
+					runtime·throw("select: pass 2 sync recv");
+			}
 			enqueue(&c->recvq, sg);
 			break;
 		
-		case CaseSend:
-			if(c->dataqsiz == 0)
+		case 1:	// send
+			if(c->dataqsiz > 0) {
+				if(c->qcount < c->dataqsiz)
+					runtime·throw("select: pass 2 async send");
+			} else {
+				if(dequeue(&c->recvq, c))
+					runtime·throw("select: pass 2 sync send");
 				c->elemalg->copy(c->elemsize, sg->elem, cas->u.elem);
+			}
 			enqueue(&c->sendq, sg);
 			break;
 		}
@@ -951,7 +770,7 @@ loop:
 		if(sg == nil || i != sg->offset) {
 			cas = sel->scase[i];
 			c = cas->chan;
-			if(cas->kind == CaseSend)
+			if(cas->send)
 				dequeueg(&c->sendq, c);
 			else
 				dequeueg(&c->recvq, c);
@@ -971,14 +790,12 @@ loop:
 	}
 
 	if(debug)
-		runtime·printf("wait-return: sel=%p c=%p cas=%p kind=%d o=%d\n",
-			sel, c, cas, cas->kind, o);
+		runtime·printf("wait-return: sel=%p c=%p cas=%p send=%d o=%d\n",
+			sel, c, cas, cas->send, o);
 
-	if(cas->kind == CaseRecv) {
-		if(cas->u.recv.receivedp != nil)
-			*cas->u.recv.receivedp = true;
-		if(cas->u.recv.elemp != nil)
-			c->elemalg->copy(c->elemsize, cas->u.recv.elemp, sg->elem);
+	if(!cas->send) {
+		if(cas->u.elemp != nil)
+			c->elemalg->copy(c->elemsize, cas->u.elemp, sg->elem);
 		c->elemalg->copy(c->elemsize, sg->elem, nil);
 	}
 
@@ -987,13 +804,10 @@ loop:
 
 asyncrecv:
 	// can receive from buffer
-	if(cas->u.recv.receivedp != nil)
-		*cas->u.recv.receivedp = true;
-	if(cas->u.recv.elemp != nil)
-		c->elemalg->copy(c->elemsize, cas->u.recv.elemp, chanbuf(c, c->recvx));
-	c->elemalg->copy(c->elemsize, chanbuf(c, c->recvx), nil);
-	if(++c->recvx == c->dataqsiz)
-		c->recvx = 0;
+	if(cas->u.elemp != nil)
+		c->elemalg->copy(c->elemsize, cas->u.elemp, c->recvdataq->elem);
+	c->elemalg->copy(c->elemsize, c->recvdataq->elem, nil);
+	c->recvdataq = c->recvdataq->link;
 	c->qcount--;
 	sg = dequeue(&c->sendq, c);
 	if(sg != nil) {
@@ -1006,9 +820,8 @@ asyncrecv:
 asyncsend:
 	// can send to buffer
 	if(cas->u.elem != nil)
-		c->elemalg->copy(c->elemsize, chanbuf(c, c->sendx), cas->u.elem);
-	if(++c->sendx == c->dataqsiz)
-		c->sendx = 0;
+		c->elemalg->copy(c->elemsize, c->senddataq->elem, cas->u.elem);
+	c->senddataq = c->senddataq->link;
 	c->qcount++;
 	sg = dequeue(&c->recvq, c);
 	if(sg != nil) {
@@ -1022,10 +835,8 @@ syncrecv:
 	// can receive from sleeping sender (sg)
 	if(debug)
 		runtime·printf("syncrecv: sel=%p c=%p o=%d\n", sel, c, o);
-	if(cas->u.recv.receivedp != nil)
-		*cas->u.recv.receivedp = true;
-	if(cas->u.recv.elemp != nil)
-		c->elemalg->copy(c->elemsize, cas->u.recv.elemp, sg->elem);
+	if(cas->u.elemp != nil)
+		c->elemalg->copy(c->elemsize, cas->u.elemp, sg->elem);
 	c->elemalg->copy(c->elemsize, sg->elem, nil);
 	gp = sg->g;
 	gp->param = sg;
@@ -1034,17 +845,16 @@ syncrecv:
 
 rclose:
 	// read at end of closed channel
-	if(cas->u.recv.receivedp != nil)
-		*cas->u.recv.receivedp = false;
-	if(cas->u.recv.elemp != nil)
-		c->elemalg->copy(c->elemsize, cas->u.recv.elemp, nil);
+	if(cas->u.elemp != nil)
+		c->elemalg->copy(c->elemsize, cas->u.elemp, nil);
+	c->closed |= Rclosed;
 	goto retc;
 
 syncsend:
 	// can send to sleeping receiver (sg)
 	if(debug)
 		runtime·printf("syncsend: sel=%p c=%p o=%d\n", sel, c, o);
-	if(c->closed)
+	if(c->closed & Wclosed)
 		goto sclose;
 	c->elemalg->copy(c->elemsize, sg->elem, cas->u.elem);
 	gp = sg->g;
@@ -1055,17 +865,16 @@ retc:
 	selunlock(sel);
 
 	// return to pc corresponding to chosen case
-	pc = cas->pc;
-	as = (byte*)selp + cas->so;
+	runtime·setcallerpc(&sel, cas->pc);
+	as = (byte*)&sel + cas->so;
 	freesel(sel);
 	*as = true;
-	return pc;
+	return;
 
 sclose:
 	// send on closed channel
 	selunlock(sel);
 	runtime·panicstring("send on closed channel");
-	return nil;  // not reached
 }
 
 // closechan(sel *byte);
@@ -1079,12 +888,12 @@ runtime·closechan(Hchan *c)
 		runtime·gosched();
 
 	runtime·lock(c);
-	if(c->closed) {
+	if(c->closed & Wclosed) {
 		runtime·unlock(c);
 		runtime·panicstring("close of closed channel");
 	}
 
-	c->closed = true;
+	c->closed |= Wclosed;
 
 	// release all readers
 	for(;;) {
@@ -1111,36 +920,37 @@ runtime·closechan(Hchan *c)
 	runtime·unlock(c);
 }
 
-// For reflect
-//	func chanclose(c chan)
 void
-reflect·chanclose(Hchan *c)
+runtime·chanclose(Hchan *c)
 {
 	runtime·closechan(c);
 }
 
-// For reflect
-//	func chanlen(c chan) (len int32)
-void
-reflect·chanlen(Hchan *c, int32 len)
+bool
+runtime·chanclosed(Hchan *c)
 {
-	if(c == nil)
-		len = 0;
-	else
-		len = c->qcount;
-	FLUSH(&len);
+	return (c->closed & Rclosed) != 0;
 }
 
-// For reflect
-//	func chancap(c chan) (cap int32)
-void
-reflect·chancap(Hchan *c, int32 cap)
+int32
+runtime·chanlen(Hchan *c)
 {
-	if(c == nil)
-		cap = 0;
-	else
-		cap = c->dataqsiz;
-	FLUSH(&cap);
+	return c->qcount;
+}
+
+int32
+runtime·chancap(Hchan *c)
+{
+	return c->dataqsiz;
+}
+
+
+// closedchan(sel *byte) bool;
+void
+runtime·closedchan(Hchan *c, bool closed)
+{
+	closed = runtime·chanclosed(c);
+	FLUSH(&closed);
 }
 
 static SudoG*

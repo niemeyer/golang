@@ -98,10 +98,6 @@ Pconv(Fmt *fp)
 		fmtprint(fp, "(%d)	DWORD	%D %D", p->line, &p->from, &p->to);
 		break;
 	}
-	
-	if(p->spadj)
-		fmtprint(fp, "  (spadj%+d)", p->spadj);
-
 	return 0;
 }
 
@@ -412,6 +408,7 @@ static char*
 cnames[] =
 {
 	[C_ADDR]	= "C_ADDR",
+	[C_BCON]	= "C_BCON",
 	[C_FAUTO]	= "C_FAUTO",
 	[C_ZFCON]	= "C_SFCON",
 	[C_SFCON]	= "C_SFCON",
@@ -419,7 +416,11 @@ cnames[] =
 	[C_FCR]		= "C_FCR",
 	[C_FOREG]	= "C_FOREG",
 	[C_FREG]	= "C_FREG",
+	[C_GACON]	= "C_GACON",
+	[C_GBRA]	= "C_GBRA",
+	[C_GCON]	= "C_GCON",
 	[C_GOK]		= "C_GOK",
+	[C_GOREG]	= "C_GOREG",
 	[C_HAUTO]	= "C_HAUTO",
 	[C_HFAUTO]	= "C_HFAUTO",
 	[C_HFOREG]	= "C_HFOREG",
@@ -432,6 +433,7 @@ cnames[] =
 	[C_LOREG]	= "C_LOREG",
 	[C_NCON]	= "C_NCON",
 	[C_NONE]	= "C_NONE",
+	[C_OFFPC]	= "C_OFFPC",
 	[C_PC]		= "C_PC",
 	[C_PSR]		= "C_PSR",
 	[C_RACON]	= "C_RACON",
@@ -439,6 +441,7 @@ cnames[] =
 	[C_REG]		= "C_REG",
 	[C_REGREG]	= "C_REGREG",
 	[C_ROREG]	= "C_ROREG",
+	[C_SACON]	= "C_SACON",
 	[C_SAUTO]	= "C_SAUTO",
 	[C_SBRA]	= "C_SBRA",
 	[C_SCON]	= "C_SCON",

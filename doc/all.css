@@ -96,7 +96,7 @@ h1#title {
   color: #999;
 }
 #search {
-  width: 120px;
+  width: 100px;
   margin-left: 0.5em;
 }
 #search.inactive {
@@ -139,8 +139,9 @@ h1#title {
   padding: 0;
 }
 #content h2 {
-  border-top: 2px solid #ddd;
-  padding: 8px 0;
+  border-top: 1px solid #ddd;
+  background: #E2E7F0;
+  padding: 5px;
   margin: 1.5em 0 0;
 }
 #content .subtitle {
@@ -197,9 +198,4 @@ span.alert {
 .detail {
   padding: 0.25em 1em;
   background: #F4F4F4;
-}
-sup.new {
-  color: red;
-  font-size: 8px;
-  line-height: 0;
 }

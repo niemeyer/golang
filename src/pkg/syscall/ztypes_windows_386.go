@@ -23,13 +23,11 @@ const (
 	ERROR_PATH_NOT_FOUND      = 3
 	ERROR_NO_MORE_FILES       = 18
 	ERROR_BROKEN_PIPE         = 109
-	ERROR_BUFFER_OVERFLOW     = 111
 	ERROR_INSUFFICIENT_BUFFER = 122
 	ERROR_MOD_NOT_FOUND       = 126
 	ERROR_PROC_NOT_FOUND      = 127
 	ERROR_ENVVAR_NOT_FOUND    = 203
 	ERROR_DIRECTORY           = 267
-	ERROR_OPERATION_ABORTED   = 995
 	ERROR_IO_PENDING          = 997
 )
 
@@ -47,23 +45,6 @@ const (
 	O_SYNC     = 0x01000
 	O_ASYNC    = 0x02000
 	O_CLOEXEC  = 0x80000
-)
-
-const (
-	// More invented values for signals
-	SIGHUP  = 0x1
-	SIGINT  = 0x2
-	SIGQUIT = 0x3
-	SIGILL  = 0x4
-	SIGTRAP = 0x5
-	SIGABRT = 0x6
-	SIGBUS  = 0x7
-	SIGFPE  = 0x8
-	SIGKILL = 0x9
-	SIGSEGV = 0xb
-	SIGPIPE = 0xd
-	SIGALRM = 0xe
-	SIGTERM = 0xf
 )
 
 const (
@@ -93,9 +74,7 @@ const (
 	OPEN_ALWAYS       = 4
 	TRUNCATE_EXISTING = 5
 
-	HANDLE_FLAG_INHERIT    = 0x00000001
 	STARTF_USESTDHANDLES   = 0x00000100
-	STARTF_USESHOWWINDOW   = 0x00000001
 	DUPLICATE_CLOSE_SOURCE = 0x00000001
 	DUPLICATE_SAME_ACCESS  = 0x00000002
 
@@ -137,18 +116,6 @@ const (
 	STANDARD_RIGHTS_READ      = 0x00020000
 	PROCESS_QUERY_INFORMATION = 0x00000400
 	SYNCHRONIZE               = 0x00100000
-
-	PAGE_READONLY          = 0x02
-	PAGE_READWRITE         = 0x04
-	PAGE_WRITECOPY         = 0x08
-	PAGE_EXECUTE_READ      = 0x20
-	PAGE_EXECUTE_READWRITE = 0x40
-	PAGE_EXECUTE_WRITECOPY = 0x80
-
-	FILE_MAP_COPY    = 0x01
-	FILE_MAP_WRITE   = 0x02
-	FILE_MAP_READ    = 0x04
-	FILE_MAP_EXECUTE = 0x20
 )
 
 const (
@@ -205,18 +172,12 @@ func NsecToTimeval(nsec int64) (tv Timeval) {
 	return
 }
 
-type SecurityAttributes struct {
-	Length             uint32
-	SecurityDescriptor uintptr
-	InheritHandle      uint32
-}
-
 type Overlapped struct {
 	Internal     uint32
 	InternalHigh uint32
 	Offset       uint32
 	OffsetHigh   uint32
-	HEvent       int32
+	HEvent       *byte
 }
 
 type Filetime struct {
@@ -270,25 +231,6 @@ type ByHandleFileInformation struct {
 	FileIndexHigh      uint32
 	FileIndexLow       uint32
 }
-
-// ShowWindow constants
-const (
-	// winuser.h
-	SW_HIDE            = 0
-	SW_NORMAL          = 1
-	SW_SHOWNORMAL      = 1
-	SW_SHOWMINIMIZED   = 2
-	SW_SHOWMAXIMIZED   = 3
-	SW_MAXIMIZE        = 3
-	SW_SHOWNOACTIVATE  = 4
-	SW_SHOW            = 5
-	SW_MINIMIZE        = 6
-	SW_SHOWMINNOACTIVE = 7
-	SW_SHOWNA          = 8
-	SW_RESTORE         = 9
-	SW_SHOWDEFAULT     = 10
-	SW_FORCEMINIMIZE   = 11
-)
 
 type StartupInfo struct {
 	Cb            uint32
@@ -348,7 +290,6 @@ type Timezoneinformation struct {
 // Socket related.
 
 const (
-	AF_UNSPEC  = 0
 	AF_UNIX    = 1
 	AF_INET    = 2
 	AF_INET6   = 23
@@ -432,7 +373,6 @@ const (
 	S_ISGID    = 0x400
 	S_ISVTX    = 0x200
 	S_IRUSR    = 0x100
-	S_IWRITE   = 0x80
 	S_IWUSR    = 0x80
 	S_IXUSR    = 0x40
 )
@@ -533,10 +473,6 @@ type DNSSRVData struct {
 	Pad      uint16
 }
 
-type DNSPTRData struct {
-	Host *uint16
-}
-
 type DNSRecord struct {
 	Next     *DNSRecord
 	Name     *uint16
@@ -546,111 +482,4 @@ type DNSRecord struct {
 	Ttl      uint32
 	Reserved uint32
 	Data     [40]byte
-}
-
-const (
-	TF_DISCONNECT         = 1
-	TF_REUSE_SOCKET       = 2
-	TF_WRITE_BEHIND       = 4
-	TF_USE_DEFAULT_WORKER = 0
-	TF_USE_SYSTEM_THREAD  = 16
-	TF_USE_KERNEL_APC     = 32
-)
-
-type TransmitFileBuffers struct {
-	Head       uintptr
-	HeadLength uint32
-	Tail       uintptr
-	TailLength uint32
-}
-
-const (
-	IFF_UP           = 1
-	IFF_BROADCAST    = 2
-	IFF_LOOPBACK     = 4
-	IFF_POINTTOPOINT = 8
-	IFF_MULTICAST    = 16
-)
-
-const SIO_GET_INTERFACE_LIST = 0x4004747F
-
-// TODO(mattn): SockaddrGen is union of sockaddr/sockaddr_in/sockaddr_in6_old.
-// will be fixed to change variable type as suitable.
-
-type SockaddrGen [24]byte
-
-type InterfaceInfo struct {
-	Flags            uint32
-	Address          SockaddrGen
-	BroadcastAddress SockaddrGen
-	Netmask          SockaddrGen
-}
-
-type IpAddressString struct {
-	String [16]byte
-}
-
-type IpMaskString IpAddressString
-
-type IpAddrString struct {
-	Next      *IpAddrString
-	IpAddress IpAddressString
-	IpMask    IpMaskString
-	Context   uint32
-}
-
-const MAX_ADAPTER_NAME_LENGTH = 256
-const MAX_ADAPTER_DESCRIPTION_LENGTH = 128
-const MAX_ADAPTER_ADDRESS_LENGTH = 8
-
-type IpAdapterInfo struct {
-	Next                *IpAdapterInfo
-	ComboIndex          uint32
-	AdapterName         [MAX_ADAPTER_NAME_LENGTH + 4]byte
-	Description         [MAX_ADAPTER_DESCRIPTION_LENGTH + 4]byte
-	AddressLength       uint32
-	Address             [MAX_ADAPTER_ADDRESS_LENGTH]byte
-	Index               uint32
-	Type                uint32
-	DhcpEnabled         uint32
-	CurrentIpAddress    *IpAddrString
-	IpAddressList       IpAddrString
-	GatewayList         IpAddrString
-	DhcpServer          IpAddrString
-	HaveWins            bool
-	PrimaryWinsServer   IpAddrString
-	SecondaryWinsServer IpAddrString
-	LeaseObtained       int64
-	LeaseExpires        int64
-}
-
-const MAXLEN_PHYSADDR = 8
-const MAX_INTERFACE_NAME_LEN = 256
-const MAXLEN_IFDESCR = 256
-
-type MibIfRow struct {
-	Name            [MAX_INTERFACE_NAME_LEN]uint16
-	Index           uint32
-	Type            uint32
-	Mtu             uint32
-	Speed           uint32
-	PhysAddrLen     uint32
-	PhysAddr        [MAXLEN_PHYSADDR]byte
-	AdminStatus     uint32
-	OperStatus      uint32
-	LastChange      uint32
-	InOctets        uint32
-	InUcastPkts     uint32
-	InNUcastPkts    uint32
-	InDiscards      uint32
-	InErrors        uint32
-	InUnknownProtos uint32
-	OutOctets       uint32
-	OutUcastPkts    uint32
-	OutNUcastPkts   uint32
-	OutDiscards     uint32
-	OutErrors       uint32
-	OutQLen         uint32
-	DescrLen        uint32
-	Descr           [MAXLEN_IFDESCR]byte
 }

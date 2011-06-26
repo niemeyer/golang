@@ -13,36 +13,29 @@ import (
 	"testing"
 )
 
+// The go PNG library currently supports only a subset of the full PNG specification.
+// In particular, bit depths other than 8 or 16 are not supported, nor are grayscale-
+// alpha images.
 var filenames = []string{
-	"basn0g01",
-	"basn0g01-30",
-	"basn0g02",
-	"basn0g02-29",
-	"basn0g04",
-	"basn0g04-31",
+	//"basn0g01",	// bit depth is not 8 or 16
+	//"basn0g02",	// bit depth is not 8 or 16
+	//"basn0g04",	// bit depth is not 8 or 16
 	"basn0g08",
 	"basn0g16",
 	"basn2c08",
 	"basn2c16",
-	"basn3p01",
-	"basn3p02",
-	"basn3p04",
+	//"basn3p01",	// bit depth is not 8 or 16
+	//"basn3p02",	// bit depth is not 8 or 16
+	//"basn3p04",	// bit depth is not 8 or 16
 	"basn3p08",
-	"basn3p08-trns",
-	"basn4a08",
-	"basn4a16",
+	//"basn4a08",	// grayscale-alpha color model
+	//"basn4a16",	// grayscale-alpha color model
 	"basn6a08",
 	"basn6a16",
 }
 
-var filenamesShort = []string{
-	"basn0g01",
-	"basn0g04-31",
-	"basn6a16",
-}
-
 func readPng(filename string) (image.Image, os.Error) {
-	f, err := os.Open(filename)
+	f, err := os.Open(filename, os.O_RDONLY, 0444)
 	if err != nil {
 		return nil, err
 	}
@@ -65,16 +58,7 @@ func sng(w io.WriteCloser, filename string, png image.Image) {
 	cpm, _ := cm.(image.PalettedColorModel)
 	var paletted *image.Paletted
 	if cpm != nil {
-		switch {
-		case len(cpm) <= 2:
-			bitdepth = 1
-		case len(cpm) <= 4:
-			bitdepth = 2
-		case len(cpm) <= 16:
-			bitdepth = 4
-		default:
-			bitdepth = 8
-		}
+		bitdepth = 8
 		paletted = png.(*image.Paletted)
 	}
 
@@ -99,30 +83,17 @@ func sng(w io.WriteCloser, filename string, png image.Image) {
 	// (the PNG spec section 11.3 says "Ancillary chunks may be ignored by a decoder").
 	io.WriteString(w, "gAMA {1.0000}\n")
 
-	// Write the PLTE and tRNS (if applicable).
+	// Write the PLTE (if applicable).
 	if cpm != nil {
-		lastAlpha := -1
 		io.WriteString(w, "PLTE {\n")
-		for i, c := range cpm {
-			r, g, b, a := c.RGBA()
-			if a != 0xffff {
-				lastAlpha = i
-			}
+		for i := 0; i < len(cpm); i++ {
+			r, g, b, _ := cpm[i].RGBA()
 			r >>= 8
 			g >>= 8
 			b >>= 8
 			fmt.Fprintf(w, "    (%3d,%3d,%3d)     # rgb = (0x%02x,0x%02x,0x%02x)\n", r, g, b, r, g, b)
 		}
 		io.WriteString(w, "}\n")
-		if lastAlpha != -1 {
-			io.WriteString(w, "tRNS {\n")
-			for i := 0; i <= lastAlpha; i++ {
-				_, _, _, a := cpm[i].RGBA()
-				a >>= 8
-				fmt.Fprintf(w, " %d", a)
-			}
-			io.WriteString(w, "}\n")
-		}
 	}
 
 	// Write the IMAGE.
@@ -160,15 +131,8 @@ func sng(w io.WriteCloser, filename string, png image.Image) {
 				fmt.Fprintf(w, "%04x%04x%04x%04x ", nrgba64.R, nrgba64.G, nrgba64.B, nrgba64.A)
 			}
 		case cpm != nil:
-			var b, c int
 			for x := bounds.Min.X; x < bounds.Max.X; x++ {
-				b = b<<uint(bitdepth) | int(paletted.ColorIndexAt(x, y))
-				c++
-				if c == 8/bitdepth {
-					fmt.Fprintf(w, "%02x", b)
-					b = 0
-					c = 0
-				}
+				fmt.Fprintf(w, "%02x", paletted.ColorIndexAt(x, y))
 			}
 		}
 		io.WriteString(w, "\n")
@@ -177,35 +141,20 @@ func sng(w io.WriteCloser, filename string, png image.Image) {
 }
 
 func TestReader(t *testing.T) {
-	names := filenames
-	if testing.Short() {
-		names = filenamesShort
-	}
-	for _, fn := range names {
+	for _, fn := range filenames {
 		// Read the .png file.
-		img, err := readPng("testdata/pngsuite/" + fn + ".png")
+		image, err := readPng("testdata/pngsuite/" + fn + ".png")
 		if err != nil {
 			t.Error(fn, err)
 			continue
 		}
-
-		if fn == "basn4a16" {
-			// basn4a16.sng is gray + alpha but sng() will produce true color + alpha
-			// so we just check a single random pixel.
-			c := img.At(2, 1).(image.NRGBA64Color)
-			if c.R != 0x11a7 || c.G != 0x11a7 || c.B != 0x11a7 || c.A != 0x1085 {
-				t.Error(fn, fmt.Errorf("wrong pixel value at (2, 1): %x", c))
-			}
-			continue
-		}
-
 		piper, pipew := io.Pipe()
 		pb := bufio.NewReader(piper)
-		go sng(pipew, fn, img)
+		go sng(pipew, fn, image)
 		defer piper.Close()
 
 		// Read the .sng file.
-		sf, err := os.Open("testdata/pngsuite/" + fn + ".sng")
+		sf, err := os.Open("testdata/pngsuite/"+fn+".sng", os.O_RDONLY, 0444)
 		if err != nil {
 			t.Error(fn, err)
 			continue

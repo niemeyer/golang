@@ -498,47 +498,21 @@ Useful for development work."
   (require 'go-mode)
   (go-mode))
 
-;;;###autoload
-(defun gofmt ()
- "Pipe the current buffer through the external tool `gofmt`.
-Replace the current buffer on success; display errors on failure."
-
- (interactive)
- (let ((srcbuf (current-buffer)))
-   (with-temp-buffer
-     (let ((outbuf (current-buffer))
-           (errbuf (get-buffer-create "*Gofmt Errors*"))
-           (coding-system-for-read 'utf-8)    ;; use utf-8 with subprocesses
-           (coding-system-for-write 'utf-8))
-       (with-current-buffer errbuf (erase-buffer))
-       (with-current-buffer srcbuf
-         (save-restriction
-           (let (deactivate-mark)
-             (widen)
-             (if (= 0 (shell-command-on-region (point-min) (point-max) "gofmt"
-                                               outbuf nil errbuf))
-                 ;; gofmt succeeded: replace the current buffer with outbuf,
-                 ;; restore the mark and point, and discard errbuf.
-                 (let ((old-mark (mark t)) (old-point (point)))
-                   (erase-buffer)
-                   (insert-buffer-substring outbuf)
-                   (goto-char (min old-point (point-max)))
-                   (if old-mark (push-mark (min old-mark (point-max)) t))
-                   (kill-buffer errbuf))
-
-               ;; gofmt failed: display the errors
-               (display-buffer errbuf)))))
-
-       ;; Collapse any window opened on outbuf if shell-command-on-region
-       ;; displayed it.
-       (delete-windows-on outbuf)))))
-
-;;;###autoload
-(defun gofmt-before-save ()
- "Add this to .emacs to run gofmt on the current buffer when saving:
- (add-hook 'before-save-hook #'gofmt-before-save)"
-
- (interactive)
- (when (eq major-mode 'go-mode) (gofmt)))
-
 (provide 'go-mode)
+
+(defun gofmt ()
+  "Pipe the current buffer through the external tool `gofmt`."
+  
+  (interactive)
+  ;; for some reason save-excursion isn't working
+  ;; probably because shell-command-on-region deletes the contents of the
+  ;; region before filling in the new values
+  ;; so we will save the point/mark by hand
+  ;; similarly we can't use push-mark/pop-mark
+  (let ((old-mark (mark t)) (old-point (point)))
+    (save-restriction
+      (let (deactivate-mark)
+        (widen)
+        (shell-command-on-region (point-min) (point-max) "gofmt" t t shell-command-default-error-buffer)))
+    (goto-char (min old-point (point-max)))
+    (if old-mark (set-mark (min old-mark (point-max))))))

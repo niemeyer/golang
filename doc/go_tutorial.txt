@@ -6,12 +6,10 @@ This document is a tutorial introduction to the basics of the Go programming
 language, intended for programmers familiar with C or C++. It is not a comprehensive
 guide to the language; at the moment the document closest to that is the
 <a href='/doc/go_spec.html'>language specification</a>.
-After you've read this tutorial, you should look at
+After you've read this tutorial, you might want to look at
 <a href='/doc/effective_go.html'>Effective Go</a>,
-which digs deeper into how the language is used and
-talks about the style and idioms of programming in Go.
-Also, slides from a 3-day course about Go are available.
-They provide some background and a lot of examples:
+which digs deeper into how the language is used.
+Also, slides from a 3-day course about Go are available:
 <a href='/doc/GoCourseDay1.pdf'>Day 1</a>,
 <a href='/doc/GoCourseDay2.pdf'>Day 2</a>,
 <a href='/doc/GoCourseDay3.pdf'>Day 3</a>.
@@ -271,7 +269,7 @@ Using slices one can write this function (from "sum.go"):
 
 --PROG progs/sum.go /sum/ /^}/
 
-Note how the return type ("int") is defined for "sum" by stating it
+Note how the return type ("int") is defined for "sum()" by stating it
 after the parameter list.
 
 To call the function, we slice the array.  This intricate call (we'll show
@@ -295,7 +293,7 @@ There are also maps, which you can initialize like this:
 
 	m := map[string]int{"one":1 , "two":2}
 
-The built-in function "len", which returns number of elements,
+The built-in function "len()", which returns number of elements,
 makes its first appearance in "sum".  It works on strings, arrays,
 slices, maps, and channels.
 
@@ -320,7 +318,7 @@ An Interlude about Allocation
 Most types in Go are values. If you have an "int" or a "struct"
 or an array, assignment
 copies the contents of the object.
-To allocate a new variable, use the built-in function "new", which
+To allocate a new variable, use "new()", which
 returns a pointer to the allocated storage.
 
 	type T struct { a, b int }
@@ -333,7 +331,7 @@ or the more idiomatic
 Some types&mdash;maps, slices, and channels (see below)&mdash;have reference semantics.
 If you're holding a slice or a map and you modify its contents, other variables
 referencing the same underlying data will see the modification.  For these three
-types you want to use the built-in function "make":
+types you want to use the built-in function "make()":
 
 	m := make(map[string]int)
 
@@ -343,11 +341,11 @@ If you just declare the map, as in
 	var m map[string]int
 
 it creates a "nil" reference that cannot hold anything. To use the map,
-you must first initialize the reference using "make" or by assignment from an
+you must first initialize the reference using "make()" or by assignment from an
 existing map.
 
 Note that "new(T)" returns type "*T" while "make(T)" returns type
-"T".  If you (mistakenly) allocate a reference object with "new" rather than "make",
+"T".  If you (mistakenly) allocate a reference object with "new()",
 you receive a pointer to a nil reference, equivalent to
 declaring an uninitialized variable and taking its address.
 
@@ -383,8 +381,8 @@ assigned to a variable.
 An I/O Package
 ----
 
-Next we'll look at a simple package for doing file I/O with an
-open/close/read/write interface.  Here's the start of "file.go":
+Next we'll look at a simple package for doing file I/O with the usual
+sort of open/close/read/write interface.  Here's the start of "file.go":
 
 --PROG progs/file.go /package/ /^}/
 
@@ -436,11 +434,11 @@ We can use the factory to construct some familiar, exported variables of type "*
 --PROG progs/file.go /var/ /^.$/
 
 The "newFile" function was not exported because it's internal. The proper,
-exported factory to use is "OpenFile" (we'll explain that name in a moment):
+exported factory to use is "Open":
 
---PROG progs/file.go /func.OpenFile/ /^}/
+--PROG progs/file.go /func.Open/ /^}/
 
-There are a number of new things in these few lines.  First, "OpenFile" returns
+There are a number of new things in these few lines.  First, "Open" returns
 multiple values, a "File" and an error (more about errors in a moment).
 We declare the
 multi-value return as a parenthesized list of declarations; syntactically
@@ -459,20 +457,6 @@ consistent error handling throughout Go code.   In "Open" we use a
 conversion to translate Unix's integer "errno" value into the integer type
 "os.Errno", which implements "os.Error".
 
-Why "OpenFile" and not "Open"? To mimic Go's "os" package, which
-our exercise is emulating. The "os" package takes the opportunity
-to make the two commonest cases - open for read and create for
-write - the simplest, just "Open" and "Create".  "OpenFile" is the
-general case, analogous to the Unix system call "Open".  Here is
-the implementation of our "Open" and "Create"; they're trivial
-wrappers that eliminate common errors by capturing
-the tricky standard arguments to open and, especially, to create a file:
-
---PROG progs/file.go /^const/ /^}/
-
---PROG progs/file.go /func.Create/ /^}/
-
-Back to our main story.
 Now that we can build "Files", we can write methods for them. To declare
 a method of a type, we define a function to have an explicit receiver
 of that type, placed
@@ -525,7 +509,7 @@ Building on the "file" package, here's a simple version of the Unix utility "cat
 By now this should be easy to follow, but the "switch" statement introduces some
 new features.  Like a "for" loop, an "if" or "switch" can include an
 initialization statement.  The "switch" on line 18 uses one to create variables
-"nr" and "er" to hold the return values from the call to "f.Read".  (The "if" on line 25
+"nr" and "er" to hold the return values from "f.Read()".  (The "if" on line 25
 has the same idea.)  The "switch" statement is general: it evaluates the cases
 from  top to bottom looking for the first case that matches the value; the
 case expressions don't need to be constants or even integers, as long as
@@ -537,14 +521,14 @@ in a "for" statement, a missing value means "true".  In fact, such a "switch"
 is a form of "if-else" chain. While we're here, it should be mentioned that in
 "switch" statements each "case" has an implicit "break".
 
-Line 25 calls "Write" by slicing the incoming buffer, which is itself a slice.
+Line 25 calls "Write()" by slicing the incoming buffer, which is itself a slice.
 Slices provide the standard Go way to handle I/O buffers.
 
 Now let's make a variant of "cat" that optionally does "rot13" on its input.
 It's easy to do by just processing the bytes, but instead we will exploit
 Go's notion of an <i>interface</i>.
 
-The "cat" subroutine uses only two methods of "f": "Read" and "String",
+The "cat()" subroutine uses only two methods of "f": "Read()" and "String()",
 so let's start by defining an interface that has exactly those two methods.
 Here is code from "progs/cat_rot13.go":
 
@@ -568,11 +552,11 @@ To use the new feature, we define a flag:
 
 --PROG progs/cat_rot13.go /rot13Flag/
 
-and use it from within a mostly unchanged "cat" function:
+and use it from within a mostly unchanged "cat()" function:
 
 --PROG progs/cat_rot13.go /func.cat/ /^}/
 
-(We could also do the wrapping in "main" and leave "cat" mostly alone, except
+(We could also do the wrapping in "main" and leave "cat()" mostly alone, except
 for changing the type of the argument; consider that an exercise.)
 Lines 56 through 58 set it all up: If the "rot13" flag is true, wrap the "reader"
 we received into a "rotate13" and proceed.  Note that the interface variables
@@ -628,7 +612,7 @@ We can apply "Sort" to any type that implements "Len", "Less", and "Swap".
 The "sort" package includes the necessary methods to allow sorting of
 arrays of integers, strings, etc.; here's the code for arrays of "int"
 
---PROG progs/sort.go /type.*IntSlice/ /Swap/
+--PROG progs/sort.go /type.*IntArray/ /Swap/
 
 Here we see methods defined for non-"struct" types.  You can define methods
 for any type you define and name in your package.
@@ -700,19 +684,19 @@ to that of the "Printf" call above.
 --PROG progs/print.go 'NR==21' 'NR==22'
 
 If you have your own type you'd like "Printf" or "Print" to format,
-just give it a "String" method that returns a string.  The print
+just give it a "String()" method that returns a string.  The print
 routines will examine the value to inquire whether it implements
 the method and if so, use it rather than some other formatting.
 Here's a simple example.
 
 --PROG progs/print_string.go 'NR==9' END
 
-Since "*testType" has a "String" method, the
+Since "*testType" has a "String()" method, the
 default formatter for that type will use it and produce the output
 
 	77 Sunset Strip
 
-Observe that the "String" method calls "Sprint" (the obvious Go
+Observe that the "String()" method calls "Sprint" (the obvious Go
 variant that returns a string) to do its formatting; special formatters
 can use the "fmt" library recursively.
 
@@ -725,7 +709,7 @@ and such, but that's getting a little off the main thread so we'll leave it
 as an exploration exercise.
 
 You might ask, though, how "Printf" can tell whether a type implements
-the "String" method.  Actually what it does is ask if the value can
+the "String()" method.  Actually what it does is ask if the value can
 be converted to an interface variable that implements the method.
 Schematically, given a value "v", it does this:
 
@@ -764,7 +748,7 @@ interface type defined in the "io" library:
 
 (This interface is another conventional name, this time for "Write"; there are also
 "io.Reader", "io.ReadWriter", and so on.)
-Thus you can call "Fprintf" on any type that implements a standard "Write"
+Thus you can call "Fprintf" on any type that implements a standard "Write()"
 method, not just files but also network channels, buffers, whatever
 you want.
 

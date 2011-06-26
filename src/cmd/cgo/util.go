@@ -18,25 +18,24 @@ import (
 func run(stdin []byte, argv []string) (stdout, stderr []byte, ok bool) {
 	cmd, err := exec.LookPath(argv[0])
 	if err != nil {
-		fatalf("exec %s: %s", argv[0], err)
+		fatal("exec %s: %s", argv[0], err)
 	}
 	r0, w0, err := os.Pipe()
 	if err != nil {
-		fatalf("%s", err)
+		fatal("%s", err)
 	}
 	r1, w1, err := os.Pipe()
 	if err != nil {
-		fatalf("%s", err)
+		fatal("%s", err)
 	}
 	r2, w2, err := os.Pipe()
 	if err != nil {
-		fatalf("%s", err)
+		fatal("%s", err)
 	}
-	p, err := os.StartProcess(cmd, argv, &os.ProcAttr{Files: []*os.File{r0, w1, w2}})
+	pid, err := os.ForkExec(cmd, argv, os.Environ(), "", []*os.File{r0, w1, w2})
 	if err != nil {
-		fatalf("%s", err)
+		fatal("%s", err)
 	}
-	defer p.Release()
 	r0.Close()
 	w1.Close()
 	w2.Close()
@@ -56,16 +55,16 @@ func run(stdin []byte, argv []string) (stdout, stderr []byte, ok bool) {
 	<-c
 	<-c
 
-	w, err := p.Wait(0)
+	w, err := os.Wait(pid, 0)
 	if err != nil {
-		fatalf("%s", err)
+		fatal("%s", err)
 	}
 	ok = w.Exited() && w.ExitStatus() == 0
 	return
 }
 
 // Die with an error message.
-func fatalf(msg string, args ...interface{}) {
+func fatal(msg string, args ...interface{}) {
 	fmt.Fprintf(os.Stderr, msg+"\n", args...)
 	os.Exit(2)
 }
@@ -95,15 +94,15 @@ func isName(s string) bool {
 }
 
 func creat(name string) *os.File {
-	f, err := os.Create(name)
+	f, err := os.Open(name, os.O_WRONLY|os.O_CREAT|os.O_TRUNC, 0666)
 	if err != nil {
-		fatalf("%s", err)
+		fatal("%s", err)
 	}
 	return f
 }
 
 func slashToUnderscore(c int) int {
-	if c == '/' || c == '\\' || c == ':' {
+	if c == '/' {
 		c = '_'
 	}
 	return c

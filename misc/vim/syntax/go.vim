@@ -85,7 +85,7 @@ syn match       goType              /\<func\>/
 syn match       goDeclaration       /^func\>/
 
 " Predefined functions and values
-syn keyword     goBuiltins          append cap close complex copy imag len
+syn keyword     goBuiltins          append cap close closed complex copy imag len
 syn keyword     goBuiltins          make new panic print println real recover
 syn keyword     goConstants         iota true false nil
 
@@ -181,7 +181,7 @@ if go_highlight_extra_types != 0
   syn match goExtraType /\<bytes\.\(Buffer\)\>/
   syn match goExtraType /\<io\.\(Reader\|Writer\|ReadWriter\|ReadWriteCloser\)\>/
   syn match goExtraType /\<\(os\.Error\)\>/
-  syn match goExtraType /\<reflect\.\(Kind\|Type\|Value\)\>/
+  syn match goExtraType /\<reflect\.\w*\(Type\|Value\)\>/
   syn match goExtraType /\<unsafe\.Pointer\>/
 endif
 
@@ -197,12 +197,5 @@ endif
 
 hi def link     goExtraType         Type
 hi def link     goSpaceError        Error
-
-" Search backwards for a global declaration to start processing the syntax.
-"syn sync match goSync grouphere NONE /^\(const\|var\|type\|func\)\>/
-
-" There's a bug in the implementation of grouphere. For now, use the
-" following as a more expensive/less precise workaround.
-syn sync minlines=500
 
 let b:current_syntax = "go"

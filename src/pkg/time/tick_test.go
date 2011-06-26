@@ -29,11 +29,9 @@ func TestTicker(t *testing.T) {
 	}
 	// Now test that the ticker stopped
 	Sleep(2 * Delta)
-	select {
-	case <-ticker.C:
+	_, received := <-ticker.C
+	if received {
 		t.Fatal("Ticker did not shut down")
-	default:
-		// ok
 	}
 }
 

@@ -22,13 +22,10 @@
 #define SYS_rt_sigaction (SYS_BASE + 174)
 #define SYS_sigaltstack (SYS_BASE + 186)
 #define SYS_mmap2 (SYS_BASE + 192)
+#define SYS_gettid (SYS_BASE + 224)
 #define SYS_futex (SYS_BASE + 240)
 #define SYS_exit_group (SYS_BASE + 248)
 #define SYS_munmap (SYS_BASE + 91)
-#define SYS_setitimer (SYS_BASE + 104)
-#define SYS_mincore (SYS_BASE + 219)
-#define SYS_gettid (SYS_BASE + 224)
-#define SYS_tkill (SYS_BASE + 238)
 
 #define ARM_BASE (SYS_BASE + 0x0f0000)
 #define SYS_ARM_cacheflush (ARM_BASE + 2)
@@ -57,15 +54,6 @@ TEXT runtime·exit1(SB),7,$-4
 	MOVW	$1003, R1
 	MOVW	R0, (R1)	// fail hard
 
-TEXT	runtime·raisesigpipe(SB),7,$-4
-	MOVW	$SYS_gettid, R7
-	SWI	$0
-	// arg 1 tid already in R0 from gettid
-	MOVW	$13, R1	// arg 2 SIGPIPE
-	MOVW	$SYS_tkill, R7
-	SWI	$0
-	RET
-
 TEXT runtime·mmap(SB),7,$0
 	MOVW	0(FP), R0
 	MOVW	4(FP), R1
@@ -81,22 +69,6 @@ TEXT runtime·munmap(SB),7,$0
 	MOVW	0(FP), R0
 	MOVW	4(FP), R1
 	MOVW	$SYS_munmap, R7
-	SWI	$0
-	RET
-
-TEXT runtime·setitimer(SB),7,$0
-	MOVW	0(FP), R0
-	MOVW	4(FP), R1
-	MOVW	8(FP), R2
-	MOVW	$SYS_setitimer, R7
-	SWI	$0
-	RET
-
-TEXT runtime·mincore(SB),7,$0
-	MOVW	0(FP), R0
-	MOVW	4(FP), R1
-	MOVW	8(FP), R2
-	MOVW	$SYS_mincore, R7
 	SWI	$0
 	RET
 
@@ -225,24 +197,11 @@ TEXT runtime·sigignore(SB),7,$0
 	RET
 
 TEXT runtime·sigtramp(SB),7,$24
-	// save g
-	MOVW	g, R3
-	MOVW	g, 20(R13)
-	
-	// g = m->gsignal
 	MOVW	m_gsignal(m), g
-
-	// copy arguments for call to sighandler
 	MOVW	R0, 4(R13)
 	MOVW	R1, 8(R13)
 	MOVW	R2, 12(R13)
-	MOVW	R3, 16(R13)
-
 	BL	runtime·sighandler(SB)
-	
-	// restore g
-	MOVW	20(R13), g
-
 	RET
 
 TEXT runtime·rt_sigaction(SB),7,$0
@@ -258,32 +217,3 @@ TEXT runtime·sigreturn(SB),7,$0
 	MOVW	$SYS_rt_sigreturn, R7
 	SWI	$0
 	RET
-
-// Use kernel version instead of native armcas in ../../arm.s.
-// See ../../../sync/atomic/asm_linux_arm.s for details.
-TEXT cas<>(SB),7,$0
-	MOVW	$0xffff0fc0, PC
-
-TEXT runtime·cas(SB),7,$0
-	MOVW	valptr+0(FP), R2
-	MOVW	old+4(FP), R0
-casagain:
-	MOVW	new+8(FP), R1
-	BL	cas<>(SB)
-	BCC	cascheck
-	MOVW $1, R0
-	RET
-cascheck:
-	// Kernel lies; double-check.
-	MOVW	valptr+0(FP), R2
-	MOVW	old+4(FP), R0
-	MOVW	0(R2), R3
-	CMP	R0, R3
-	BEQ	casagain
-	MOVW $0, R0
-	RET
-
-
-TEXT runtime·casp(SB),7,$0
-	B	runtime·cas(SB)
-

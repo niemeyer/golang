@@ -32,8 +32,6 @@
 #include "gg.h"
 #include "opt.h"
 
-#define	NREGVAR	24
-#define	REGBITS	((uint32)0xffffff)
 #define	P2R(p)	(Reg*)(p->reg)
 
 	void	addsplits(void);
@@ -130,33 +128,6 @@ setaddrs(Bits bit)
 	}
 }
 
-static char* regname[] = {
-	".R0",
-	".R1",
-	".R2",
-	".R3",
-	".R4",
-	".R5",
-	".R6",
-	".R7",
-	".R8",
-	".R9",
-	".R10",
-	".R11",
-	".R12",
-	".R13",
-	".R14",
-	".R15",
-	".F0",
-	".F1",
-	".F2",
-	".F3",
-	".F4",
-	".F5",
-	".F6",
-	".F7",
-};
-
 void
 regopt(Prog *firstp)
 {
@@ -165,14 +136,14 @@ regopt(Prog *firstp)
 	int i, z, nr;
 	uint32 vreg;
 	Bits bit;
-	
+
 	if(first == 0) {
 		fmtinstall('Q', Qconv);
 	}
-
 	first++;
+
 	if(debug['K']) {
-		if(first != 13)
+		if(first != 1)
 			return;
 //		debug['R'] = 2;
 //		debug['P'] = 2;
@@ -193,17 +164,7 @@ regopt(Prog *firstp)
 	r1 = R;
 	firstr = R;
 	lastr = R;
-
-	/*
-	 * control flow is more complicated in generated go code
-	 * than in generated c code.  define pseudo-variables for
-	 * registers, so we have complete register usage information.
-	 */
-	nvar = NREGVAR;
-	memset(var, 0, NREGVAR*sizeof var[0]);
-	for(i=0; i<NREGVAR; i++)
-		var[i].sym = lookup(regname[i]);
-
+	nvar = 0;
 	regbits = RtoB(REGSP)|RtoB(REGLINK)|RtoB(REGPC);
 	for(z=0; z<BITS; z++) {
 		externs.b[z] = 0;
@@ -262,16 +223,6 @@ regopt(Prog *firstp)
 		bit = mkvar(r, &p->from);
 		for(z=0; z<BITS; z++)
 			r->use1.b[z] |= bit.b[z];
-		
-		/*
-		 * middle always read when present
-		 */
-		if(p->reg != NREG) {
-			if(p->from.type != D_FREG)
-				r->use1.b[0] |= RtoB(p->reg);
-			else
-				r->use1.b[0] |= FtoB(p->reg);
-		}
 
 		/*
 		 * right side depends on opcode
@@ -282,67 +233,6 @@ regopt(Prog *firstp)
 		default:
 			yyerror("reg: unknown op: %A", p->as);
 			break;
-		
-		/*
-		 * right side read
-		 */
-		case ATST:
-		case ATEQ:
-		case ACMP:
-		case ACMN:
-		case ACMPD:
-		case ACMPF:
-		rightread:
-			for(z=0; z<BITS; z++)
-				r->use2.b[z] |= bit.b[z];
-			break;
-			
-		/*
-		 * right side read or read+write, depending on middle
-		 *	ADD x, z => z += x
-		 *	ADD x, y, z  => z = x + y
-		 */
-		case AADD:
-		case AAND:
-		case AEOR:
-		case ASUB:
-		case ARSB:
-		case AADC:
-		case ASBC:
-		case ARSC:
-		case AORR:
-		case ABIC:
-		case ASLL:
-		case ASRL:
-		case ASRA:
-		case AMUL:
-		case AMULU:
-		case ADIV:
-		case AMOD:
-		case AMODU:
-		case ADIVU:
-			if(p->reg != NREG)
-				goto rightread;
-			// fall through
-
-		/*
-		 * right side read+write
-		 */
-		case AADDF:
-		case AADDD:
-		case ASUBF:
-		case ASUBD:
-		case AMULF:
-		case AMULD:
-		case ADIVF:
-		case ADIVD:
-		case AMULAL:
-		case AMULALU:
-			for(z=0; z<BITS; z++) {
-				r->use2.b[z] |= bit.b[z];
-				r->set.b[z] |= bit.b[z];
-			}
-			break;
 
 		/*
 		 * right side write
@@ -350,22 +240,11 @@ regopt(Prog *firstp)
 		case ANOP:
 		case AMOVB:
 		case AMOVBU:
-		case AMOVD:
-		case AMOVDF:
-		case AMOVDW:
-		case AMOVF:
-		case AMOVFW:
 		case AMOVH:
 		case AMOVHU:
 		case AMOVW:
-		case AMOVWD:
-		case AMOVWF:
-		case AMVN:
-		case AMULL:
-		case AMULLU:
-			if((p->scond & C_SCOND) != C_SCOND_NONE)
-				for(z=0; z<BITS; z++)
-					r->use2.b[z] |= bit.b[z];
+		case AMOVF:
+		case AMOVD:
 			for(z=0; z<BITS; z++)
 				r->set.b[z] |= bit.b[z];
 			break;
@@ -518,24 +397,6 @@ loop2:
 	}
 
 	/*
-	 * pass 4.5
-	 * move register pseudo-variables into regu.
-	 */
-	for(r = firstr; r != R; r = r->link) {
-		r->regu = (r->refbehind.b[0] | r->set.b[0]) & REGBITS;
-
-		r->set.b[0] &= ~REGBITS;
-		r->use1.b[0] &= ~REGBITS;
-		r->use2.b[0] &= ~REGBITS;
-		r->refbehind.b[0] &= ~REGBITS;
-		r->refahead.b[0] &= ~REGBITS;
-		r->calbehind.b[0] &= ~REGBITS;
-		r->calahead.b[0] &= ~REGBITS;
-		r->regdiff.b[0] &= ~REGBITS;
-		r->act.b[0] &= ~REGBITS;
-	}
-
-	/*
 	 * pass 5
 	 * isolate regions
 	 * calculate costs (paint1)
@@ -630,7 +491,7 @@ brk:
 	 * peep-hole on basic block
 	 */
 	if(!debug['R'] || debug['P']) {
-		peep();
+//		peep();
 	}
 
 	/*
@@ -745,7 +606,6 @@ addmove(Reg *r, int bn, int rn, int f)
 	a = &p1->to;
 	a->sym = v->sym;
 	a->name = v->name;
-	a->node = v->node;
 	a->offset = v->offset;
 	a->etype = v->etype;
 	a->type = D_OREG;
@@ -837,8 +697,8 @@ mkvar(Reg *r, Adr *a)
 	n = D_NONE;
 
 	flag = 0;
-	if(a->pun)
-		flag = 1;
+//	if(a->pun)
+//		flag = 1;
 
 	switch(t) {
 	default:
@@ -855,40 +715,21 @@ mkvar(Reg *r, Adr *a)
 		goto onereg;
 
 	case D_REGREG:
-		bit = zbits;
 		if(a->offset != NREG)
-			bit.b[0] |= RtoB(a->offset);
-		if(a->reg != NREG)
-			bit.b[0] |= RtoB(a->reg);
-		return bit;
+			r->regu |= RtoB(a->offset);
+		goto onereg;
 
 	case D_REG:
 	case D_SHIFT:
-	onereg:
-		if(a->reg != NREG) {
-			bit = zbits;
-			bit.b[0] = RtoB(a->reg);
-			return bit;
-		}
-		break;
-
 	case D_OREG:
-		if(a->reg != NREG) {
-			if(a == &r->prog->from)
-				r->use1.b[0] |= RtoB(a->reg);
-			else
-				r->use2.b[0] |= RtoB(a->reg);
-			if(r->prog->scond & (C_PBIT|C_WBIT))
-				r->set.b[0] |= RtoB(a->reg);
-		}
+	onereg:
+		if(a->reg != NREG)
+			r->regu |= RtoB(a->reg);
 		break;
 
 	case D_FREG:
-		if(a->reg != NREG) {
-			bit = zbits;
-			bit.b[0] = FtoB(a->reg);
-			return bit;
-		}
+		if(a->reg != NREG)
+			r->regu |= FtoB(a->reg);
 		break;
 	}
 
@@ -954,8 +795,7 @@ mkvar(Reg *r, Adr *a)
 	v->etype = et;
 	v->width = w;
 	v->addr = flag;		// funny punning
-	v->node = a->node;
-	
+
 	if(debug['R'])
 		print("bit=%2d et=%E pun=%d %D\n", i, et, flag, a);
 
@@ -1525,7 +1365,6 @@ noreturn(Prog *p)
 		symlist[1] = pkglookup("panicslice", runtimepkg);
 		symlist[2] = pkglookup("throwinit", runtimepkg);
 		symlist[3] = pkglookup("panic", runtimepkg);
-		symlist[4] = pkglookup("panicwrap", runtimepkg);
 	}
 
 	s = p->to.sym;
@@ -1535,72 +1374,4 @@ noreturn(Prog *p)
 		if(s == symlist[i])
 			return 1;
 	return 0;
-}
-
-void
-dumpone(Reg *r)
-{
-	int z;
-	Bits bit;
-
-	print("%d:%P", r->loop, r->prog);
-	for(z=0; z<BITS; z++)
-		bit.b[z] =
-			r->set.b[z] |
-			r->use1.b[z] |
-			r->use2.b[z] |
-			r->refbehind.b[z] |
-			r->refahead.b[z] |
-			r->calbehind.b[z] |
-			r->calahead.b[z] |
-			r->regdiff.b[z] |
-			r->act.b[z] |
-				0;
-	if(bany(&bit)) {
-		print("\t");
-		if(bany(&r->set))
-			print(" s:%Q", r->set);
-		if(bany(&r->use1))
-			print(" u1:%Q", r->use1);
-		if(bany(&r->use2))
-			print(" u2:%Q", r->use2);
-		if(bany(&r->refbehind))
-			print(" rb:%Q ", r->refbehind);
-		if(bany(&r->refahead))
-			print(" ra:%Q ", r->refahead);
-		if(bany(&r->calbehind))
-			print("cb:%Q ", r->calbehind);
-		if(bany(&r->calahead))
-			print(" ca:%Q ", r->calahead);
-		if(bany(&r->regdiff))
-			print(" d:%Q ", r->regdiff);
-		if(bany(&r->act))
-			print(" a:%Q ", r->act);
-	}
-	print("\n");
-}
-
-void
-dumpit(char *str, Reg *r0)
-{
-	Reg *r, *r1;
-
-	print("\n%s\n", str);
-	for(r = r0; r != R; r = r->link) {
-		dumpone(r);
-		r1 = r->p2;
-		if(r1 != R) {
-			print("	pred:");
-			for(; r1 != R; r1 = r1->p2link)
-				print(" %.4ud", r1->prog->loc);
-			print("\n");
-		}
-//		r1 = r->s1;
-//		if(r1 != R) {
-//			print("	succ:");
-//			for(; r1 != R; r1 = r1->s1)
-//				print(" %.4ud", r1->prog->loc);
-//			print("\n");
-//		}
-	}
 }

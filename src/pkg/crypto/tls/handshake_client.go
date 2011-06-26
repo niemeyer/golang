@@ -5,7 +5,6 @@
 package tls
 
 import (
-	"crypto"
 	"crypto/rsa"
 	"crypto/subtle"
 	"crypto/x509"
@@ -29,7 +28,6 @@ func (c *Conn) clientHandshake() os.Error {
 		serverName:         c.config.ServerName,
 		supportedCurves:    []uint16{curveP256, curveP384, curveP521},
 		supportedPoints:    []uint8{pointFormatUncompressed},
-		nextProtoNeg:       len(c.config.NextProtos) > 0,
 	}
 
 	t := uint32(c.config.time())
@@ -40,7 +38,7 @@ func (c *Conn) clientHandshake() os.Error {
 	_, err := io.ReadFull(c.config.rand(), hello.random[4:])
 	if err != nil {
 		c.sendAlert(alertInternalError)
-		return os.NewError("short read from Rand")
+		return os.ErrorString("short read from Rand")
 	}
 
 	finishedHash.Write(hello.marshal())
@@ -58,18 +56,13 @@ func (c *Conn) clientHandshake() os.Error {
 
 	vers, ok := mutualVersion(serverHello.vers)
 	if !ok {
-		return c.sendAlert(alertProtocolVersion)
+		c.sendAlert(alertProtocolVersion)
 	}
 	c.vers = vers
 	c.haveVers = true
 
 	if serverHello.compressionMethod != compressionNone {
 		return c.sendAlert(alertUnexpectedMessage)
-	}
-
-	if !hello.nextProtoNeg && serverHello.nextProtoNeg {
-		c.sendAlert(alertHandshakeFailure)
-		return os.NewError("server advertised unrequested NPN")
 	}
 
 	suite, suiteId := mutualCipherSuite(c.config.cipherSuites(), serverHello.cipherSuite)
@@ -88,36 +81,55 @@ func (c *Conn) clientHandshake() os.Error {
 	finishedHash.Write(certMsg.marshal())
 
 	certs := make([]*x509.Certificate, len(certMsg.certificates))
+	chain := NewCASet()
 	for i, asn1Data := range certMsg.certificates {
 		cert, err := x509.ParseCertificate(asn1Data)
 		if err != nil {
 			c.sendAlert(alertBadCertificate)
-			return os.NewError("failed to parse certificate from server: " + err.String())
+			return os.ErrorString("failed to parse certificate from server: " + err.String())
 		}
 		certs[i] = cert
+		chain.AddCert(cert)
 	}
 
 	// If we don't have a root CA set configured then anything is accepted.
 	// TODO(rsc): Find certificates for OS X 10.6.
-	if c.config.RootCAs != nil {
-		opts := x509.VerifyOptions{
-			Roots:         c.config.RootCAs,
-			CurrentTime:   c.config.time(),
-			DNSName:       c.config.ServerName,
-			Intermediates: x509.NewCertPool(),
+	for cur := certs[0]; c.config.RootCAs != nil; {
+		parent := c.config.RootCAs.FindVerifiedParent(cur)
+		if parent != nil {
+			break
 		}
 
-		for i, cert := range certs {
-			if i == 0 {
-				continue
-			}
-			opts.Intermediates.AddCert(cert)
-		}
-		c.verifiedChains, err = certs[0].Verify(opts)
-		if err != nil {
+		parent = chain.FindVerifiedParent(cur)
+		if parent == nil {
 			c.sendAlert(alertBadCertificate)
-			return err
+			return os.ErrorString("could not find root certificate for chain")
 		}
+
+		if !parent.BasicConstraintsValid || !parent.IsCA {
+			c.sendAlert(alertBadCertificate)
+			return os.ErrorString("intermediate certificate does not have CA bit set")
+		}
+		// KeyUsage status flags are ignored. From Engineering
+		// Security, Peter Gutmann: A European government CA marked its
+		// signing certificates as being valid for encryption only, but
+		// no-one noticed. Another European CA marked its signature
+		// keys as not being valid for signatures. A different CA
+		// marked its own trusted root certificate as being invalid for
+		// certificate signing.  Another national CA distributed a
+		// certificate to be used to encrypt data for the country’s tax
+		// authority that was marked as only being usable for digital
+		// signatures but not for encryption. Yet another CA reversed
+		// the order of the bit flags in the keyUsage due to confusion
+		// over encoding endianness, essentially setting a random
+		// keyUsage in certificates that it issued. Another CA created
+		// a self-invalidating certificate by adding a certificate
+		// policy statement stipulating that the certificate had to be
+		// used strictly as specified in the keyUsage, and a keyUsage
+		// containing a flag indicating that the RSA encryption key
+		// could only be used for Diffie-Hellman key agreement.
+
+		cur = parent
 	}
 
 	if _, ok := certs[0].PublicKey.(*rsa.PublicKey); !ok {
@@ -126,7 +138,7 @@ func (c *Conn) clientHandshake() os.Error {
 
 	c.peerCertificates = certs
 
-	if serverHello.ocspStapling {
+	if serverHello.certStatus {
 		msg, err = c.readHandshake()
 		if err != nil {
 			return err
@@ -236,7 +248,7 @@ func (c *Conn) clientHandshake() os.Error {
 		var digest [36]byte
 		copy(digest[0:16], finishedHash.serverMD5.Sum())
 		copy(digest[16:36], finishedHash.serverSHA1.Sum())
-		signed, err := rsa.SignPKCS1v15(c.config.rand(), c.config.Certificates[0].PrivateKey, crypto.MD5SHA1, digest[0:])
+		signed, err := rsa.SignPKCS1v15(c.config.rand(), c.config.Certificates[0].PrivateKey, rsa.HashMD5SHA1, digest[0:])
 		if err != nil {
 			return c.sendAlert(alertInternalError)
 		}
@@ -253,17 +265,6 @@ func (c *Conn) clientHandshake() os.Error {
 	clientHash := suite.mac(clientMAC)
 	c.out.prepareCipherSpec(clientCipher, clientHash)
 	c.writeRecord(recordTypeChangeCipherSpec, []byte{1})
-
-	if serverHello.nextProtoNeg {
-		nextProto := new(nextProtoMsg)
-		proto, fallback := mutualProtocol(c.config.NextProtos, serverHello.nextProtos)
-		nextProto.proto = proto
-		c.clientProtocol = proto
-		c.clientProtocolFallback = fallback
-
-		finishedHash.Write(nextProto.marshal())
-		c.writeRecord(recordTypeHandshake, nextProto.marshal())
-	}
 
 	finished := new(finishedMsg)
 	finished.verifyData = finishedHash.clientSum(masterSecret)
@@ -296,20 +297,4 @@ func (c *Conn) clientHandshake() os.Error {
 	c.handshakeComplete = true
 	c.cipherSuite = suiteId
 	return nil
-}
-
-// mutualProtocol finds the mutual Next Protocol Negotiation protocol given the
-// set of client and server supported protocols. The set of client supported
-// protocols must not be empty. It returns the resulting protocol and flag
-// indicating if the fallback case was reached.
-func mutualProtocol(clientProtos, serverProtos []string) (string, bool) {
-	for _, s := range serverProtos {
-		for _, c := range clientProtos {
-			if s == c {
-				return s, false
-			}
-		}
-	}
-
-	return clientProtos[0], true
 }

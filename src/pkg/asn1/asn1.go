@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package asn1 implements parsing of DER-encoded ASN.1 data structures,
+// The asn1 package implements parsing of DER-encoded ASN.1 data structures,
 // as defined in ITU-T Rec X.690.
 //
 // See also ``A Layman's Guide to a Subset of ASN.1, BER, and DER,''
@@ -20,7 +20,6 @@ package asn1
 // everything by any means.
 
 import (
-	"big"
 	"fmt"
 	"os"
 	"reflect"
@@ -87,27 +86,6 @@ func parseInt(bytes []byte) (int, os.Error) {
 		return 0, StructuralError{"integer too large"}
 	}
 	return int(ret64), nil
-}
-
-var bigOne = big.NewInt(1)
-
-// parseBigInt treats the given bytes as a big-endian, signed integer and returns
-// the result.
-func parseBigInt(bytes []byte) *big.Int {
-	ret := new(big.Int)
-	if len(bytes) > 0 && bytes[0]&0x80 == 0x80 {
-		// This is a negative number.
-		notBytes := make([]byte, len(bytes))
-		for i := range notBytes {
-			notBytes[i] = ^bytes[i]
-		}
-		ret.SetBytes(notBytes)
-		ret.Add(ret, bigOne)
-		ret.Neg(ret)
-		return ret
-	}
-	ret.SetBytes(bytes)
-	return ret
 }
 
 // BIT STRING
@@ -186,9 +164,9 @@ func (oi ObjectIdentifier) Equal(other ObjectIdentifier) bool {
 	return true
 }
 
-// parseObjectIdentifier parses an OBJECT IDENTIFIER from the given bytes and
-// returns it. An object identifier is a sequence of variable length integers
-// that are assigned in a hierarchy.
+// parseObjectIdentifier parses an OBJECT IDENTIFER from the given bytes and
+// returns it. An object identifer is a sequence of variable length integers
+// that are assigned in a hierarachy.
 func parseObjectIdentifier(bytes []byte) (s []int, err os.Error) {
 	if len(bytes) == 0 {
 		err = SyntaxError{"zero length OBJECT IDENTIFIER"}
@@ -291,7 +269,7 @@ func isPrintable(b byte) bool {
 		b == ':' ||
 		b == '=' ||
 		b == '?' ||
-		// This is technically not allowed in a PrintableString.
+		// This is techincally not allowed in a PrintableString.
 		// However, x509 certificates with wildcard strings don't
 		// always use the correct string type so we permit it.
 		b == '*'
@@ -395,7 +373,7 @@ func parseTagAndLength(bytes []byte, initOffset int) (ret tagAndLength, offset i
 // parseSequenceOf is used for SEQUENCE OF and SET OF values. It tries to parse
 // a number of ASN.1 values from the given byte array and returns them as a
 // slice of Go values of the given type.
-func parseSequenceOf(bytes []byte, sliceType reflect.Type, elemType reflect.Type) (ret reflect.Value, err os.Error) {
+func parseSequenceOf(bytes []byte, sliceType *reflect.SliceType, elemType reflect.Type) (ret *reflect.SliceValue, err os.Error) {
 	expectedTag, compoundType, ok := getUniversalType(elemType)
 	if !ok {
 		err = StructuralError{"unknown Go type for slice"}
@@ -410,11 +388,6 @@ func parseSequenceOf(bytes []byte, sliceType reflect.Type, elemType reflect.Type
 		t, offset, err = parseTagAndLength(bytes, offset)
 		if err != nil {
 			return
-		}
-		// We pretend that GENERAL STRINGs are PRINTABLE STRINGs so
-		// that a sequence of them can be parsed into a []string.
-		if t.tag == tagGeneralString {
-			t.tag = tagPrintableString
 		}
 		if t.class != classUniversal || t.isCompound != compoundType || t.tag != expectedTag {
 			err = StructuralError{"sequence tag mismatch"}
@@ -431,7 +404,7 @@ func parseSequenceOf(bytes []byte, sliceType reflect.Type, elemType reflect.Type
 	params := fieldParameters{}
 	offset := 0
 	for i := 0; i < numElements; i++ {
-		offset, err = parseField(ret.Index(i), bytes, offset, params)
+		offset, err = parseField(ret.Elem(i), bytes, offset, params)
 		if err != nil {
 			return
 		}
@@ -440,14 +413,13 @@ func parseSequenceOf(bytes []byte, sliceType reflect.Type, elemType reflect.Type
 }
 
 var (
-	bitStringType        = reflect.TypeOf(BitString{})
-	objectIdentifierType = reflect.TypeOf(ObjectIdentifier{})
-	enumeratedType       = reflect.TypeOf(Enumerated(0))
-	flagType             = reflect.TypeOf(Flag(false))
-	timeType             = reflect.TypeOf(&time.Time{})
-	rawValueType         = reflect.TypeOf(RawValue{})
-	rawContentsType      = reflect.TypeOf(RawContent(nil))
-	bigIntType           = reflect.TypeOf(new(big.Int))
+	bitStringType        = reflect.Typeof(BitString{})
+	objectIdentifierType = reflect.Typeof(ObjectIdentifier{})
+	enumeratedType       = reflect.Typeof(Enumerated(0))
+	flagType             = reflect.Typeof(Flag(false))
+	timeType             = reflect.Typeof(&time.Time{})
+	rawValueType         = reflect.Typeof(RawValue{})
+	rawContentsType      = reflect.Typeof(RawContent(nil))
 )
 
 // invalidLength returns true iff offset + length > sliceLength, or if the
@@ -484,12 +456,13 @@ func parseField(v reflect.Value, bytes []byte, initOffset int, params fieldParam
 		}
 		result := RawValue{t.class, t.tag, t.isCompound, bytes[offset : offset+t.length], bytes[initOffset : offset+t.length]}
 		offset += t.length
-		v.Set(reflect.ValueOf(result))
+		v.(*reflect.StructValue).Set(reflect.NewValue(result).(*reflect.StructValue))
 		return
 	}
 
 	// Deal with the ANY type.
-	if ifaceType := fieldType; ifaceType.Kind() == reflect.Interface && ifaceType.NumMethod() == 0 {
+	if ifaceType, ok := fieldType.(*reflect.InterfaceType); ok && ifaceType.NumMethod() == 0 {
+		ifaceValue := v.(*reflect.InterfaceValue)
 		var t tagAndLength
 		t, offset, err = parseTagAndLength(bytes, offset)
 		if err != nil {
@@ -528,7 +501,7 @@ func parseField(v reflect.Value, bytes []byte, initOffset int, params fieldParam
 			return
 		}
 		if result != nil {
-			v.Set(reflect.ValueOf(result))
+			ifaceValue.Set(reflect.NewValue(result))
 		}
 		return
 	}
@@ -543,11 +516,7 @@ func parseField(v reflect.Value, bytes []byte, initOffset int, params fieldParam
 		return
 	}
 	if params.explicit {
-		expectedClass := classContextSpecific
-		if params.application {
-			expectedClass = classApplication
-		}
-		if t.class == expectedClass && t.tag == *params.tag && (t.length == 0 || t.isCompound) {
+		if t.class == classContextSpecific && t.tag == *params.tag && (t.length == 0 || t.isCompound) {
 			if t.length > 0 {
 				t, offset, err = parseTagAndLength(bytes, offset)
 				if err != nil {
@@ -558,7 +527,9 @@ func parseField(v reflect.Value, bytes []byte, initOffset int, params fieldParam
 					err = StructuralError{"Zero length explicit tag was not an asn1.Flag"}
 					return
 				}
-				v.SetBool(true)
+
+				flagValue := v.(*reflect.BoolValue)
+				flagValue.Set(true)
 				return
 			}
 		} else {
@@ -580,10 +551,6 @@ func parseField(v reflect.Value, bytes []byte, initOffset int, params fieldParam
 	if universalTag == tagPrintableString && t.tag == tagIA5String {
 		universalTag = tagIA5String
 	}
-	// Likewise for GeneralString
-	if universalTag == tagPrintableString && t.tag == tagGeneralString {
-		universalTag = tagGeneralString
-	}
 
 	// Special case for time: UTCTime and GeneralizedTime both map to the
 	// Go type time.Time.
@@ -596,11 +563,6 @@ func parseField(v reflect.Value, bytes []byte, initOffset int, params fieldParam
 
 	if !params.explicit && params.tag != nil {
 		expectedClass = classContextSpecific
-		expectedTag = *params.tag
-	}
-
-	if !params.explicit && params.application && params.tag != nil {
-		expectedClass = classApplication
 		expectedTag = *params.tag
 	}
 
@@ -626,20 +588,23 @@ func parseField(v reflect.Value, bytes []byte, initOffset int, params fieldParam
 	switch fieldType {
 	case objectIdentifierType:
 		newSlice, err1 := parseObjectIdentifier(innerBytes)
-		v.Set(reflect.MakeSlice(v.Type(), len(newSlice), len(newSlice)))
+		sliceValue := v.(*reflect.SliceValue)
+		sliceValue.Set(reflect.MakeSlice(sliceValue.Type().(*reflect.SliceType), len(newSlice), len(newSlice)))
 		if err1 == nil {
-			reflect.Copy(v, reflect.ValueOf(newSlice))
+			reflect.Copy(sliceValue, reflect.NewValue(newSlice).(reflect.ArrayOrSliceValue))
 		}
 		err = err1
 		return
 	case bitStringType:
+		structValue := v.(*reflect.StructValue)
 		bs, err1 := parseBitString(innerBytes)
 		if err1 == nil {
-			v.Set(reflect.ValueOf(bs))
+			structValue.Set(reflect.NewValue(bs).(*reflect.StructValue))
 		}
 		err = err1
 		return
 	case timeType:
+		ptrValue := v.(*reflect.PtrValue)
 		var time *time.Time
 		var err1 os.Error
 		if universalTag == tagUTCTime {
@@ -648,57 +613,55 @@ func parseField(v reflect.Value, bytes []byte, initOffset int, params fieldParam
 			time, err1 = parseGeneralizedTime(innerBytes)
 		}
 		if err1 == nil {
-			v.Set(reflect.ValueOf(time))
+			ptrValue.Set(reflect.NewValue(time).(*reflect.PtrValue))
 		}
 		err = err1
 		return
 	case enumeratedType:
 		parsedInt, err1 := parseInt(innerBytes)
+		enumValue := v.(*reflect.IntValue)
 		if err1 == nil {
-			v.SetInt(int64(parsedInt))
+			enumValue.Set(int64(parsedInt))
 		}
 		err = err1
 		return
 	case flagType:
-		v.SetBool(true)
-		return
-	case bigIntType:
-		parsedInt := parseBigInt(innerBytes)
-		v.Set(reflect.ValueOf(parsedInt))
+		flagValue := v.(*reflect.BoolValue)
+		flagValue.Set(true)
 		return
 	}
-	switch val := v; val.Kind() {
-	case reflect.Bool:
+	switch val := v.(type) {
+	case *reflect.BoolValue:
 		parsedBool, err1 := parseBool(innerBytes)
 		if err1 == nil {
-			val.SetBool(parsedBool)
+			val.Set(parsedBool)
 		}
 		err = err1
 		return
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+	case *reflect.IntValue:
 		switch val.Type().Kind() {
 		case reflect.Int:
 			parsedInt, err1 := parseInt(innerBytes)
 			if err1 == nil {
-				val.SetInt(int64(parsedInt))
+				val.Set(int64(parsedInt))
 			}
 			err = err1
 			return
 		case reflect.Int64:
 			parsedInt, err1 := parseInt64(innerBytes)
 			if err1 == nil {
-				val.SetInt(parsedInt)
+				val.Set(parsedInt)
 			}
 			err = err1
 			return
 		}
-	case reflect.Struct:
-		structType := fieldType
+	case *reflect.StructValue:
+		structType := fieldType.(*reflect.StructType)
 
 		if structType.NumField() > 0 &&
 			structType.Field(0).Type == rawContentsType {
 			bytes := bytes[initOffset:offset]
-			val.Field(0).Set(reflect.ValueOf(RawContent(bytes)))
+			val.Field(0).SetValue(reflect.NewValue(RawContent(bytes)))
 		}
 
 		innerOffset := 0
@@ -716,11 +679,11 @@ func parseField(v reflect.Value, bytes []byte, initOffset int, params fieldParam
 		// adding elements to the end has been used in X.509 as the
 		// version numbers have increased.
 		return
-	case reflect.Slice:
-		sliceType := fieldType
+	case *reflect.SliceValue:
+		sliceType := fieldType.(*reflect.SliceType)
 		if sliceType.Elem().Kind() == reflect.Uint8 {
 			val.Set(reflect.MakeSlice(sliceType, len(innerBytes), len(innerBytes)))
-			reflect.Copy(val, reflect.ValueOf(innerBytes))
+			reflect.Copy(val, reflect.NewValue(innerBytes).(reflect.ArrayOrSliceValue))
 			return
 		}
 		newSlice, err1 := parseSequenceOf(innerBytes, sliceType, sliceType.Elem())
@@ -729,7 +692,7 @@ func parseField(v reflect.Value, bytes []byte, initOffset int, params fieldParam
 		}
 		err = err1
 		return
-	case reflect.String:
+	case *reflect.StringValue:
 		var v string
 		switch universalTag {
 		case tagPrintableString:
@@ -738,17 +701,11 @@ func parseField(v reflect.Value, bytes []byte, initOffset int, params fieldParam
 			v, err = parseIA5String(innerBytes)
 		case tagT61String:
 			v, err = parseT61String(innerBytes)
-		case tagGeneralString:
-			// GeneralString is specified in ISO-2022/ECMA-35,
-			// A brief review suggests that it includes structures
-			// that allow the encoding to change midstring and
-			// such. We give up and pass it as an 8-bit string.
-			v, err = parseT61String(innerBytes)
 		default:
 			err = SyntaxError{fmt.Sprintf("internal error: unknown string type %d", universalTag)}
 		}
 		if err == nil {
-			val.SetString(v)
+			val.Set(v)
 		}
 		return
 	}
@@ -767,9 +724,9 @@ func setDefaultValue(v reflect.Value, params fieldParameters) (ok bool) {
 	if params.defaultValue == nil {
 		return
 	}
-	switch val := v; val.Kind() {
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		val.SetInt(*params.defaultValue)
+	switch val := v.(type) {
+	case *reflect.IntValue:
+		val.Set(*params.defaultValue)
 	}
 	return
 }
@@ -819,14 +776,8 @@ func setDefaultValue(v reflect.Value, params fieldParameters) (ok bool) {
 // Other ASN.1 types are not supported; if it encounters them,
 // Unmarshal returns a parse error.
 func Unmarshal(b []byte, val interface{}) (rest []byte, err os.Error) {
-	return UnmarshalWithParams(b, val, "")
-}
-
-// UnmarshalWithParams allows field parameters to be specified for the
-// top-level element. The form of the params is the same as the field tags.
-func UnmarshalWithParams(b []byte, val interface{}, params string) (rest []byte, err os.Error) {
-	v := reflect.ValueOf(val).Elem()
-	offset, err := parseField(v, b, 0, parseFieldParameters(params))
+	v := reflect.NewValue(val).(*reflect.PtrValue).Elem()
+	offset, err := parseField(v, b, 0, fieldParameters{})
 	if err != nil {
 		return nil, err
 	}

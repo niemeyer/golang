@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"runtime"
 	. "sync"
-	"sync/atomic"
 	"testing"
 )
 
@@ -45,37 +44,36 @@ func doTestParallelReaders(numReaders, gomaxprocs int) {
 }
 
 func TestParallelReaders(t *testing.T) {
-	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(-1))
 	doTestParallelReaders(1, 4)
 	doTestParallelReaders(3, 4)
 	doTestParallelReaders(4, 2)
 }
 
-func reader(rwm *RWMutex, num_iterations int, activity *int32, cdone chan bool) {
+func reader(rwm *RWMutex, num_iterations int, activity *uint32, cdone chan bool) {
 	for i := 0; i < num_iterations; i++ {
 		rwm.RLock()
-		n := atomic.AddInt32(activity, 1)
+		n := Xadd(activity, 1)
 		if n < 1 || n >= 10000 {
 			panic(fmt.Sprintf("wlock(%d)\n", n))
 		}
 		for i := 0; i < 100; i++ {
 		}
-		atomic.AddInt32(activity, -1)
+		Xadd(activity, -1)
 		rwm.RUnlock()
 	}
 	cdone <- true
 }
 
-func writer(rwm *RWMutex, num_iterations int, activity *int32, cdone chan bool) {
+func writer(rwm *RWMutex, num_iterations int, activity *uint32, cdone chan bool) {
 	for i := 0; i < num_iterations; i++ {
 		rwm.Lock()
-		n := atomic.AddInt32(activity, 10000)
+		n := Xadd(activity, 10000)
 		if n != 10000 {
 			panic(fmt.Sprintf("wlock(%d)\n", n))
 		}
 		for i := 0; i < 100; i++ {
 		}
-		atomic.AddInt32(activity, -10000)
+		Xadd(activity, -10000)
 		rwm.Unlock()
 	}
 	cdone <- true
@@ -84,7 +82,7 @@ func writer(rwm *RWMutex, num_iterations int, activity *int32, cdone chan bool) 
 func HammerRWMutex(gomaxprocs, numReaders, num_iterations int) {
 	runtime.GOMAXPROCS(gomaxprocs)
 	// Number of active readers + 10000 * number of active writers.
-	var activity int32
+	var activity uint32
 	var rwm RWMutex
 	cdone := make(chan bool)
 	go writer(&rwm, num_iterations, &activity, cdone)
@@ -103,54 +101,14 @@ func HammerRWMutex(gomaxprocs, numReaders, num_iterations int) {
 }
 
 func TestRWMutex(t *testing.T) {
-	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(-1))
-	n := 1000
-	if testing.Short() {
-		n = 5
-	}
-	HammerRWMutex(1, 1, n)
-	HammerRWMutex(1, 3, n)
-	HammerRWMutex(1, 10, n)
-	HammerRWMutex(4, 1, n)
-	HammerRWMutex(4, 3, n)
-	HammerRWMutex(4, 10, n)
-	HammerRWMutex(10, 1, n)
-	HammerRWMutex(10, 3, n)
-	HammerRWMutex(10, 10, n)
-	HammerRWMutex(10, 5, n)
-}
-
-func TestRLocker(t *testing.T) {
-	var wl RWMutex
-	var rl Locker
-	wlocked := make(chan bool, 1)
-	rlocked := make(chan bool, 1)
-	rl = wl.RLocker()
-	n := 10
-	go func() {
-		for i := 0; i < n; i++ {
-			rl.Lock()
-			rl.Lock()
-			rlocked <- true
-			wl.Lock()
-			wlocked <- true
-		}
-	}()
-	for i := 0; i < n; i++ {
-		<-rlocked
-		rl.Unlock()
-		select {
-		case <-wlocked:
-			t.Fatal("RLocker() didn't read-lock it")
-		default:
-		}
-		rl.Unlock()
-		<-wlocked
-		select {
-		case <-rlocked:
-			t.Fatal("RLocker() didn't respect the write lock")
-		default:
-		}
-		wl.Unlock()
-	}
+	HammerRWMutex(1, 1, 1000)
+	HammerRWMutex(1, 3, 1000)
+	HammerRWMutex(1, 10, 1000)
+	HammerRWMutex(4, 1, 1000)
+	HammerRWMutex(4, 3, 1000)
+	HammerRWMutex(4, 10, 1000)
+	HammerRWMutex(10, 1, 1000)
+	HammerRWMutex(10, 3, 1000)
+	HammerRWMutex(10, 10, 1000)
+	HammerRWMutex(10, 5, 10000)
 }

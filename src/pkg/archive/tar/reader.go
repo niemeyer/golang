@@ -10,13 +10,12 @@ package tar
 import (
 	"bytes"
 	"io"
-	"io/ioutil"
 	"os"
 	"strconv"
 )
 
 var (
-	HeaderError = os.NewError("invalid tar header")
+	HeaderError os.Error = os.ErrorString("invalid tar header")
 )
 
 // A Reader provides sequential access to the contents of a tar archive.
@@ -28,12 +27,12 @@ var (
 //	tr := tar.NewReader(r)
 //	for {
 //		hdr, err := tr.Next()
-//		if err == os.EOF {
-//			// end of tar archive
-//			break
-//		}
 //		if err != nil {
 //			// handle error
+//		}
+//		if hdr == nil {
+//			// end of tar archive
+//			break
 //		}
 //		io.Copy(data, tr)
 //	}
@@ -85,16 +84,22 @@ func (tr *Reader) octal(b []byte) int64 {
 	return int64(x)
 }
 
+type ignoreWriter struct{}
+
+func (ignoreWriter) Write(b []byte) (n int, err os.Error) {
+	return len(b), nil
+}
+
 // Skip any unread bytes in the existing file entry, as well as any alignment padding.
 func (tr *Reader) skipUnread() {
 	nr := tr.nb + tr.pad // number of bytes to skip
 	tr.nb, tr.pad = 0, 0
 	if sr, ok := tr.r.(io.Seeker); ok {
-		if _, err := sr.Seek(nr, os.SEEK_CUR); err == nil {
+		if _, err := sr.Seek(nr, 1); err == nil {
 			return
 		}
 	}
-	_, tr.err = io.Copyn(ioutil.Discard, tr.r, nr)
+	_, tr.err = io.Copyn(ignoreWriter{}, tr.r, nr)
 }
 
 func (tr *Reader) verifyChecksum(header []byte) bool {

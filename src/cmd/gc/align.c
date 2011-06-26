@@ -54,8 +54,7 @@ widstruct(Type *t, uint32 o, int flag)
 		if(f->type->width < 0)
 			fatal("invalid width %lld", f->type->width);
 		w = f->type->width;
-		if(f->type->align > 0)
-			o = rnd(o, f->type->align);
+		o = rnd(o, f->type->align);
 		f->width = o;	// really offset for TFIELD
 		if(f->nname != N) {
 			// this same stackparam logic is in addrescapes
@@ -172,9 +171,6 @@ dowidth(Type *t)
 		w = 8;
 		checkwidth(t->type);
 		break;
-	case TUNSAFEPTR:
-		w = widthptr;
-		break;
 	case TINTER:		// implemented as 2 pointers
 		w = 2*widthptr;
 		t->align = widthptr;
@@ -234,11 +230,9 @@ dowidth(Type *t)
 			if(t->bound > cap)
 				yyerror("type %lT larger than address space", t);
 			w = t->bound * t->type->width;
-			t->align = t->type->align;
-			if(w == 0) {
+			if(w == 0)
 				w = 1;
-				t->align = 1;
-			}
+			t->align = t->type->align;
 		}
 		else if(t->bound == -1) {
 			w = sizeof_Array;
@@ -255,10 +249,10 @@ dowidth(Type *t)
 		if(t->funarg)
 			fatal("dowidth fn struct %T", t);
 		w = widstruct(t, 0, 1);
-		if(w == 0) {
+		if(w == 0)
 			w = 1;
-			t->align = 1;
-		}
+		//if(t->align < widthptr)
+		//	warn("align %d: %T\n", t->align, t);
 		break;
 
 	case TFUNC:
@@ -405,13 +399,6 @@ typeinit(void)
 
 	types[TPTR64] = typ(TPTR64);
 	dowidth(types[TPTR64]);
-	
-	t = typ(TUNSAFEPTR);
-	types[TUNSAFEPTR] = t;
-	t->sym = pkglookup("Pointer", unsafepkg);
-	t->sym->def = typenod(t);
-	
-	dowidth(types[TUNSAFEPTR]);
 
 	tptr = TPTR32;
 	if(widthptr == 8)
@@ -470,7 +457,7 @@ typeinit(void)
 			okforadd[i] = 1;
 			okforarith[i] = 1;
 			okforconst[i] = 1;
-			issimple[i] = 1;
+//			issimple[i] = 1;
 		}
 	}
 
@@ -493,7 +480,6 @@ typeinit(void)
 
 	okforeq[TPTR32] = 1;
 	okforeq[TPTR64] = 1;
-	okforeq[TUNSAFEPTR] = 1;
 	okforeq[TINTER] = 1;
 	okforeq[TMAP] = 1;
 	okforeq[TCHAN] = 1;
@@ -532,7 +518,7 @@ typeinit(void)
 	okfor[OCOM] = okforand;
 	okfor[OMINUS] = okforarith;
 	okfor[ONOT] = okforbool;
-	okfor[OPLUS] = okforarith;
+	okfor[OPLUS] = okforadd;
 
 	// special
 	okfor[OCAP] = okforcap;
@@ -583,7 +569,6 @@ typeinit(void)
 	simtype[TMAP] = tptr;
 	simtype[TCHAN] = tptr;
 	simtype[TFUNC] = tptr;
-	simtype[TUNSAFEPTR] = tptr;
 
 	/* pick up the backend typedefs */
 	for(i=0; typedefs[i].name; i++) {

@@ -5,7 +5,6 @@
 package asn1
 
 import (
-	"big"
 	"bytes"
 	"fmt"
 	"io"
@@ -126,65 +125,6 @@ func int64Length(i int64) (numBytes int) {
 	return
 }
 
-func marshalBigInt(out *forkableWriter, n *big.Int) (err os.Error) {
-	if n.Sign() < 0 {
-		// A negative number has to be converted to two's-complement
-		// form. So we'll subtract 1 and invert. If the
-		// most-significant-bit isn't set then we'll need to pad the
-		// beginning with 0xff in order to keep the number negative.
-		nMinus1 := new(big.Int).Neg(n)
-		nMinus1.Sub(nMinus1, bigOne)
-		bytes := nMinus1.Bytes()
-		for i := range bytes {
-			bytes[i] ^= 0xff
-		}
-		if len(bytes) == 0 || bytes[0]&0x80 == 0 {
-			err = out.WriteByte(0xff)
-			if err != nil {
-				return
-			}
-		}
-		_, err = out.Write(bytes)
-	} else if n.Sign() == 0 {
-		// Zero is written as a single 0 zero rather than no bytes.
-		err = out.WriteByte(0x00)
-	} else {
-		bytes := n.Bytes()
-		if len(bytes) > 0 && bytes[0]&0x80 != 0 {
-			// We'll have to pad this with 0x00 in order to stop it
-			// looking like a negative number.
-			err = out.WriteByte(0)
-			if err != nil {
-				return
-			}
-		}
-		_, err = out.Write(bytes)
-	}
-	return
-}
-
-func marshalLength(out *forkableWriter, i int) (err os.Error) {
-	n := lengthLength(i)
-
-	for ; n > 0; n-- {
-		err = out.WriteByte(byte(i >> uint((n-1)*8)))
-		if err != nil {
-			return
-		}
-	}
-
-	return nil
-}
-
-func lengthLength(i int) (numBytes int) {
-	numBytes = 1
-	for i > 255 {
-		numBytes++
-		i >>= 8
-	}
-	return
-}
-
 func marshalTagAndLength(out *forkableWriter, t tagAndLength) (err os.Error) {
 	b := uint8(t.class) << 6
 	if t.isCompound {
@@ -209,12 +149,12 @@ func marshalTagAndLength(out *forkableWriter, t tagAndLength) (err os.Error) {
 	}
 
 	if t.length >= 128 {
-		l := lengthLength(t.length)
+		l := int64Length(int64(t.length))
 		err = out.WriteByte(0x80 | byte(l))
 		if err != nil {
 			return
 		}
-		err = marshalLength(out, t.length)
+		err = marshalInt64(out, int64(t.length))
 		if err != nil {
 			return
 		}
@@ -372,36 +312,34 @@ func marshalBody(out *forkableWriter, value reflect.Value, params fieldParameter
 		return marshalBitString(out, value.Interface().(BitString))
 	case objectIdentifierType:
 		return marshalObjectIdentifier(out, value.Interface().(ObjectIdentifier))
-	case bigIntType:
-		return marshalBigInt(out, value.Interface().(*big.Int))
 	}
 
-	switch v := value; v.Kind() {
-	case reflect.Bool:
-		if v.Bool() {
-			return out.WriteByte(255)
+	switch v := value.(type) {
+	case *reflect.BoolValue:
+		if v.Get() {
+			return out.WriteByte(1)
 		} else {
 			return out.WriteByte(0)
 		}
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return marshalInt64(out, int64(v.Int()))
-	case reflect.Struct:
-		t := v.Type()
+	case *reflect.IntValue:
+		return marshalInt64(out, int64(v.Get()))
+	case *reflect.StructValue:
+		t := v.Type().(*reflect.StructType)
 
 		startingField := 0
 
 		// If the first element of the structure is a non-empty
-		// RawContents, then we don't bother serializing the rest.
+		// RawContents, then we don't bother serialising the rest.
 		if t.NumField() > 0 && t.Field(0).Type == rawContentsType {
-			s := v.Field(0)
+			s := v.Field(0).(*reflect.SliceValue)
 			if s.Len() > 0 {
 				bytes := make([]byte, s.Len())
 				for i := 0; i < s.Len(); i++ {
-					bytes[i] = uint8(s.Index(i).Uint())
+					bytes[i] = uint8(s.Elem(i).(*reflect.UintValue).Get())
 				}
 				/* The RawContents will contain the tag and
 				 * length fields but we'll also be writing
-				 * those ourselves, so we strip them out of
+				 * those outselves, so we strip them out of
 				 * bytes */
 				_, err = out.Write(stripTagAndLength(bytes))
 				return
@@ -419,12 +357,12 @@ func marshalBody(out *forkableWriter, value reflect.Value, params fieldParameter
 			}
 		}
 		return
-	case reflect.Slice:
-		sliceType := v.Type()
+	case *reflect.SliceValue:
+		sliceType := v.Type().(*reflect.SliceType)
 		if sliceType.Elem().Kind() == reflect.Uint8 {
 			bytes := make([]byte, v.Len())
 			for i := 0; i < v.Len(); i++ {
-				bytes[i] = uint8(v.Index(i).Uint())
+				bytes[i] = uint8(v.Elem(i).(*reflect.UintValue).Get())
 			}
 			_, err = out.Write(bytes)
 			return
@@ -434,17 +372,17 @@ func marshalBody(out *forkableWriter, value reflect.Value, params fieldParameter
 		for i := 0; i < v.Len(); i++ {
 			var pre *forkableWriter
 			pre, out = out.fork()
-			err = marshalField(pre, v.Index(i), params)
+			err = marshalField(pre, v.Elem(i), params)
 			if err != nil {
 				return
 			}
 		}
 		return
-	case reflect.String:
+	case *reflect.StringValue:
 		if params.stringType == tagIA5String {
-			return marshalIA5String(out, v.String())
+			return marshalIA5String(out, v.Get())
 		} else {
-			return marshalPrintableString(out, v.String())
+			return marshalPrintableString(out, v.Get())
 		}
 		return
 	}
@@ -454,12 +392,8 @@ func marshalBody(out *forkableWriter, value reflect.Value, params fieldParameter
 
 func marshalField(out *forkableWriter, v reflect.Value, params fieldParameters) (err os.Error) {
 	// If the field is an interface{} then recurse into it.
-	if v.Kind() == reflect.Interface && v.Type().NumMethod() == 0 {
+	if v, ok := v.(*reflect.InterfaceValue); ok && v.Type().(*reflect.InterfaceType).NumMethod() == 0 {
 		return marshalField(out, v.Elem(), params)
-	}
-
-	if params.optional && reflect.DeepEqual(v.Interface(), reflect.Zero(v.Type()).Interface()) {
-		return
 	}
 
 	if v.Type() == rawValueType {
@@ -469,6 +403,10 @@ func marshalField(out *forkableWriter, v reflect.Value, params fieldParameters) 
 			return
 		}
 		_, err = out.Write(rv.Bytes)
+		return
+	}
+
+	if params.optional && reflect.DeepEqual(v.Interface(), reflect.MakeZero(v.Type()).Interface()) {
 		return
 	}
 
@@ -533,7 +471,7 @@ func marshalField(out *forkableWriter, v reflect.Value, params fieldParameters) 
 // Marshal returns the ASN.1 encoding of val.
 func Marshal(val interface{}) ([]byte, os.Error) {
 	var out bytes.Buffer
-	v := reflect.ValueOf(val)
+	v := reflect.NewValue(val)
 	f := newForkableWriter()
 	err := marshalField(f, v, fieldParameters{})
 	if err != nil {

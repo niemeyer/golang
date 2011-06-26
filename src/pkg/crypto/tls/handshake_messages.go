@@ -306,7 +306,7 @@ type serverHelloMsg struct {
 	compressionMethod uint8
 	nextProtoNeg      bool
 	nextProtos        []string
-	ocspStapling      bool
+	certStatus        bool
 }
 
 func (m *serverHelloMsg) marshal() []byte {
@@ -327,7 +327,7 @@ func (m *serverHelloMsg) marshal() []byte {
 		nextProtoLen += len(m.nextProtos)
 		extensionsLength += nextProtoLen
 	}
-	if m.ocspStapling {
+	if m.certStatus {
 		numExtensions++
 	}
 	if numExtensions > 0 {
@@ -373,7 +373,7 @@ func (m *serverHelloMsg) marshal() []byte {
 			z = z[1+l:]
 		}
 	}
-	if m.ocspStapling {
+	if m.certStatus {
 		z[0] = byte(extensionStatusRequest >> 8)
 		z[1] = byte(extensionStatusRequest)
 		z = z[4:]
@@ -406,7 +406,7 @@ func (m *serverHelloMsg) unmarshal(data []byte) bool {
 
 	m.nextProtoNeg = false
 	m.nextProtos = nil
-	m.ocspStapling = false
+	m.certStatus = false
 
 	if len(data) == 0 {
 		// ServerHello is optionally followed by extension data
@@ -450,7 +450,7 @@ func (m *serverHelloMsg) unmarshal(data []byte) bool {
 			if length > 0 {
 				return false
 			}
-			m.ocspStapling = true
+			m.certStatus = true
 		}
 		data = data[length:]
 	}

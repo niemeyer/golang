@@ -8,9 +8,10 @@ package http
 
 import (
 	"bufio"
+	"fmt"
 	"io"
-	"net/textproto"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -30,6 +31,10 @@ type Response struct {
 	ProtoMajor int    // e.g. 1
 	ProtoMinor int    // e.g. 0
 
+	// RequestMethod records the method used in the HTTP request.
+	// Header fields such as Content-Length have method-specific meaning.
+	RequestMethod string // e.g. "HEAD", "CONNECT", "GET", etc.
+
 	// Header maps header keys to values.  If the response had multiple
 	// headers with the same key, they will be concatenated, with comma
 	// delimiters.  (Section 4.2 of RFC 2616 requires that multiple headers
@@ -38,7 +43,7 @@ type Response struct {
 	// omitted from Header.
 	//
 	// Keys in the map are canonicalized (see CanonicalHeaderKey).
-	Header Header
+	Header map[string]string
 
 	// Body represents the response body.
 	Body io.ReadCloser
@@ -58,41 +63,26 @@ type Response struct {
 	// ReadResponse nor Response.Write ever closes a connection.
 	Close bool
 
-	// Trailer maps trailer keys to values, in the same
-	// format as the header.
-	Trailer Header
-
-	// The Request that was sent to obtain this Response.
-	// Request's Body is nil (having already been consumed).
-	// This is only populated for Client requests.
-	Request *Request
+	// Trailer maps trailer keys to values.  Like for Header, if the
+	// response has multiple trailer lines with the same key, they will be
+	// concatenated, delimited by commas.
+	Trailer map[string]string
 }
 
-// Cookies parses and returns the cookies set in the Set-Cookie headers.
-func (r *Response) Cookies() []*Cookie {
-	return readSetCookies(r.Header)
-}
+// ReadResponse reads and returns an HTTP response from r.  The RequestMethod
+// parameter specifies the method used in the corresponding request (e.g.,
+// "GET", "HEAD").  Clients must call resp.Body.Close when finished reading
+// resp.Body.  After that call, clients can inspect resp.Trailer to find
+// key/value pairs included in the response trailer.
+func ReadResponse(r *bufio.Reader, requestMethod string) (resp *Response, err os.Error) {
 
-// ReadResponse reads and returns an HTTP response from r.  The
-// req parameter specifies the Request that corresponds to
-// this Response.  Clients must call resp.Body.Close when finished
-// reading resp.Body.  After that call, clients can inspect
-// resp.Trailer to find key/value pairs included in the response
-// trailer.
-func ReadResponse(r *bufio.Reader, req *Request) (resp *Response, err os.Error) {
-
-	tp := textproto.NewReader(r)
 	resp = new(Response)
 
-	resp.Request = req
-	resp.Request.Method = strings.ToUpper(resp.Request.Method)
+	resp.RequestMethod = strings.ToUpper(requestMethod)
 
 	// Parse the first line of the response.
-	line, err := tp.ReadLine()
+	line, err := readLine(r)
 	if err != nil {
-		if err == os.EOF {
-			err = io.ErrUnexpectedEOF
-		}
 		return nil, err
 	}
 	f := strings.Split(line, " ", 3)
@@ -111,16 +101,26 @@ func ReadResponse(r *bufio.Reader, req *Request) (resp *Response, err os.Error) 
 
 	resp.Proto = f[0]
 	var ok bool
-	if resp.ProtoMajor, resp.ProtoMinor, ok = ParseHTTPVersion(resp.Proto); !ok {
+	if resp.ProtoMajor, resp.ProtoMinor, ok = parseHTTPVersion(resp.Proto); !ok {
 		return nil, &badStringError{"malformed HTTP version", resp.Proto}
 	}
 
 	// Parse the response headers.
-	mimeHeader, err := tp.ReadMIMEHeader()
-	if err != nil {
-		return nil, err
+	nheader := 0
+	resp.Header = make(map[string]string)
+	for {
+		key, value, err := readKeyValue(r)
+		if err != nil {
+			return nil, err
+		}
+		if key == "" {
+			break // end of response header
+		}
+		if nheader++; nheader >= maxHeaderLines {
+			return nil, ErrHeaderTooLong
+		}
+		resp.AddHeader(key, value)
 	}
-	resp.Header = Header(mimeHeader)
 
 	fixPragmaCacheControl(resp.Header)
 
@@ -136,12 +136,32 @@ func ReadResponse(r *bufio.Reader, req *Request) (resp *Response, err os.Error) 
 //	Pragma: no-cache
 // like
 //	Cache-Control: no-cache
-func fixPragmaCacheControl(header Header) {
-	if hp, ok := header["Pragma"]; ok && len(hp) > 0 && hp[0] == "no-cache" {
+func fixPragmaCacheControl(header map[string]string) {
+	if header["Pragma"] == "no-cache" {
 		if _, presentcc := header["Cache-Control"]; !presentcc {
-			header["Cache-Control"] = []string{"no-cache"}
+			header["Cache-Control"] = "no-cache"
 		}
 	}
+}
+
+// AddHeader adds a value under the given key.  Keys are not case sensitive.
+func (r *Response) AddHeader(key, value string) {
+	key = CanonicalHeaderKey(key)
+
+	oldValues, oldValuesPresent := r.Header[key]
+	if oldValuesPresent {
+		r.Header[key] = oldValues + "," + value
+	} else {
+		r.Header[key] = value
+	}
+}
+
+// GetHeader returns the value of the response header with the given key.
+// If there were multiple headers with this key, their values are concatenated,
+// with a comma delimiter.  If there were no response headers with the given
+// key, GetHeader returns an empty string.  Keys are not case sensitive.
+func (r *Response) GetHeader(key string) (value string) {
+	return r.Header[CanonicalHeaderKey(key)]
 }
 
 // ProtoAtLeast returns whether the HTTP protocol used
@@ -167,9 +187,7 @@ func (r *Response) ProtoAtLeast(major, minor int) bool {
 func (resp *Response) Write(w io.Writer) os.Error {
 
 	// RequestMethod should be upper-case
-	if resp.Request != nil {
-		resp.Request.Method = strings.ToUpper(resp.Request.Method)
-	}
+	resp.RequestMethod = strings.ToUpper(resp.RequestMethod)
 
 	// Status line
 	text := resp.Status
@@ -195,7 +213,7 @@ func (resp *Response) Write(w io.Writer) os.Error {
 	}
 
 	// Rest of header
-	err = resp.Header.WriteSubset(w, respExcludeHeader)
+	err = writeSortedKeyValue(w, resp.Header, respExcludeHeader)
 	if err != nil {
 		return err
 	}
@@ -210,5 +228,24 @@ func (resp *Response) Write(w io.Writer) os.Error {
 	}
 
 	// Success
+	return nil
+}
+
+func writeSortedKeyValue(w io.Writer, kvm map[string]string, exclude map[string]bool) os.Error {
+	kva := make([]string, len(kvm))
+	i := 0
+	for k, v := range kvm {
+		if !exclude[k] {
+			kva[i] = fmt.Sprint(k + ": " + v + "\r\n")
+			i++
+		}
+	}
+	kva = kva[0:i]
+	sort.SortStrings(kva)
+	for _, l := range kva {
+		if _, err := io.WriteString(w, l); err != nil {
+			return err
+		}
+	}
 	return nil
 }

@@ -5,7 +5,6 @@
 package time_test
 
 import (
-	"fmt"
 	"os"
 	"syscall"
 	"testing"
@@ -121,30 +120,13 @@ func TestAfterStop(t *testing.T) {
 		t.Fatalf("failed to stop event 1")
 	}
 	<-c2
-	select {
-	case <-t0.C:
-		t.Fatalf("event 0 was not stopped")
-	case <-c1:
-		t.Fatalf("event 1 was not stopped")
-	default:
+	_, ok0 := <-t0.C
+	_, ok1 := <-c1
+	if ok0 || ok1 {
+		t.Fatalf("events were not stopped")
 	}
 	if t1.Stop() {
 		t.Fatalf("Stop returned true twice")
-	}
-}
-
-func TestAfterQueuing(t *testing.T) {
-	// This test flakes out on some systems,
-	// so we'll try it a few times before declaring it a failure.
-	const attempts = 3
-	err := os.NewError("!=nil")
-	for i := 0; i < attempts && err != nil; i++ {
-		if err = testAfterQueuing(t); err != nil {
-			t.Logf("attempt %v failed: %v", i, err)
-		}
-	}
-	if err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -159,7 +141,7 @@ func await(slot int, result chan<- afterResult, ac <-chan int64) {
 	result <- afterResult{slot, <-ac}
 }
 
-func testAfterQueuing(t *testing.T) os.Error {
+func TestAfterQueuing(t *testing.T) {
 	const (
 		Delta = 100 * 1e6
 	)
@@ -176,14 +158,13 @@ func testAfterQueuing(t *testing.T) os.Error {
 	for _, slot := range slots {
 		r := <-result
 		if r.slot != slot {
-			return fmt.Errorf("after queue got slot %d, expected %d", r.slot, slot)
+			t.Fatalf("after queue got slot %d, expected %d", r.slot, slot)
 		}
 		ns := r.t - t0
 		target := int64(slot * Delta)
 		slop := int64(Delta) / 4
 		if ns < target-slop || ns > target+slop {
-			return fmt.Errorf("after queue slot %d arrived at %g, expected [%g,%g]", slot, float64(ns), float64(target-slop), float64(target+slop))
+			t.Fatalf("after queue slot %d arrived at %g, expected [%g,%g]", slot, float64(ns), float64(target-slop), float64(target+slop))
 		}
 	}
-	return nil
 }

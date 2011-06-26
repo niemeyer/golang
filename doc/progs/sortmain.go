@@ -11,7 +11,7 @@ import (
 
 func ints() {
 	data := []int{74, 59, 238, -784, 9845, 959, 905, 0, 0, 42, 7586, -5467984, 7586}
-	a := sort.IntSlice(data)
+	a := sort.IntArray(data)
 	sort.Sort(a)
 	if !sort.IsSorted(a) {
 		panic("fail")
@@ -20,7 +20,7 @@ func ints() {
 
 func strings() {
 	data := []string{"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}
-	a := sort.StringSlice(data)
+	a := sort.StringArray(data)
 	sort.Sort(a)
 	if !sort.IsSorted(a) {
 		panic("fail")

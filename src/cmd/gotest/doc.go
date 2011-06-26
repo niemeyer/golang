@@ -6,23 +6,22 @@
 
 Gotest is an automated testing tool for Go packages.
 
-Normally a Go package is compiled without its test files.  Gotest is a
-tool that recompiles the package whose source is in the current
-directory, along with any files whose names match the pattern
-"[^.]*_test.go".  Functions in the test source named TestXXX (where
-XXX is any alphanumeric string not starting with a lower case letter)
-will be run when the binary is executed.  Gotest requires that the
-package have a standard package Makefile, one that includes
-go/src/Make.pkg.
+Normally a Go package is compiled without its test files.  Gotest
+is a simple script that recompiles the package along with any files
+named *_test.go.  Functions in the test sources named TestXXX
+(where XXX is any alphanumeric string starting with an upper case
+letter) will be run when the binary is executed.  Gotest requires
+that the package have a standard package Makefile, one that
+includes go/src/Make.pkg.
 
 The test functions are run in the order they appear in the source.
-They should have the signature,
+They should have signature
 
 	func TestXXX(t *testing.T) { ... }
 
-Benchmark functions can be written as well; they will be run only when
-the -test.bench flag is provided.  Benchmarks should have the
-signature,
+Benchmark functions can be written as well; they will be run only
+when the -benchmarks flag is provided.  Benchmarks should have
+signature
 
 	func BenchmarkXXX(b *testing.B) { ... }
 
@@ -30,75 +29,28 @@ See the documentation of the testing package for more information.
 
 By default, gotest needs no arguments.  It compiles all the .go files
 in the directory, including tests, and runs the tests.  If file names
-are given (with flag -file=test.go, one per extra test source file),
-only those test files are added to the package.  (The non-test files
-are always compiled.)
+are given, only those test files are added to the package.
+(The non-test files are always compiled.)
 
 The package is built in a special subdirectory so it does not
 interfere with the non-test installation.
 
 Usage:
-	gotest [-file a.go -file b.go ...] [-c] [-x] [args for test binary]
+	gotest [pkg_test.go ...]
 
-The flags specific to gotest are:
-	-c         Compile the test binary but do not run it.
-	-file a.go Use only the tests in the source file a.go.
-	           Multiple -file flags may be provided.
-	-x         Print each subcommand gotest executes.
-
-Everything else on the command line is passed to the test binary.
-
-The resulting test binary, called (for amd64) 6.out, has several flags.
+The resulting binary, called (for amd64) 6.out, has a couple of
+arguments.
 
 Usage:
-	6.out [-test.v] [-test.run pattern] [-test.bench pattern] \
-		[-test.cpuprofile=cpu.out] \
-		[-test.memprofile=mem.out] [-test.memprofilerate=1]
+	6.out [-v] [-match pattern] [-benchmarks pattern]
 
-The -test.v flag causes the tests to be logged as they run.  The
--test.run flag causes only those tests whose names match the regular
-expression pattern to be run.  By default all tests are run silently.
-
-If all specified tests pass, 6.out prints the word PASS and exits with
-a 0 exit code.  If any tests fail, it prints error details, the word
-FAIL, and exits with a non-zero code.  The -test.bench flag is
-analogous to the -test.run flag, but applies to benchmarks.  No
-benchmarks run by default.
-
-The -test.cpuprofile flag causes the testing software to write a CPU
-profile to the specified file before exiting.
-
-The -test.memprofile flag causes the testing software to write a
-memory profile to the specified file when all tests are complete.  The
--test.memprofilerate flag enables more precise (and expensive)
-profiles by setting runtime.MemProfileRate; run
-	godoc runtime MemProfileRate
-for details.  The defaults are no memory profile and the standard
-setting of MemProfileRate.  The memory profile records a sampling of
-the memory in use at the end of the test.  To profile all memory
-allocations, use -test.memprofilerate=1 to sample every byte and set
-the environment variable GOGC=off to disable the garbage collector,
-provided the test can run in the available memory without garbage
-collection.
-
-Use -test.run or -test.bench to limit profiling to a particular test
-or benchmark.
-
-The -test.short flag tells long-running tests to shorten their run
-time.  It is off by default but set by all.bash so installations of
-the Go tree can do a sanity check but not spend time running
-exhaustive tests.
-
-The -test.timeout flag sets a timeout for the test in seconds.  If the
-test runs for longer than that, it will panic, dumping a stack trace
-of all existing goroutines.
-
-For convenience, each of these -test.X flags of the test binary is
-also available as the flag -X in gotest itself.  Flags not listed here
-are unaffected.  For instance, the command
-	gotest -x -v -cpuprofile=prof.out -dir=testdata -update -file x_test.go
-will compile the test binary using x_test.go and then run it as
-	6.out -test.v -test.cpuprofile=prof.out -dir=testdata -update
+The -v flag causes the tests to be logged as they run.  The -match
+flag causes only those tests whose names match the regular expression
+pattern to be run. By default all tests are run silently.  If all
+the specified test pass, 6.out prints PASS and exits with a 0 exit
+code.  If any tests fail, it prints FAIL and exits with a non-zero
+code.  The -benchmarks flag is analogous to the -match flag, but
+applies to benchmarks.  No benchmarks run by default.
 
 */
 package documentation

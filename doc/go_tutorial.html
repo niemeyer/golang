@@ -5,12 +5,10 @@ This document is a tutorial introduction to the basics of the Go programming
 language, intended for programmers familiar with C or C++. It is not a comprehensive
 guide to the language; at the moment the document closest to that is the
 <a href='/doc/go_spec.html'>language specification</a>.
-After you've read this tutorial, you should look at
+After you've read this tutorial, you might want to look at
 <a href='/doc/effective_go.html'>Effective Go</a>,
-which digs deeper into how the language is used and
-talks about the style and idioms of programming in Go.
-Also, slides from a 3-day course about Go are available.
-They provide some background and a lot of examples:
+which digs deeper into how the language is used.
+Also, slides from a 3-day course about Go are available:
 <a href='/doc/GoCourseDay1.pdf'>Day 1</a>,
 <a href='/doc/GoCourseDay2.pdf'>Day 2</a>,
 <a href='/doc/GoCourseDay3.pdf'>Day 3</a>.
@@ -28,9 +26,9 @@ Let's start in the usual way:
 <p>
 <pre> <!-- progs/helloworld.go /package/ END -->
 05    package main
-
+<p>
 07    import fmt &quot;fmt&quot;  // Package implementing formatted I/O.
-
+<p>
 09    func main() {
 10        fmt.Printf(&quot;Hello, world; or Καλημέρα κόσμε; or こんにちは 世界\n&quot;)
 11    }
@@ -118,19 +116,19 @@ Next up, here's a version of the Unix utility <code>echo(1)</code>:
 <p>
 <pre> <!-- progs/echo.go /package/ END -->
 05    package main
-
+<p>
 07    import (
 08        &quot;os&quot;
 09        &quot;flag&quot;  // command line option parser
 10    )
-
+<p>
 12    var omitNewline = flag.Bool(&quot;n&quot;, false, &quot;don't print final newline&quot;)
-
+<p>
 14    const (
 15        Space = &quot; &quot;
 16        Newline = &quot;\n&quot;
 17    )
-
+<p>
 19    func main() {
 20        flag.Parse()   // Scans the arg list and sets up flags
 21        var s string = &quot;&quot;
@@ -260,11 +258,11 @@ of course you can change a string <i>variable</i> simply by
 reassigning it.  This snippet from <code>strings.go</code> is legal code:
 <p>
 <pre> <!-- progs/strings.go /hello/ /ciao/ -->
-10        s := &quot;hello&quot;
-11        if s[1] != 'e' { os.Exit(1) }
-12        s = &quot;good bye&quot;
-13        var p *string = &amp;s
-14        *p = &quot;ciao&quot;
+11        s := &quot;hello&quot;
+12        if s[1] != 'e' { os.Exit(1) }
+13        s = &quot;good bye&quot;
+14        var p *string = &amp;s
+15        *p = &quot;ciao&quot;
 </pre>
 <p>
 However the following statements are illegal because they would modify
@@ -340,7 +338,7 @@ Using slices one can write this function (from <code>sum.go</code>):
 15    }
 </pre>
 <p>
-Note how the return type (<code>int</code>) is defined for <code>sum</code> by stating it
+Note how the return type (<code>int</code>) is defined for <code>sum()</code> by stating it
 after the parameter list.
 <p>
 To call the function, we slice the array.  This intricate call (we'll show
@@ -372,7 +370,7 @@ There are also maps, which you can initialize like this:
     m := map[string]int{"one":1 , "two":2}
 </pre>
 <p>
-The built-in function <code>len</code>, which returns number of elements,
+The built-in function <code>len()</code>, which returns number of elements,
 makes its first appearance in <code>sum</code>.  It works on strings, arrays,
 slices, maps, and channels.
 <p>
@@ -400,7 +398,7 @@ for more examples of its use.
 Most types in Go are values. If you have an <code>int</code> or a <code>struct</code>
 or an array, assignment
 copies the contents of the object.
-To allocate a new variable, use the built-in function <code>new</code>, which
+To allocate a new variable, use <code>new()</code>, which
 returns a pointer to the allocated storage.
 <p>
 <pre>
@@ -417,7 +415,7 @@ or the more idiomatic
 Some types&mdash;maps, slices, and channels (see below)&mdash;have reference semantics.
 If you're holding a slice or a map and you modify its contents, other variables
 referencing the same underlying data will see the modification.  For these three
-types you want to use the built-in function <code>make</code>:
+types you want to use the built-in function <code>make()</code>:
 <p>
 <pre>
     m := make(map[string]int)
@@ -431,11 +429,11 @@ If you just declare the map, as in
 </pre>
 <p>
 it creates a <code>nil</code> reference that cannot hold anything. To use the map,
-you must first initialize the reference using <code>make</code> or by assignment from an
+you must first initialize the reference using <code>make()</code> or by assignment from an
 existing map.
 <p>
 Note that <code>new(T)</code> returns type <code>*T</code> while <code>make(T)</code> returns type
-<code>T</code>.  If you (mistakenly) allocate a reference object with <code>new</code> rather than <code>make</code>,
+<code>T</code>.  If you (mistakenly) allocate a reference object with <code>new()</code>,
 you receive a pointer to a nil reference, equivalent to
 declaring an uninitialized variable and taking its address.
 <p>
@@ -473,17 +471,17 @@ assigned to a variable.
 <p>
 <h2>An I/O Package</h2>
 <p>
-Next we'll look at a simple package for doing file I/O with an
-open/close/read/write interface.  Here's the start of <code>file.go</code>:
+Next we'll look at a simple package for doing file I/O with the usual
+sort of open/close/read/write interface.  Here's the start of <code>file.go</code>:
 <p>
 <pre> <!-- progs/file.go /package/ /^}/ -->
 05    package file
-
+<p>
 07    import (
 08        &quot;os&quot;
 09        &quot;syscall&quot;
 10    )
-
+<p>
 12    type File struct {
 13        fd   int    // file descriptor number
 14        name string // file name at Open time
@@ -553,10 +551,10 @@ We can use the factory to construct some familiar, exported variables of type <c
 </pre>
 <p>
 The <code>newFile</code> function was not exported because it's internal. The proper,
-exported factory to use is <code>OpenFile</code> (we'll explain that name in a moment):
+exported factory to use is <code>Open</code>:
 <p>
-<pre> <!-- progs/file.go /func.OpenFile/ /^}/ -->
-30    func OpenFile(name string, mode int, perm uint32) (file *File, err os.Error) {
+<pre> <!-- progs/file.go /func.Open/ /^}/ -->
+30    func Open(name string, mode int, perm uint32) (file *File, err os.Error) {
 31        r, e := syscall.Open(name, mode, perm)
 32        if e != 0 {
 33            err = os.Errno(e)
@@ -565,7 +563,7 @@ exported factory to use is <code>OpenFile</code> (we'll explain that name in a m
 36    }
 </pre>
 <p>
-There are a number of new things in these few lines.  First, <code>OpenFile</code> returns
+There are a number of new things in these few lines.  First, <code>Open</code> returns
 multiple values, a <code>File</code> and an error (more about errors in a moment).
 We declare the
 multi-value return as a parenthesized list of declarations; syntactically
@@ -584,35 +582,6 @@ consistent error handling throughout Go code.   In <code>Open</code> we use a
 conversion to translate Unix's integer <code>errno</code> value into the integer type
 <code>os.Errno</code>, which implements <code>os.Error</code>.
 <p>
-Why <code>OpenFile</code> and not <code>Open</code>? To mimic Go's <code>os</code> package, which
-our exercise is emulating. The <code>os</code> package takes the opportunity
-to make the two commonest cases - open for read and create for
-write - the simplest, just <code>Open</code> and <code>Create</code>.  <code>OpenFile</code> is the
-general case, analogous to the Unix system call <code>Open</code>.  Here is
-the implementation of our <code>Open</code> and <code>Create</code>; they're trivial
-wrappers that eliminate common errors by capturing
-the tricky standard arguments to open and, especially, to create a file:
-<p>
-<pre> <!-- progs/file.go /^const/ /^}/ -->
-38    const (
-39        O_RDONLY = syscall.O_RDONLY
-40        O_RDWR   = syscall.O_RDWR
-41        O_CREATE = syscall.O_CREAT
-42        O_TRUNC  = syscall.O_TRUNC
-43    )
-
-45    func Open(name string) (file *File, err os.Error) {
-46        return OpenFile(name, O_RDONLY, 0)
-47    }
-</pre>
-<p>
-<pre> <!-- progs/file.go /func.Create/ /^}/ -->
-49    func Create(name string) (file *File, err os.Error) {
-50        return OpenFile(name, O_RDWR|O_CREATE|O_TRUNC, 0666)
-51    }
-</pre>
-<p>
-Back to our main story.
 Now that we can build <code>Files</code>, we can write methods for them. To declare
 a method of a type, we define a function to have an explicit receiver
 of that type, placed
@@ -620,43 +589,43 @@ in parentheses before the function name. Here are some methods for <code>*File</
 each of which declares a receiver variable <code>file</code>.
 <p>
 <pre> <!-- progs/file.go /Close/ END -->
-53    func (file *File) Close() os.Error {
-54        if file == nil {
-55            return os.EINVAL
-56        }
-57        e := syscall.Close(file.fd)
-58        file.fd = -1 // so it can't be closed again
-59        if e != 0 {
-60            return os.Errno(e)
-61        }
-62        return nil
-63    }
-
-65    func (file *File) Read(b []byte) (ret int, err os.Error) {
-66        if file == nil {
-67            return -1, os.EINVAL
+38    func (file *File) Close() os.Error {
+39        if file == nil {
+40            return os.EINVAL
+41        }
+42        e := syscall.Close(file.fd)
+43        file.fd = -1 // so it can't be closed again
+44        if e != 0 {
+45            return os.Errno(e)
+46        }
+47        return nil
+48    }
+<p>
+50    func (file *File) Read(b []byte) (ret int, err os.Error) {
+51        if file == nil {
+52            return -1, os.EINVAL
+53        }
+54        r, e := syscall.Read(file.fd, b)
+55        if e != 0 {
+56            err = os.Errno(e)
+57        }
+58        return int(r), err
+59    }
+<p>
+61    func (file *File) Write(b []byte) (ret int, err os.Error) {
+62        if file == nil {
+63            return -1, os.EINVAL
+64        }
+65        r, e := syscall.Write(file.fd, b)
+66        if e != 0 {
+67            err = os.Errno(e)
 68        }
-69        r, e := syscall.Read(file.fd, b)
-70        if e != 0 {
-71            err = os.Errno(e)
-72        }
-73        return int(r), err
+69        return int(r), err
+70    }
+<p>
+72    func (file *File) String() string {
+73        return file.name
 74    }
-
-76    func (file *File) Write(b []byte) (ret int, err os.Error) {
-77        if file == nil {
-78            return -1, os.EINVAL
-79        }
-80        r, e := syscall.Write(file.fd, b)
-81        if e != 0 {
-82            err = os.Errno(e)
-83        }
-84        return int(r), err
-85    }
-
-87    func (file *File) String() string {
-88        return file.name
-89    }
 </pre>
 <p>
 There is no implicit <code>this</code> and the receiver variable must be used to access
@@ -676,17 +645,17 @@ We can now use our new package:
 <p>
 <pre> <!-- progs/helloworld3.go /package/ END -->
 05    package main
-
+<p>
 07    import (
 08        &quot;./file&quot;
 09        &quot;fmt&quot;
 10        &quot;os&quot;
 11    )
-
+<p>
 13    func main() {
 14        hello := []byte(&quot;hello, world\n&quot;)
 15        file.Stdout.Write(hello)
-16        f, err := file.Open(&quot;/does/not/exist&quot;)
+16        f, err := file.Open(&quot;/does/not/exist&quot;,  0,  0)
 17        if f == nil {
 18            fmt.Printf(&quot;can't open file; err=%s\n&quot;,  err.String())
 19            os.Exit(1)
@@ -719,14 +688,14 @@ Building on the <code>file</code> package, here's a simple version of the Unix u
 <p>
 <pre> <!-- progs/cat.go /package/ END -->
 05    package main
-
+<p>
 07    import (
 08        &quot;./file&quot;
 09        &quot;flag&quot;
 10        &quot;fmt&quot;
 11        &quot;os&quot;
 12    )
-
+<p>
 14    func cat(f *file.File) {
 15        const NBUF = 512
 16        var buf [NBUF]byte
@@ -740,33 +709,32 @@ Building on the <code>file</code> package, here's a simple version of the Unix u
 24            case nr &gt; 0:
 25                if nw, ew := file.Stdout.Write(buf[0:nr]); nw != nr {
 26                    fmt.Fprintf(os.Stderr, &quot;cat: error writing from %s: %s\n&quot;, f.String(), ew.String())
-27                    os.Exit(1)
-28                }
-29            }
-30        }
-31    }
-
-33    func main() {
-34        flag.Parse() // Scans the arg list and sets up flags
-35        if flag.NArg() == 0 {
-36            cat(file.Stdin)
-37        }
-38        for i := 0; i &lt; flag.NArg(); i++ {
-39            f, err := file.Open(flag.Arg(i))
-40            if f == nil {
-41                fmt.Fprintf(os.Stderr, &quot;cat: can't open %s: error %s\n&quot;, flag.Arg(i), err)
-42                os.Exit(1)
-43            }
-44            cat(f)
-45            f.Close()
-46        }
-47    }
+27                }
+28            }
+29        }
+30    }
+<p>
+32    func main() {
+33        flag.Parse() // Scans the arg list and sets up flags
+34        if flag.NArg() == 0 {
+35            cat(file.Stdin)
+36        }
+37        for i := 0; i &lt; flag.NArg(); i++ {
+38            f, err := file.Open(flag.Arg(i), 0, 0)
+39            if f == nil {
+40                fmt.Fprintf(os.Stderr, &quot;cat: can't open %s: error %s\n&quot;, flag.Arg(i), err)
+41                os.Exit(1)
+42            }
+43            cat(f)
+44            f.Close()
+45        }
+46    }
 </pre>
 <p>
 By now this should be easy to follow, but the <code>switch</code> statement introduces some
 new features.  Like a <code>for</code> loop, an <code>if</code> or <code>switch</code> can include an
 initialization statement.  The <code>switch</code> on line 18 uses one to create variables
-<code>nr</code> and <code>er</code> to hold the return values from the call to <code>f.Read</code>.  (The <code>if</code> on line 25
+<code>nr</code> and <code>er</code> to hold the return values from <code>f.Read()</code>.  (The <code>if</code> on line 25
 has the same idea.)  The <code>switch</code> statement is general: it evaluates the cases
 from  top to bottom looking for the first case that matches the value; the
 case expressions don't need to be constants or even integers, as long as
@@ -778,14 +746,14 @@ in a <code>for</code> statement, a missing value means <code>true</code>.  In fa
 is a form of <code>if-else</code> chain. While we're here, it should be mentioned that in
 <code>switch</code> statements each <code>case</code> has an implicit <code>break</code>.
 <p>
-Line 25 calls <code>Write</code> by slicing the incoming buffer, which is itself a slice.
+Line 25 calls <code>Write()</code> by slicing the incoming buffer, which is itself a slice.
 Slices provide the standard Go way to handle I/O buffers.
 <p>
 Now let's make a variant of <code>cat</code> that optionally does <code>rot13</code> on its input.
 It's easy to do by just processing the bytes, but instead we will exploit
 Go's notion of an <i>interface</i>.
 <p>
-The <code>cat</code> subroutine uses only two methods of <code>f</code>: <code>Read</code> and <code>String</code>,
+The <code>cat()</code> subroutine uses only two methods of <code>f</code>: <code>Read()</code> and <code>String()</code>,
 so let's start by defining an interface that has exactly those two methods.
 Here is code from <code>progs/cat_rot13.go</code>:
 <p>
@@ -810,11 +778,11 @@ we have a second implementation of the <code>reader</code> interface.
 31    type rotate13 struct {
 32        source reader
 33    }
-
+<p>
 35    func newRotate13(source reader) *rotate13 {
 36        return &amp;rotate13{source}
 37    }
-
+<p>
 39    func (r13 *rotate13) Read(b []byte) (ret int, err os.Error) {
 40        r, e := r13.source.Read(b)
 41        for i := 0; i &lt; r; i++ {
@@ -822,7 +790,7 @@ we have a second implementation of the <code>reader</code> interface.
 43        }
 44        return r, e
 45    }
-
+<p>
 47    func (r13 *rotate13) String() string {
 48        return r13.source.String()
 49    }
@@ -837,13 +805,13 @@ To use the new feature, we define a flag:
 14    var rot13Flag = flag.Bool(&quot;rot13&quot;, false, &quot;rot13 the input&quot;)
 </pre>
 <p>
-and use it from within a mostly unchanged <code>cat</code> function:
+and use it from within a mostly unchanged <code>cat()</code> function:
 <p>
 <pre> <!-- progs/cat_rot13.go /func.cat/ /^}/ -->
 52    func cat(r reader) {
 53        const NBUF = 512
 54        var buf [NBUF]byte
-
+<p>
 56        if *rot13Flag {
 57            r = newRotate13(r)
 58        }
@@ -858,14 +826,13 @@ and use it from within a mostly unchanged <code>cat</code> function:
 67                nw, ew := file.Stdout.Write(buf[0:nr])
 68                if nw != nr {
 69                    fmt.Fprintf(os.Stderr, &quot;cat: error writing from %s: %s\n&quot;, r.String(), ew.String())
-70                    os.Exit(1)
-71                }
-72            }
-73        }
-74    }
+70                }
+71            }
+72        }
+73    }
 </pre>
 <p>
-(We could also do the wrapping in <code>main</code> and leave <code>cat</code> mostly alone, except
+(We could also do the wrapping in <code>main</code> and leave <code>cat()</code> mostly alone, except
 for changing the type of the argument; consider that an exercise.)
 Lines 56 through 58 set it all up: If the <code>rot13</code> flag is true, wrap the <code>reader</code>
 we received into a <code>rotate13</code> and proceed.  Note that the interface variables
@@ -934,12 +901,12 @@ We can apply <code>Sort</code> to any type that implements <code>Len</code>, <co
 The <code>sort</code> package includes the necessary methods to allow sorting of
 arrays of integers, strings, etc.; here's the code for arrays of <code>int</code>
 <p>
-<pre> <!-- progs/sort.go /type.*IntSlice/ /Swap/ -->
-33    type IntSlice []int
-
-35    func (p IntSlice) Len() int            { return len(p) }
-36    func (p IntSlice) Less(i, j int) bool  { return p[i] &lt; p[j] }
-37    func (p IntSlice) Swap(i, j int)       { p[i], p[j] = p[j], p[i] }
+<pre> <!-- progs/sort.go /type.*IntArray/ /Swap/ -->
+33    type IntArray []int
+<p>
+35    func (p IntArray) Len() int            { return len(p) }
+36    func (p IntArray) Less(i, j int) bool  { return p[i] &lt; p[j] }
+37    func (p IntArray) Swap(i, j int)       { p[i], p[j] = p[j], p[i] }
 </pre>
 <p>
 Here we see methods defined for non-<code>struct</code> types.  You can define methods
@@ -952,7 +919,7 @@ to test that the result is sorted.
 <pre> <!-- progs/sortmain.go /func.ints/ /^}/ -->
 12    func ints() {
 13        data := []int{74, 59, 238, -784, 9845, 959, 905, 0, 0, 42, 7586, -5467984, 7586}
-14        a := sort.IntSlice(data)
+14        a := sort.IntArray(data)
 15        sort.Sort(a)
 16        if !sort.IsSorted(a) {
 17            panic(&quot;fail&quot;)
@@ -969,11 +936,11 @@ to implement the three methods for that type, like this:
 32        shortName  string
 33        longName   string
 34    }
-
+<p>
 36    type dayArray struct {
 37        data []*day
 38    }
-
+<p>
 40    func (p *dayArray) Len() int            { return len(p.data) }
 41    func (p *dayArray) Less(i, j int) bool  { return p.data[i].num &lt; p.data[j].num }
 42    func (p *dayArray) Swap(i, j int)       { p.data[i], p.data[j] = p.data[j], p.data[i] }
@@ -1054,7 +1021,7 @@ to that of the <code>Printf</code> call above.
 </pre>
 <p>
 If you have your own type you'd like <code>Printf</code> or <code>Print</code> to format,
-just give it a <code>String</code> method that returns a string.  The print
+just give it a <code>String()</code> method that returns a string.  The print
 routines will examine the value to inquire whether it implements
 the method and if so, use it rather than some other formatting.
 Here's a simple example.
@@ -1064,25 +1031,25 @@ Here's a simple example.
 10        a int
 11        b string
 12    }
-
+<p>
 14    func (t *testType) String() string {
 15        return fmt.Sprint(t.a) + &quot; &quot; + t.b
 16    }
-
+<p>
 18    func main() {
 19        t := &amp;testType{77, &quot;Sunset Strip&quot;}
 20        fmt.Println(t)
 21    }
 </pre>
 <p>
-Since <code>*testType</code> has a <code>String</code> method, the
+Since <code>*testType</code> has a <code>String()</code> method, the
 default formatter for that type will use it and produce the output
 <p>
 <pre>
     77 Sunset Strip
 </pre>
 <p>
-Observe that the <code>String</code> method calls <code>Sprint</code> (the obvious Go
+Observe that the <code>String()</code> method calls <code>Sprint</code> (the obvious Go
 variant that returns a string) to do its formatting; special formatters
 can use the <code>fmt</code> library recursively.
 <p>
@@ -1095,7 +1062,7 @@ and such, but that's getting a little off the main thread so we'll leave it
 as an exploration exercise.
 <p>
 You might ask, though, how <code>Printf</code> can tell whether a type implements
-the <code>String</code> method.  Actually what it does is ask if the value can
+the <code>String()</code> method.  Actually what it does is ask if the value can
 be converted to an interface variable that implements the method.
 Schematically, given a value <code>v</code>, it does this:
 <p>
@@ -1140,7 +1107,7 @@ interface type defined in the <code>io</code> library:
 <p>
 (This interface is another conventional name, this time for <code>Write</code>; there are also
 <code>io.Reader</code>, <code>io.ReadWriter</code>, and so on.)
-Thus you can call <code>Fprintf</code> on any type that implements a standard <code>Write</code>
+Thus you can call <code>Fprintf</code> on any type that implements a standard <code>Write()</code>
 method, not just files but also network channels, buffers, whatever
 you want.
 <p>
@@ -1239,7 +1206,7 @@ together:
 28    func main() {
 29        ch := make(chan int)  // Create a new channel.
 30        go generate(ch)  // Start generate() as a goroutine.
-31        for i := 0; i &lt; 100; i++ { // Print the first hundred primes.
+31        for {
 32            prime := &lt;-ch
 33            fmt.Println(prime)
 34            ch1 := make(chan int)
@@ -1319,7 +1286,7 @@ Now <code>main</code>'s interface to the prime sieve is a channel of primes:
 <pre> <!-- progs/sieve1.go /func.main/ /^}/ -->
 46    func main() {
 47        primes := sieve()
-48        for i := 0; i &lt; 100; i++ { // Print the first hundred primes.
+48        for {
 49            fmt.Println(&lt;-primes)
 50        }
 51    }
@@ -1346,7 +1313,7 @@ code that invokes the operation and responds to the request:
 <p>
 <pre> <!-- progs/server.go /type.binOp/ /^}/ -->
 14    type binOp func(a, b int) int
-
+<p>
 16    func run(op binOp, req *request) {
 17        reply := op(req.a, req.b)
 18        req.replyc &lt;- reply

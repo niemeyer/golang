@@ -106,11 +106,6 @@ import (
 //      The struct field may have type []byte or string.
 //      If there is no such field, the character data is discarded.
 //
-//   * If the XML element contains comments, they are accumulated in
-//      the first struct field that has tag "comments".  The struct
-//      field may have type []byte or string.  If there is no such
-//      field, the comments are discarded.
-//
 //   * If the XML element contains a sub-element whose name matches
 //      the prefix of a struct field tag formatted as "a>b>c", unmarshal
 //      will descend into the XML structure looking for elements with the
@@ -125,22 +120,17 @@ import (
 //      maps the sub-element to that struct field.
 //
 // Unmarshal maps an XML element to a string or []byte by saving the
-// concatenation of that element's character data in the string or
-// []byte.
+// concatenation of that element's character data in the string or []byte.
 //
-// Unmarshal maps an attribute value to a string or []byte by saving
-// the value in the string or slice.
+// Unmarshal maps an XML element to a slice by extending the length
+// of the slice and mapping the element to the newly created value.
 //
-// Unmarshal maps an XML element to a slice by extending the length of
-// the slice and mapping the element to the newly created value.
+// Unmarshal maps an XML element to a bool by setting it to the boolean
+// value represented by the string.
 //
-// Unmarshal maps an XML element or attribute value to a bool by
-// setting it to the boolean value represented by the string.
-//
-// Unmarshal maps an XML element or attribute value to an integer or
-// floating-point field by setting the field to the result of
-// interpreting the string value in decimal.  There is no check for
-// overflow.
+// Unmarshal maps an XML element to an integer or floating-point
+// field by setting the field to the result of interpreting the string
+// value in decimal.  There is no check for overflow.
 //
 // Unmarshal maps an XML element to an xml.Name by recording the
 // element name.
@@ -149,8 +139,8 @@ import (
 // to a freshly allocated value and then mapping the element to that value.
 //
 func Unmarshal(r io.Reader, val interface{}) os.Error {
-	v := reflect.ValueOf(val)
-	if v.Kind() != reflect.Ptr {
+	v, ok := reflect.NewValue(val).(*reflect.PtrValue)
+	if !ok {
 		return os.NewError("non-pointer passed to Unmarshal")
 	}
 	p := NewParser(r)
@@ -186,8 +176,8 @@ func (e *TagPathError) String() string {
 // Passing a nil start element indicates that Unmarshal should
 // read the token stream to find the start element.
 func (p *Parser) Unmarshal(val interface{}, start *StartElement) os.Error {
-	v := reflect.ValueOf(val)
-	if v.Kind() != reflect.Ptr {
+	v, ok := reflect.NewValue(val).(*reflect.PtrValue)
+	if !ok {
 		return os.NewError("non-pointer passed to Unmarshal")
 	}
 	return p.unmarshal(v.Elem(), start)
@@ -229,11 +219,14 @@ func (p *Parser) unmarshal(val reflect.Value, start *StartElement) os.Error {
 		}
 	}
 
-	if pv := val; pv.Kind() == reflect.Ptr {
-		if pv.IsNil() {
-			pv.Set(reflect.New(pv.Type().Elem()))
+	if pv, ok := val.(*reflect.PtrValue); ok {
+		if pv.Get() == 0 {
+			zv := reflect.MakeZero(pv.Type().(*reflect.PtrType).Elem())
+			pv.PointTo(zv)
+			val = zv
+		} else {
+			val = pv.Elem()
 		}
-		val = pv.Elem()
 	}
 
 	var (
@@ -244,17 +237,17 @@ func (p *Parser) unmarshal(val reflect.Value, start *StartElement) os.Error {
 		saveXML      reflect.Value
 		saveXMLIndex int
 		saveXMLData  []byte
-		sv           reflect.Value
-		styp         reflect.Type
+		sv           *reflect.StructValue
+		styp         *reflect.StructType
 		fieldPaths   map[string]pathInfo
 	)
 
-	switch v := val; v.Kind() {
+	switch v := val.(type) {
 	default:
-		return os.NewError("unknown type " + v.Type().String())
+		return os.ErrorString("unknown type " + v.Type().String())
 
-	case reflect.Slice:
-		typ := v.Type()
+	case *reflect.SliceValue:
+		typ := v.Type().(*reflect.SliceType)
 		if typ.Elem().Kind() == reflect.Uint8 {
 			// []byte
 			saveData = v
@@ -276,23 +269,23 @@ func (p *Parser) unmarshal(val reflect.Value, start *StartElement) os.Error {
 		v.SetLen(n + 1)
 
 		// Recur to read element into slice.
-		if err := p.unmarshal(v.Index(n), start); err != nil {
+		if err := p.unmarshal(v.Elem(n), start); err != nil {
 			v.SetLen(n)
 			return err
 		}
 		return nil
 
-	case reflect.Bool, reflect.Float32, reflect.Float64, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr, reflect.String:
+	case *reflect.BoolValue, *reflect.FloatValue, *reflect.IntValue, *reflect.UintValue, *reflect.StringValue:
 		saveData = v
 
-	case reflect.Struct:
+	case *reflect.StructValue:
 		if _, ok := v.Interface().(Name); ok {
-			v.Set(reflect.ValueOf(start.Name))
+			v.Set(reflect.NewValue(start.Name).(*reflect.StructValue))
 			break
 		}
 
 		sv = v
-		typ := sv.Type()
+		typ := sv.Type().(*reflect.StructType)
 		styp = typ
 		// Assign name.
 		if f, ok := typ.FieldByName("XMLName"); ok {
@@ -323,7 +316,7 @@ func (p *Parser) unmarshal(val reflect.Value, start *StartElement) os.Error {
 			if _, ok := v.Interface().(Name); !ok {
 				return UnmarshalError(sv.Type().String() + " field XMLName does not have type xml.Name")
 			}
-			v.Set(reflect.ValueOf(start.Name))
+			v.(*reflect.StructValue).Set(reflect.NewValue(start.Name).(*reflect.StructValue))
 		}
 
 		// Assign attributes.
@@ -332,7 +325,10 @@ func (p *Parser) unmarshal(val reflect.Value, start *StartElement) os.Error {
 			f := typ.Field(i)
 			switch f.Tag {
 			case "attr":
-				strv := sv.FieldByIndex(f.Index)
+				strv, ok := sv.FieldByIndex(f.Index).(*reflect.StringValue)
+				if !ok {
+					return UnmarshalError(sv.Type().String() + " field " + f.Name + " has attr tag but is not type string")
+				}
 				// Look for attribute.
 				val := ""
 				k := strings.ToLower(f.Name)
@@ -342,20 +338,20 @@ func (p *Parser) unmarshal(val reflect.Value, start *StartElement) os.Error {
 						break
 					}
 				}
-				copyValue(strv, []byte(val))
+				strv.Set(val)
 
 			case "comment":
-				if !saveComment.IsValid() {
+				if saveComment == nil {
 					saveComment = sv.FieldByIndex(f.Index)
 				}
 
 			case "chardata":
-				if !saveData.IsValid() {
+				if saveData == nil {
 					saveData = sv.FieldByIndex(f.Index)
 				}
 
 			case "innerxml":
-				if !saveXML.IsValid() {
+				if saveXML == nil {
 					saveXML = sv.FieldByIndex(f.Index)
 					if p.saved == nil {
 						saveXMLIndex = 0
@@ -391,7 +387,7 @@ func (p *Parser) unmarshal(val reflect.Value, start *StartElement) os.Error {
 Loop:
 	for {
 		var savedOffset int
-		if saveXML.IsValid() {
+		if saveXML != nil {
 			savedOffset = p.savedOffset()
 		}
 		tok, err := p.Token()
@@ -402,7 +398,7 @@ Loop:
 		case StartElement:
 			// Sub-element.
 			// Look up by tag name.
-			if sv.IsValid() {
+			if sv != nil {
 				k := fieldName(t.Name.Local)
 
 				if fieldPaths != nil {
@@ -441,7 +437,7 @@ Loop:
 			}
 
 		case EndElement:
-			if saveXML.IsValid() {
+			if saveXML != nil {
 				saveXMLData = p.saved.Bytes()[saveXMLIndex:savedOffset]
 				if saveXMLIndex == 0 {
 					p.saved = nil
@@ -450,91 +446,85 @@ Loop:
 			break Loop
 
 		case CharData:
-			if saveData.IsValid() {
+			if saveData != nil {
 				data = append(data, t...)
 			}
 
 		case Comment:
-			if saveComment.IsValid() {
+			if saveComment != nil {
 				comment = append(comment, t...)
 			}
 		}
 	}
 
-	if err := copyValue(saveData, data); err != nil {
-		return err
-	}
-
-	switch t := saveComment; t.Kind() {
-	case reflect.String:
-		t.SetString(string(comment))
-	case reflect.Slice:
-		t.Set(reflect.ValueOf(comment))
-	}
-
-	switch t := saveXML; t.Kind() {
-	case reflect.String:
-		t.SetString(string(saveXMLData))
-	case reflect.Slice:
-		t.Set(reflect.ValueOf(saveXMLData))
-	}
-
-	return nil
-}
-
-func copyValue(dst reflect.Value, src []byte) (err os.Error) {
+	var err os.Error
 	// Helper functions for integer and unsigned integer conversions
 	var itmp int64
 	getInt64 := func() bool {
-		itmp, err = strconv.Atoi64(string(src))
+		itmp, err = strconv.Atoi64(string(data))
 		// TODO: should check sizes
 		return err == nil
 	}
 	var utmp uint64
 	getUint64 := func() bool {
-		utmp, err = strconv.Atoui64(string(src))
+		utmp, err = strconv.Atoui64(string(data))
 		// TODO: check for overflow?
 		return err == nil
 	}
 	var ftmp float64
 	getFloat64 := func() bool {
-		ftmp, err = strconv.Atof64(string(src))
+		ftmp, err = strconv.Atof64(string(data))
 		// TODO: check for overflow?
 		return err == nil
 	}
 
 	// Save accumulated data and comments
-	switch t := dst; t.Kind() {
-	case reflect.Invalid:
+	switch t := saveData.(type) {
+	case nil:
 		// Probably a comment, handled below
 	default:
-		return os.NewError("cannot happen: unknown type " + t.Type().String())
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return os.ErrorString("cannot happen: unknown type " + t.Type().String())
+	case *reflect.IntValue:
 		if !getInt64() {
 			return err
 		}
-		t.SetInt(itmp)
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		t.Set(itmp)
+	case *reflect.UintValue:
 		if !getUint64() {
 			return err
 		}
-		t.SetUint(utmp)
-	case reflect.Float32, reflect.Float64:
+		t.Set(utmp)
+	case *reflect.FloatValue:
 		if !getFloat64() {
 			return err
 		}
-		t.SetFloat(ftmp)
-	case reflect.Bool:
-		value, err := strconv.Atob(strings.TrimSpace(string(src)))
+		t.Set(ftmp)
+	case *reflect.BoolValue:
+		value, err := strconv.Atob(strings.TrimSpace(string(data)))
 		if err != nil {
 			return err
 		}
-		t.SetBool(value)
-	case reflect.String:
-		t.SetString(string(src))
-	case reflect.Slice:
-		t.Set(reflect.ValueOf(src))
+		t.Set(value)
+	case *reflect.StringValue:
+		t.Set(string(data))
+	case *reflect.SliceValue:
+		t.Set(reflect.NewValue(data).(*reflect.SliceValue))
 	}
+
+	switch t := saveComment.(type) {
+	case *reflect.StringValue:
+		t.Set(string(comment))
+	case *reflect.SliceValue:
+		t.Set(reflect.NewValue(comment).(*reflect.SliceValue))
+	}
+
+	switch t := saveXML.(type) {
+	case *reflect.StringValue:
+		t.Set(string(saveXMLData))
+	case *reflect.SliceValue:
+		t.Set(reflect.NewValue(saveXMLData).(*reflect.SliceValue))
+	}
+
 	return nil
 }
 
@@ -547,7 +537,7 @@ type pathInfo struct {
 // paths map with all paths leading to it ("a", "a>b", and "a>b>c").
 // It is okay for paths to share a common, shorter prefix but not ok
 // for one path to itself be a prefix of another.
-func addFieldPath(sv reflect.Value, paths map[string]pathInfo, path string, fieldIdx []int) os.Error {
+func addFieldPath(sv *reflect.StructValue, paths map[string]pathInfo, path string, fieldIdx []int) os.Error {
 	if info, found := paths[path]; found {
 		return tagError(sv, info.fieldIdx, fieldIdx)
 	}
@@ -570,8 +560,8 @@ func addFieldPath(sv reflect.Value, paths map[string]pathInfo, path string, fiel
 
 }
 
-func tagError(sv reflect.Value, idx1 []int, idx2 []int) os.Error {
-	t := sv.Type()
+func tagError(sv *reflect.StructValue, idx1 []int, idx2 []int) os.Error {
+	t := sv.Type().(*reflect.StructType)
 	f1 := t.FieldByIndex(idx1)
 	f2 := t.FieldByIndex(idx2)
 	return &TagPathError{t, f1.Name, f1.Tag, f2.Name, f2.Tag}
@@ -579,7 +569,7 @@ func tagError(sv reflect.Value, idx1 []int, idx2 []int) os.Error {
 
 // unmarshalPaths walks down an XML structure looking for
 // wanted paths, and calls unmarshal on them.
-func (p *Parser) unmarshalPaths(sv reflect.Value, paths map[string]pathInfo, path string, start *StartElement) os.Error {
+func (p *Parser) unmarshalPaths(sv *reflect.StructValue, paths map[string]pathInfo, path string, start *StartElement) os.Error {
 	if info, _ := paths[path]; info.complete {
 		return p.unmarshal(sv.FieldByIndex(info.fieldIdx), start)
 	}

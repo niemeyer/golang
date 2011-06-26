@@ -28,37 +28,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-enum
-{
-	Sxxx,
-	
-	/* order here is order in output file */
-	STEXT,
-	SELFDATA,
-	SMACHOPLT,
-	STYPE,
-	SSTRING,
-	SGOSTRING,
-	SRODATA,
-	SDATA,
-	SMACHO,	/* Mach-O __nl_symbol_ptr */
-	SMACHOGOT,
-	SWINDOWS,
-	SBSS,
-
-	SXREF,
-	SMACHODYNSTR,
-	SMACHODYNSYM,
-	SMACHOINDIRECTPLT,
-	SMACHOINDIRECTGOT,
-	SFILE,
-	SCONST,
-	SDYNIMPORT,
-
-	SSUB = 1<<8,	/* sub-symbol, linked from parent via ->sub list */
-	
-	NHASH = 100003,
-};
+// Where symbol table data gets mapped into memory.
+#define SYMDATVA 0x99LL<<24
 
 typedef struct Library Library;
 struct Library
@@ -103,12 +74,12 @@ extern	int	nlibdir;
 extern	int	cout;
 
 EXTERN	char*	INITENTRY;
+EXTERN	char	thechar;
 EXTERN	char*	thestring;
 EXTERN	Library*	library;
 EXTERN	int	libraryp;
 EXTERN	int	nlibrary;
 EXTERN	Sym*	hash[NHASH];
-EXTERN	Sym*	allsym;
 EXTERN	Sym*	histfrog[MAXHIST];
 EXTERN	uchar	fnuxi8[8];
 EXTERN	uchar	fnuxi4[4];
@@ -122,7 +93,6 @@ EXTERN	char*	outfile;
 EXTERN	int32	nsymbol;
 EXTERN	char*	thestring;
 EXTERN	int	ndynexp;
-EXTERN	int	havedynamic;
 
 EXTERN	Segment	segtext;
 EXTERN	Segment	segdata;
@@ -137,7 +107,6 @@ void	asmlc(void);
 void	histtoauto(void);
 void	collapsefrog(Sym *s);
 Sym*	lookup(char *symb, int v);
-Sym*	rlookup(char *symb, int v);
 void	nuxiinit(void);
 int	find1(int32 l, int c);
 int	find2(int32 l, int c);
@@ -161,7 +130,6 @@ void	ldobj1(Biobuf *f, char*, int64 len, char *pn);
 void	ldobj(Biobuf*, char*, int64, char*, int);
 void	ldelf(Biobuf*, char*, int64, char*);
 void	ldmacho(Biobuf*, char*, int64, char*);
-void	ldpe(Biobuf*, char*, int64, char*);
 void	ldpkg(Biobuf*, char*, int64, char*, int);
 void	mark(Sym *s);
 void	mkfwd(void);
@@ -174,7 +142,7 @@ void	datblk(int32, int32);
 Sym*	datsort(Sym*);
 void	reloc(void);
 void	relocsym(Sym*);
-void	savedata(Sym*, Prog*, char*);
+void	savedata(Sym*, Prog*);
 void	symgrow(Sym*, int32);
 vlong	addstring(Sym*, char*);
 vlong	adduint32(Sym*, uint32);
@@ -186,8 +154,7 @@ vlong	addsize(Sym*, Sym*);
 vlong	adduint8(Sym*, uint8);
 vlong	adduint16(Sym*, uint16);
 void	asmsym(void);
-void	asmelfsym(void);
-void	asmplan9sym(void);
+void	asmelfsym64(void);
 void	strnput(char*, int);
 void	dodata(void);
 void	address(void);
@@ -198,10 +165,6 @@ void	adddynlib(char*);
 int	archreloc(Reloc*, Sym*, vlong*);
 void	adddynsym(Sym*);
 void	addexport(void);
-void	dostkcheck(void);
-void	undef(void);
-void	doweak(void);
-void	setpersrc(Sym*);
 
 int	pathchar(void);
 void*	mal(uint32);
@@ -243,37 +206,3 @@ enum {
 	ArchiveObj,
 	Pkgdef
 };
-
-/* executable header types */
-enum {
-	Hgarbunix = 0,	// garbage unix
-	Hnoheader,	// no header
-	Hunixcoff,	// unix coff
-	Hrisc,		// aif for risc os
-	Hplan9x32,	// plan 9 32-bit format
-	Hplan9x64,	// plan 9 64-bit format
-	Hmsdoscom,	// MS-DOS .COM
-	Hnetbsd,	// NetBSD
-	Hmsdosexe,	// fake MS-DOS .EXE
-	Hixp1200,	// IXP1200 (raw)
-	Helf,		// ELF32
-	Hipaq,		// ipaq
-	Hdarwin,	// Apple Mach-O
-	Hlinux,		// Linux ELF
-	Hfreebsd,	// FreeBSD ELF
-	Hwindows,	// MS Windows PE
-};
-
-typedef struct Header Header;
-struct Header {
-	char *name;
-	int val;
-};
-
-EXTERN	char*	headstring;
-extern	Header	headers[];
-
-int	headtype(char*);
-
-int	Yconv(Fmt*);
-#pragma	varargck	type	"Y"	Sym*

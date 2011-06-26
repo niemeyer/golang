@@ -237,7 +237,7 @@ func (r *Reader) ReadResponse(expectCode int) (code int, message string, err os.
 // to a method on r.
 //
 // Dot encoding is a common framing used for data blocks
-// in text protocols such as SMTP.  The data consists of a sequence
+// in text protcols like SMTP.  The data consists of a sequence
 // of lines, each of which ends in "\r\n".  The sequence itself
 // ends at a line containing just a dot: ".\r\n".  Lines beginning
 // with a dot are escaped with an additional dot to avoid
@@ -402,7 +402,7 @@ func (r *Reader) ReadDotLines() ([]string, os.Error) {
 // ReadMIMEHeader reads a MIME-style header from r.
 // The header is a sequence of possibly continued Key: Value lines
 // ending in a blank line.
-// The returned map m maps CanonicalMIMEHeaderKey(key) to a
+// The returned map m maps CanonicalHeaderKey(key) to a
 // sequence of values in the same order encountered in the input.
 //
 // For example, consider this input:
@@ -415,12 +415,12 @@ func (r *Reader) ReadDotLines() ([]string, os.Error) {
 // Given that input, ReadMIMEHeader returns the map:
 //
 //	map[string][]string{
-//		"My-Key": {"Value 1", "Value 2"},
-//		"Long-Key": {"Even Longer Value"},
+//		"My-Key": []string{"Value 1", "Value 2"},
+//		"Long-Key": []string{"Even Longer Value"},
 //	}
 //
-func (r *Reader) ReadMIMEHeader() (MIMEHeader, os.Error) {
-	m := make(MIMEHeader)
+func (r *Reader) ReadMIMEHeader() (map[string][]string, os.Error) {
+	m := make(map[string][]string)
 	for {
 		kv, err := r.ReadContinuedLineBytes()
 		if len(kv) == 0 {
@@ -432,7 +432,7 @@ func (r *Reader) ReadMIMEHeader() (MIMEHeader, os.Error) {
 		if i < 0 || bytes.IndexByte(kv[0:i], ' ') >= 0 {
 			return m, ProtocolError("malformed MIME header line: " + string(kv))
 		}
-		key := CanonicalMIMEHeaderKey(string(kv[0:i]))
+		key := CanonicalHeaderKey(string(kv[0:i]))
 
 		// Skip initial spaces in value.
 		i++ // skip colon
@@ -452,12 +452,12 @@ func (r *Reader) ReadMIMEHeader() (MIMEHeader, os.Error) {
 	panic("unreachable")
 }
 
-// CanonicalMIMEHeaderKey returns the canonical format of the
+// CanonicalHeaderKey returns the canonical format of the
 // MIME header key s.  The canonicalization converts the first
 // letter and any letter following a hyphen to upper case;
 // the rest are converted to lowercase.  For example, the
 // canonical key for "accept-encoding" is "Accept-Encoding".
-func CanonicalMIMEHeaderKey(s string) string {
+func CanonicalHeaderKey(s string) string {
 	// Quick check for canonical encoding.
 	needUpper := true
 	for i := 0; i < len(s); i++ {

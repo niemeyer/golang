@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package ogle is the beginning of a debugger for Go.
+// Ogle is the beginning of a debugger for Go.
 package ogle
 
 import (
@@ -160,7 +160,7 @@ func cmdLoad(args []byte) os.Error {
 		} else {
 			fname = parts[0]
 		}
-		tproc, err = proc.StartProcess(fname, parts, &os.ProcAttr{Files: []*os.File{os.Stdin, os.Stdout, os.Stderr}})
+		tproc, err = proc.ForkExec(fname, parts, os.Environ(), "", []*os.File{os.Stdin, os.Stdout, os.Stderr})
 		if err != nil {
 			return err
 		}
@@ -170,7 +170,7 @@ func cmdLoad(args []byte) os.Error {
 	}
 
 	// Get symbols
-	f, err := os.Open(fname)
+	f, err := os.Open(fname, os.O_RDONLY, 0)
 	if err != nil {
 		tproc.Detach()
 		return err
@@ -205,7 +205,7 @@ func parseLoad(args []byte) (ident string, path string, err os.Error) {
 	sc, ev := newScanner(args)
 
 	var toks [4]token.Token
-	var lits [4]string
+	var lits [4][]byte
 	for i := range toks {
 		_, toks[i], lits[i] = sc.Scan()
 	}

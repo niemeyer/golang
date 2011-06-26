@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package bytes implements functions for the manipulation of byte slices.
-// It is analogous to the facilities of the strings package.
+// The bytes package implements functions for the manipulation of byte slices.
+// Analogous to the facilities of the strings package.
 package bytes
 
 import (
@@ -293,10 +293,20 @@ func Join(a [][]byte, sep []byte) []byte {
 	}
 
 	b := make([]byte, n)
-	bp := copy(b, a[0])
-	for _, s := range a[1:] {
-		bp += copy(b[bp:], sep)
-		bp += copy(b[bp:], s)
+	bp := 0
+	for i := 0; i < len(a); i++ {
+		s := a[i]
+		for j := 0; j < len(s); j++ {
+			b[bp] = s[j]
+			bp++
+		}
+		if i+1 < len(a) {
+			s = sep
+			for j := 0; j < len(s); j++ {
+				b[bp] = s[j]
+				bp++
+			}
+		}
 	}
 	return b
 }

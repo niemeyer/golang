@@ -2,11 +2,13 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package path implements utility routines for manipulating slash-separated
-// filename paths.
+// The path package implements utility routines for manipulating
+// slash-separated filename paths.
 package path
 
 import (
+	"io/ioutil"
+	"os"
 	"strings"
 )
 
@@ -105,7 +107,7 @@ func Clean(path string) string {
 // If there is no separator in path, Split returns an empty dir and
 // file set to path.
 func Split(path string) (dir, file string) {
-	i := strings.LastIndex(path, "/")
+	i := strings.LastIndexAny(path, PathSeps)
 	return path[:i+1], path[i+1:]
 }
 
@@ -133,30 +135,78 @@ func Ext(path string) string {
 	return ""
 }
 
-// Base returns the last element of path.
-// Trailing slashes are removed before extracting the last element.
-// If the path is empty, Base returns ".".
-// If the path consists entirely of slashes, Base returns "/".
-func Base(path string) string {
-	if path == "" {
+// Visitor methods are invoked for corresponding file tree entries
+// visited by Walk. The parameter path is the full path of f relative
+// to root.
+type Visitor interface {
+	VisitDir(path string, f *os.FileInfo) bool
+	VisitFile(path string, f *os.FileInfo)
+}
+
+func walk(path string, f *os.FileInfo, v Visitor, errors chan<- os.Error) {
+	if !f.IsDirectory() {
+		v.VisitFile(path, f)
+		return
+	}
+
+	if !v.VisitDir(path, f) {
+		return // skip directory entries
+	}
+
+	list, err := ioutil.ReadDir(path)
+	if err != nil {
+		if errors != nil {
+			errors <- err
+		}
+	}
+
+	for _, e := range list {
+		walk(Join(path, e.Name), e, v, errors)
+	}
+}
+
+// Walk walks the file tree rooted at root, calling v.VisitDir or
+// v.VisitFile for each directory or file in the tree, including root.
+// If v.VisitDir returns false, Walk skips the directory's entries;
+// otherwise it invokes itself for each directory entry in sorted order.
+// An error reading a directory does not abort the Walk.
+// If errors != nil, Walk sends each directory read error
+// to the channel.  Otherwise Walk discards the error.
+func Walk(root string, v Visitor, errors chan<- os.Error) {
+	f, err := os.Lstat(root)
+	if err != nil {
+		if errors != nil {
+			errors <- err
+		}
+		return // can't progress
+	}
+	walk(root, f, v, errors)
+}
+
+// Base returns the last path element of the slash-separated name.
+// Trailing slashes are removed before extracting the last element.  If the name is
+// empty, "." is returned.  If it consists entirely of slashes, "/" is returned.
+func Base(name string) string {
+	if name == "" {
 		return "."
 	}
 	// Strip trailing slashes.
-	for len(path) > 0 && path[len(path)-1] == '/' {
-		path = path[0 : len(path)-1]
+	for len(name) > 0 && name[len(name)-1] == '/' {
+		name = name[0 : len(name)-1]
 	}
 	// Find the last element
-	if i := strings.LastIndex(path, "/"); i >= 0 {
-		path = path[i+1:]
+	if i := strings.LastIndex(name, "/"); i >= 0 {
+		name = name[i+1:]
 	}
 	// If empty now, it had only slashes.
-	if path == "" {
+	if name == "" {
 		return "/"
 	}
-	return path
+	return name
 }
 
 // IsAbs returns true if the path is absolute.
 func IsAbs(path string) bool {
-	return len(path) > 0 && path[0] == '/'
+	// TODO: Add Windows support
+	return strings.HasPrefix(path, "/")
 }

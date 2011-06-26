@@ -59,14 +59,13 @@ prescriptive style guide.
 With Go we take an unusual
 approach and let the machine
 take care of most formatting issues.
-The <code>gofmt</code> tool reads a Go program
+A program, <code>gofmt</code>, reads a Go program
 and emits the source in a standard style of indentation
 and vertical alignment, retaining and if necessary
 reformatting comments.
 If you want to know how to handle some new layout
 situation, run <code>gofmt</code>; if the answer doesn't
-seem right, rearrange your program (or file a bug about <code>gofmt</code>),
-don't work around it.
+seem right, fix the program (or file a bug), don't work around it.
 </p>
 
 <p>
@@ -95,7 +94,7 @@ type T struct {
 </pre>
 
 <p>
-All Go code in the standard packages has been formatted with <code>gofmt</code>.
+All code in the libraries has been formatted with <code>gofmt</code>.
 </p>
 
 
@@ -159,7 +158,7 @@ should set up the detailed documentation that follows.
 
 <pre>
 /*
-    Package regexp implements a simple library for
+    The regexp package implements a simple library for
     regular expressions.
 
     The syntax of the regular expressions accepted is:
@@ -186,7 +185,7 @@ If the package is simple, the package comment can be brief.
 </p>
 
 <pre>
-// Package path implements utility routines for
+// The path package implements utility routines for
 // manipulating slash-separated filename paths.
 </pre>
 
@@ -195,13 +194,9 @@ Comments do not need extra formatting such as banners of stars.
 The generated output may not even be presented in a fixed-width font, so don't depend
 on spacing for alignment&mdash;<code>godoc</code>, like <code>gofmt</code>,
 takes care of that.
-The comments are uninterpreted plain text, so HTML and other
+Finally, the comments are uninterpreted plain text, so HTML and other
 annotations such as <code>_this_</code> will reproduce <i>verbatim</i> and should
 not be used.
-Depending on the context, <code>godoc</code> might not even
-reformat comments, so make sure they look good straight up:
-use correct spelling, punctuation, and sentence structure,
-fold long lines, and so on.
 </p>
 
 <p>
@@ -233,9 +228,9 @@ Since the whole declaration is presented, such a comment can often be perfunctor
 <pre>
 // Error codes returned by failures to parse an expression.
 var (
-    ErrInternal      = os.NewError("regexp: internal error")
-    ErrUnmatchedLpar = os.NewError("regexp: unmatched '('")
-    ErrUnmatchedRpar = os.NewError("regexp: unmatched ')'")
+    ErrInternal      = os.NewError("internal error")
+    ErrUnmatchedLpar = os.NewError("unmatched '('")
+    ErrUnmatchedRpar = os.NewError("unmatched ')'")
     ...
 )
 </pre>
@@ -297,16 +292,15 @@ determines just which package is being used.
 <p>
 Another convention is that the package name is the base name of
 its source directory;
-the package in <code>src/pkg/encoding/base64</code>
-is imported as <code>"encoding/base64"</code> but has name <code>base64</code>,
-not <code>encoding_base64</code> and not <code>encodingBase64</code>.
+the package in <code>src/pkg/container/vector</code>
+is imported as <code>"container/vector"</code> but has name <code>vector</code>,
+not <code>container_vector</code> and not <code>containerVector</code>.
 </p>
 
 <p>
 The importer of a package will use the name to refer to its contents
 (the <code>import .</code> notation is intended mostly for tests and other
-unusual situations and should be avoided unless necessary),
-so exported names in the package can use that fact
+unusual situations), so exported names in the package can use that fact
 to avoid stutter.
 For instance, the buffered reader type in the <code>bufio</code> package is called <code>Reader</code>,
 not <code>BufReader</code>, because users see it as <code>bufio.Reader</code>,
@@ -318,8 +312,8 @@ Similarly, the function to make new instances of <code>ring.Ring</code>&mdash;wh
 is the definition of a <em>constructor</em> in Go&mdash;would
 normally be called <code>NewRing</code>, but since
 <code>Ring</code> is the only type exported by the package, and since the
-package is called <code>ring</code>, it's called just <code>New</code>,
-which clients of the package see as <code>ring.New</code>.
+package is called <code>ring</code>, it's called just <code>New</code>.
+Clients of the package see that as <code>ring.New</code>.
 Use the package structure to help you choose good names.
 </p>
 
@@ -332,27 +326,6 @@ If the name represents something intricate or subtle, it's usually better
 to write a helpful doc comment than to attempt to put all the information
 into the name.
 </p>
-
-<h3 id="Getters">Getters</h3>
-
-<p>
-Go doesn't provide automatic support for getters and setters.
-There's nothing wrong with providing getters and setters yourself,
-and it's often appropriate to do so, but it's neither idiomatic nor necessary
-to put <code>Get</code> into the getter's name.  If you have a field called
-<code>owner</code> (lower case, unexported), the getter method should be
-called <code>Owner</code> (upper case, exported), not <code>GetOwner</code>.
-The use of upper-case names for export provides the hook to discriminate
-the field from the method.
-A setter function, if needed, will likely be called <code>SetOwner</code>.
-Both names read well in practice:
-</p>
-<pre>
-owner := obj.Owner()
-if owner != user {
-    obj.SetOwner(user)
-}
-</pre>
 
 <h3 id="interface-names">Interface names</h3>
 
@@ -504,7 +477,7 @@ the body ends in <code>break</code>, <code>continue</code>,
 </p>
 
 <pre>
-f, err := os.Open(name)
+f, err := os.Open(name, os.O_RDONLY, 0)
 if err != nil {
     return err
 }
@@ -512,15 +485,15 @@ codeUsing(f)
 </pre>
 
 <p>
-This is an example of a common situation where code must guard against a
-sequence of error conditions.  The code reads well if the
+This is a example of a common situation where code must analyze a
+sequence of error possibilities.  The code reads well if the
 successful flow of control runs down the page, eliminating error cases
 as they arise.  Since error cases tend to end in <code>return</code>
 statements, the resulting code needs no <code>else</code> statements.
 </p>
 
 <pre>
-f, err := os.Open(name)
+f, err := os.Open(name, os.O_RDONLY, 0)
 if err != nil {
     return err
 }
@@ -576,9 +549,8 @@ for _, value := range m {  // key is unused
 
 <p>
 For strings, the <code>range</code> does more work for you, breaking out individual
-Unicode characters by parsing the UTF-8.
-Erroneous encodings consume one byte and produce the
-replacement rune U+FFFD. The loop
+Unicode characters by parsing the UTF-8 (erroneous encodings consume one byte and produce the
+replacement rune U+FFFD). The loop
 </p>
 <pre>
 for pos, char := range "日本語" {
@@ -595,9 +567,8 @@ character 語 starts at byte position 6
 </pre>
 
 <p>
-Finally, Go has no comma operator and <code>++</code> and <code>--</code>
-are statements not expressions.
-Thus if you want to run multiple variables in a <code>for</code>
+Finally, since Go has no comma operator and <code>++</code> and <code>--</code>
+are statements not expressions, if you want to run multiple variables in a <code>for</code>
 you should use parallel assignment.
 </p>
 <pre>
@@ -701,7 +672,7 @@ case *int:
 
 <p>
 One of Go's unusual features is that functions and methods
-can return multiple values.  This form can be used to
+can return multiple values.  This can be used to
 improve on a couple of clumsy idioms in C programs: in-band
 error returns (such as <code>-1</code> for <code>EOF</code>)
 and modifying an argument.
@@ -813,7 +784,7 @@ canonical examples are unlocking a mutex or closing a file.
 <pre>
 // Contents returns the file's contents as a string.
 func Contents(filename string) (string, os.Error) {
-    f, err := os.Open(filename)
+    f, err := os.Open(filename, os.O_RDONLY, 0)
     if err != nil {
         return "", err
     }
@@ -836,7 +807,7 @@ func Contents(filename string) (string, os.Error) {
 </pre>
 
 <p>
-Deferring a call to a function such as <code>Close</code> has two advantages.  First, it
+Deferring a function like this has two advantages.  First, it
 guarantees that you will never forget to close the file, a mistake
 that's easy to make if you later edit the function to add a new return
 path.  Second, it means that the close sits near the open,
@@ -853,7 +824,7 @@ executions.  Here's a silly example.
 </p>
 
 <pre>
-for i := 0; i &lt; 5; i++ {
+for i := 0; i < 5; i++ {
     defer fmt.Printf("%d ", i)
 }
 </pre>
@@ -928,21 +899,19 @@ leaving: b
 For programmers accustomed to block-level resource management from
 other languages, <code>defer</code> may seem peculiar, but its most
 interesting and powerful applications come precisely from the fact
-that it's not block-based but function-based.  In the section on
-<code>panic</code> and <code>recover</code> we'll see another
-example of its possibilities.
+that it's not block-based but function based.  In the section on
+<code>panic</code> and <code>recover</code> we'll see an example.
 </p>
 
 <h2 id="data">Data</h2>
 
-<h3 id="allocation_new">Allocation with <code>new</code></h3>
+<h3 id="allocation_new">Allocation with <code>new()</code></h3>
 
 <p>
-Go has two allocation primitives, the built-in functions
-<code>new</code> and <code>make</code>.
+Go has two allocation primitives, <code>new()</code> and <code>make()</code>.
 They do different things and apply to different types, which can be confusing,
 but the rules are simple.
-Let's talk about <code>new</code> first.
+Let's talk about <code>new()</code> first.
 It's a built-in function essentially the same as its namesakes
 in other languages: <code>new(T)</code> allocates zeroed storage for a new item of type
 <code>T</code> and returns its address, a value of type <code>*T</code>.
@@ -951,9 +920,9 @@ In Go terminology, it returns a pointer to a newly allocated zero value of type
 </p>
 
 <p>
-Since the memory returned by <code>new</code> is zeroed, it's helpful to arrange that the
+Since the memory returned by <code>new()</code> is zeroed, it's helpful to arrange that the
 zeroed object can be used without further initialization.  This means a user of
-the data structure can create one with <code>new</code> and get right to
+the data structure can create one with <code>new()</code> and get right to
 work.
 For example, the documentation for <code>bytes.Buffer</code> states that
 "the zero value for <code>Buffer</code> is an empty buffer ready to use."
@@ -976,7 +945,7 @@ type SyncedBuffer struct {
 
 <p>
 Values of type <code>SyncedBuffer</code> are also ready to use immediately upon allocation
-or just declaration.  In the next snippet, both <code>p</code> and <code>v</code> will work
+or just declaration.  In this snippet, both <code>p</code> and <code>v</code> will work
 correctly without further arrangement.
 </p>
 
@@ -1014,6 +983,7 @@ an expression that creates a
 new instance each time it is evaluated.
 </p>
 
+
 <pre>
 func NewFile(fd int, name string) *File {
     if fd &lt; 0 {
@@ -1025,7 +995,7 @@ func NewFile(fd int, name string) *File {
 </pre>
 
 <p>
-Note that, unlike in C, it's perfectly OK to return the address of a local variable;
+Note that it's perfectly OK to return the address of a local variable;
 the storage associated with the variable survives after the function
 returns.
 In fact, taking the address of a composite literal
@@ -1066,7 +1036,7 @@ s := []string      {Enone: "no error", Eio: "Eio", Einval: "invalid argument"}
 m := map[int]string{Enone: "no error", Eio: "Eio", Einval: "invalid argument"}
 </pre>
 
-<h3 id="allocation_make">Allocation with <code>make</code></h3>
+<h3 id="allocation_make">Allocation with <code>make()</code></h3>
 
 <p>
 Back to allocation.
@@ -1079,7 +1049,7 @@ is that these three types are, under the covers, references to data structures t
 must be initialized before use.
 A slice, for example, is a three-item descriptor
 containing a pointer to the data (inside an array), the length, and the
-capacity, and until those items are initialized, the slice is <code>nil</code>.
+capacity; until those items are initialized, the slice is <code>nil</code>.
 For slices, maps, and channels,
 <code>make</code> initializes the internal data structure and prepares
 the value for use.
@@ -1100,8 +1070,8 @@ In contrast, <code>new([]int)</code> returns a pointer to a newly allocated, zer
 structure, that is, a pointer to a <code>nil</code> slice value.
 
 <p>
-These examples illustrate the difference between <code>new</code> and
-<code>make</code>.
+These examples illustrate the difference between <code>new()</code> and
+<code>make()</code>.
 </p>
 
 <pre>
@@ -1117,9 +1087,9 @@ v := make([]int, 100)
 </pre>
 
 <p>
-Remember that <code>make</code> applies only to maps, slices and channels
+Remember that <code>make()</code> applies only to maps, slices and channels
 and does not return a pointer.
-To obtain an explicit pointer allocate with <code>new</code>.
+To obtain an explicit pointer allocate with <code>new()</code>.
 </p>
 
 <h3 id="arrays">Arrays</h3>
@@ -1299,21 +1269,7 @@ is not present in the map will return the zero value for the type
 of the entries
 in the map.  For instance, if the map contains integers, looking
 up a non-existent key will return <code>0</code>.
-A set can be implemented as a map with value type <code>bool</code>.
-Set the map entry to <code>true</code> to put the value in the set, and then
-test it by simple indexing.
 </p>
-<pre>
-attended := map[string] bool {
-    "Ann": true,
-    "Joe": true,
-    ...
-}
-
-if attended[person] { // will be false if person is not in the map
-    fmt.Println(person, "was at the meeting")
-}
-</pre>
 <p>
 Sometimes you need to distinguish a missing entry from
 a zero value.  Is there an entry for <code>"UTC"</code>
@@ -1338,7 +1294,7 @@ func offset(tz string) int {
     if seconds, ok := timeZone[tz]; ok {
         return seconds
     }
-    log.Println("unknown time zone:", tz)
+    log.Println("unknown time zone", tz)
     return 0
 }
 </pre>
@@ -1474,7 +1430,7 @@ map[string] int
 </pre>
 <p>
 If you want to control the default format for a custom type, all that's required is to define
-a method with the signature <code>String() string</code> on the type.
+a method <code>String() string</code> on the type.
 For our simple type <code>T</code>, that might look like this.
 </p>
 <pre>
@@ -1490,13 +1446,7 @@ to print in the format
 7/-2.35/"abc\tdef"
 </pre>
 <p>
-(If you need to print <em>values</em> of type <code>T</code> as well as pointers to <code>T</code>,
-the receiver for <code>String</code> must be of value type; this example used a pointer because
-that's more efficient and idiomatic for struct types.
-See the section below on <a href="#pointers_vs_values">pointers vs. value receivers</a> for more information.)
-</p>
-<p>
-Our <code>String</code> method is able to call <code>Sprintf</code> because the
+Our <code>String()</code> method is able to call <code>Sprintf</code> because the
 print routines are fully reentrant and can be used recursively.
 We can even go one step further and pass a print routine's arguments directly to another such routine.
 The signature of <code>Printf</code> uses the type <code>...interface{}</code>
@@ -1536,7 +1486,7 @@ for a min function that chooses the least of a list of integers:
 func Min(a ...int) int {
     min := int(^uint(0) >> 1)  // largest int
     for _, i := range a {
-        if i &lt; min {
+        if i < min {
             min = i
         }
     }
@@ -1684,27 +1634,26 @@ var (
 <h3 id="init">The init function</h3>
 
 <p>
-Finally, each source file can define its own niladic <code>init</code> function to
-set up whatever state is required.  (Actually each file can have multiple
-<code>init</code> functions.) The only restriction is that, although
+Finally, each source file can define its own <code>init()</code> function to
+set up whatever state is required.  The only restriction is that, although
 goroutines can be launched during initialization, they will not begin
 execution until it completes; initialization always runs as a single thread
 of execution.
-And finally means finally: <code>init</code> is called after all the
+And finally means finally: <code>init()</code> is called after all the
 variable declarations in the package have evaluated their initializers,
 and those are evaluated only after all the imported packages have been
 initialized.
 </p>
 <p>
 Besides initializations that cannot be expressed as declarations,
-a common use of <code>init</code> functions is to verify or repair
+a common use of <code>init()</code> functions is to verify or repair
 correctness of the program state before real execution begins.
 </p>
 
 <pre>
 func init() {
     if USER == "" {
-        log.Fatal("$USER not set")
+        log.Exit("$USER not set")
     }
     if HOME == "" {
         HOME = "/usr/" + USER
@@ -1901,7 +1850,7 @@ on every instance of a common method.
 In such cases, the constructor should return an interface value
 rather than the implementing type.
 As an example, in the hash libraries
-both <code>crc32.NewIEEE</code> and <code>adler32.New</code>
+both <code>crc32.NewIEEE()</code> and <code>adler32.New()</code>
 return the interface type <code>hash.Hash32</code>.
 Substituting the CRC-32 algorithm for Adler-32 in a Go program
 requires only changing the constructor call;
@@ -2245,7 +2194,7 @@ we would write <code>job.Logger</code>.
 This would be useful if we wanted to refine the methods of <code>Logger</code>.
 </p>
 <pre>
-func (job *Job) Logf(format string, args ...interface{}) {
+func (job *Job) Logf(format string, args ...) {
     job.Logger.Logf("%q: %s", job.Command, fmt.Sprintf(format, args))
 }
 </pre>
@@ -2577,49 +2526,39 @@ var serverChan = make(chan *Buffer)
 
 func client() {
     for {
-        var b *Buffer
-        // Grab a buffer if available; allocate if not.
-        select {
-        case b = &lt;-freeList:
-            // Got one; nothing more to do.
-        default:
-            // None free, so allocate a new one.
+        b, ok := &lt;-freeList  // grab a buffer if available
+        if !ok {              // if not, allocate a new one
             b = new(Buffer)
         }
-        load(b)              // Read next message from the net.
-        serverChan &lt;- b      // Send to server.
+        load(b)              // read next message from the net
+        serverChan &lt;- b      // send to server
     }
 }
 </pre>
 <p>
-The server loop receives each message from the client, processes it,
+The server loop receives messages from the client, processes them,
 and returns the buffer to the free list.
 </p>
 <pre>
 func server() {
     for {
-        b := &lt;-serverChan    // Wait for work.
+        b := &lt;-serverChan    // wait for work
         process(b)
-        // Reuse buffer if there's room.
-        select {
-        case freeList &lt;- b:
-            // Buffer on free list; nothing more to do.
-        default:
-            // Free list full, just carry on.
-        }
+        _ = freeList &lt;- b    // reuse buffer if room
     }
 }
 </pre>
 <p>
-The client attempts to retrieve a buffer from <code>freeList</code>;
-if none is available, it allocates a fresh one.
-The server's send to <code>freeList</code> puts <code>b</code> back
+The client's non-blocking receive from <code>freeList</code> obtains a
+buffer if one is available; otherwise the client allocates
+a fresh one.
+The server's non-blocking send on freeList puts <code>b</code> back
 on the free list unless the list is full, in which case the
 buffer is dropped on the floor to be reclaimed by
 the garbage collector.
-(The <code>default</code> clauses in the <code>select</code>
-statements execute when no other case is ready,
-meaning that the <code>selects</code> never block.)
+(The assignment of the send operation to the blank identifier
+makes it non-blocking but ignores whether
+the operation succeeded.)
 This implementation builds a leaky bucket free list
 in just a few lines, relying on the buffered channel and
 the garbage collector for bookkeeping.
@@ -2674,13 +2613,6 @@ it is much more informative than the plain
 </p>
 
 <p>
-When feasible, error strings should identify their origin, such as by having
-a prefix naming the package that generated the error.  For example, in package
-image, the string representation for a decoding error due to an unknown format
-is "image: unknown format".
-</p>
-
-<p>
 Callers that care about the precise error details can
 use a type switch or a type assertion to look for specific
 errors and extract details.  For <code>PathErrors</code>
@@ -2690,7 +2622,7 @@ field for recoverable failures.
 
 <pre>
 for try := 0; try &lt; 2; try++ {
-    file, err = os.Open(filename)
+    file, err = os.Open(filename, os.O_RDONLY, 0)
     if err == nil {
         return
     }
@@ -2728,7 +2660,7 @@ suppresses the usual check for a <code>return</code> statement.
 // A toy implementation of cube root using Newton's method.
 func CubeRoot(x float64) float64 {
     z := x/3   // Arbitrary intitial value
-    for i := 0; i &lt; 1e6; i++ {
+    for i := 0; i < 1e6; i++ {
         prevz := z
         z -= (z*z*z-x) / (3*z*z)
         if veryClose(z, prevz) {
@@ -2763,7 +2695,7 @@ func init() {
 
 <p>
 When <code>panic</code> is called, including implicitly for run-time
-errors such as indexing an array out of bounds or failing a type
+errors such indexing an array out of bounds or failing a type
 assertion, it immediately stops execution of the current function
 and begins unwinding the stack of the goroutine, running any deferred
 functions along the way.  If that unwinding reaches the top of the
@@ -2785,7 +2717,7 @@ inside a server without killing the other executing goroutines.
 </p>
 
 <pre>
-func server(workChan &lt;-chan *Work) {
+func server(workChan <-chan *Work) {
     for work := range workChan {
         go safelyDo(work)
     }
@@ -2809,16 +2741,7 @@ calling <code>recover</code> handles the condition completely.
 </p>
 
 <p>
-Because <code>recover</code> always returns <code>nil</code> unless called directly
-from a deferred function, deferred code can call library routines that themselves
-use <code>panic</code> and <code>recover</code> without failing.  As an example,
-the deferred function in <code>safelyDo</code> might call a logging function before
-calling <code>recover</code>, and that logging code would run unaffected
-by the panicking state.
-</p>
-
-<p>
-With our recovery pattern in place, the <code>do</code>
+Note that with this recovery pattern in place, the <code>do</code>
 function (and anything it calls) can get out of any bad situation
 cleanly by calling <code>panic</code>.  We can use that idea to
 simplify error handling in complex software.  Let's look at an
@@ -2938,12 +2861,12 @@ func main() {
     http.Handle("/", http.HandlerFunc(QR))
     err := http.ListenAndServe(*addr, nil)
     if err != nil {
-        log.Fatal("ListenAndServe:", err)
+        log.Exit("ListenAndServe:", err)
     }
 }
 
 func QR(w http.ResponseWriter, req *http.Request) {
-    templ.Execute(w, req.FormValue("s"))
+    templ.Execute(req.FormValue("s"), w)
 }
 
 func UrlHtmlFormatter(w io.Writer, fmt string, v ...interface{}) {

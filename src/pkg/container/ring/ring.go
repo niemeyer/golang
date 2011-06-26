@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package ring implements operations on circular lists.
+// The ring package implements operations on circular lists.
 package ring
 
 // A Ring is an element of a circular list, or ring.
@@ -138,13 +138,16 @@ func (r *Ring) Len() int {
 }
 
 
-// Do calls function f on each element of the ring, in forward order.
-// The behavior of Do is undefined if f changes *r.
-func (r *Ring) Do(f func(interface{})) {
-	if r != nil {
-		f(r.Value)
-		for p := r.Next(); p != r; p = p.next {
-			f(p.Value)
+func (r *Ring) Iter() <-chan interface{} {
+	c := make(chan interface{})
+	go func() {
+		if r != nil {
+			c <- r.Value
+			for p := r.Next(); p != r; p = p.next {
+				c <- p.Value
+			}
 		}
-	}
+		close(c)
+	}()
+	return c
 }

@@ -10,17 +10,6 @@ if [ ! -f env.bash ]; then
 fi
 . ./env.bash
 
-if ld --version 2>&1 | grep 'gold.*2\.20' >/dev/null; then
-	echo 'ERROR: Your system has gold 2.20 installed.'
-	echo 'This version is shipped by Ubuntu even though'
-	echo 'it is known not to work on Ubuntu.'
-	echo 'Binaries built with this linker are likely to fail in mysterious ways.'
-	echo
-	echo 'Run sudo apt-get remove binutils-gold.'
-	echo
-	exit 1
-fi
-
 # Create target directories
 if [ "$GOBIN" = "$GOROOT/bin" ]; then
 	mkdir -p "$GOROOT/bin"
@@ -47,9 +36,6 @@ rm -f "$GOBIN"/gomake
 ) >"$GOBIN"/gomake
 chmod +x "$GOBIN"/gomake
 
-# TODO(brainman): delete this after 01/01/2012.
-rm -f "$GOBIN"/gotest	# remove old bash version of gotest on Windows
-
 if [ -d /selinux -a -f /selinux/booleans/allow_execstack -a -x /usr/sbin/selinuxenabled ] && /usr/sbin/selinuxenabled; then
 	if ! cat /selinux/booleans/allow_execstack | grep -c '^1 1$' >> /dev/null ; then
 		echo "WARNING: the default SELinux policy on, at least, Fedora 12 breaks "
@@ -75,8 +61,29 @@ bash "$GOROOT"/src/clean.bash
 # pkg builds libcgo and the Go programs in cmd.
 for i in lib9 libbio libmach cmd pkg
 do
-	echo; echo; echo %%%% making $i %%%%; echo
-	gomake -C $i install
+	case "$i-$GOOS-$GOARCH" in
+	cmd/*-nacl-*)
+		;;
+	*)
+		# The ( ) here are to preserve the current directory
+		# for the next round despite the cd $i below.
+		# set -e does not apply to ( ) so we must explicitly
+		# test the exit status.
+		(
+			echo; echo; echo %%%% making $i %%%%; echo
+			cd "$GOROOT"/src/$i
+			case $i in
+			cmd)
+				bash make.bash
+				;;
+			pkg)
+				gomake install
+				;;
+			*)
+				gomake install
+			esac
+		)  || exit 1
+	esac
 done
 
 # Print post-install messages.

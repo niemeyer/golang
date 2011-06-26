@@ -2,21 +2,17 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package jpeg implements a JPEG image decoder and encoder.
-//
-// JPEG is defined in ITU-T T.81: http://www.w3.org/Graphics/JPEG/itu-t81.pdf.
+// The jpeg package implements a decoder for JPEG images, as defined in ITU-T T.81.
 package jpeg
+
+// See http://www.w3.org/Graphics/JPEG/itu-t81.pdf
 
 import (
 	"bufio"
 	"image"
-	"image/ycbcr"
 	"io"
 	"os"
 )
-
-// TODO(nigeltao): fix up the doc comment style so that sentences start with
-// the name of the type or function that they annotate.
 
 // A FormatError reports that the input is not a valid JPEG.
 type FormatError string
@@ -30,33 +26,25 @@ func (e UnsupportedError) String() string { return "unsupported JPEG feature: " 
 
 // Component specification, specified in section B.2.2.
 type component struct {
-	h  int   // Horizontal sampling factor.
-	v  int   // Vertical sampling factor.
 	c  uint8 // Component identifier.
+	h  uint8 // Horizontal sampling factor.
+	v  uint8 // Vertical sampling factor.
 	tq uint8 // Quantization table destination selector.
 }
-
-type block [blockSize]int
 
 const (
 	blockSize = 64 // A DCT block is 8x8.
 
-	dcTable = 0
-	acTable = 1
-	maxTc   = 1
-	maxTh   = 3
-	maxTq   = 3
+	dcTableClass = 0
+	acTableClass = 1
+	maxTc        = 1
+	maxTh        = 3
+	maxTq        = 3
 
-	// A grayscale JPEG image has only a Y component.
-	nGrayComponent = 1
-	// A color JPEG image has Y, Cb and Cr components.
-	nColorComponent = 3
-
-	// We only support 4:4:4, 4:2:2 and 4:2:0 downsampling, and therefore the
-	// number of luma samples per chroma sample is at most 2 in the horizontal
-	// and 2 in the vertical direction.
-	maxH = 2
-	maxV = 2
+	// We only support 4:4:4, 4:2:2 and 4:2:0 downsampling, and assume that the components are Y, Cb, Cr.
+	nComponent = 3
+	maxH       = 2
+	maxV       = 2
 )
 
 const (
@@ -96,14 +84,13 @@ type Reader interface {
 type decoder struct {
 	r             Reader
 	width, height int
-	img1          *image.Gray
-	img3          *ycbcr.YCbCr
+	image         *image.RGBA
 	ri            int // Restart Interval.
-	nComp         int
-	comp          [nColorComponent]component
+	comps         [nComponent]component
 	huff          [maxTc + 1][maxTh + 1]huffman
-	quant         [maxTq + 1]block
+	quant         [maxTq + 1][blockSize]int
 	b             bits
+	blocks        [nComponent][maxH * maxV][blockSize]int
 	tmp           [1024]byte
 }
 
@@ -125,15 +112,10 @@ func (d *decoder) ignore(n int) os.Error {
 
 // Specified in section B.2.2.
 func (d *decoder) processSOF(n int) os.Error {
-	switch n {
-	case 6 + 3*nGrayComponent:
-		d.nComp = nGrayComponent
-	case 6 + 3*nColorComponent:
-		d.nComp = nColorComponent
-	default:
+	if n != 6+3*nComponent {
 		return UnsupportedError("SOF has wrong length")
 	}
-	_, err := io.ReadFull(d.r, d.tmp[:n])
+	_, err := io.ReadFull(d.r, d.tmp[0:6+3*nComponent])
 	if err != nil {
 		return err
 	}
@@ -143,28 +125,26 @@ func (d *decoder) processSOF(n int) os.Error {
 	}
 	d.height = int(d.tmp[1])<<8 + int(d.tmp[2])
 	d.width = int(d.tmp[3])<<8 + int(d.tmp[4])
-	if int(d.tmp[5]) != d.nComp {
+	if d.tmp[5] != nComponent {
 		return UnsupportedError("SOF has wrong number of image components")
 	}
-	for i := 0; i < d.nComp; i++ {
+	for i := 0; i < nComponent; i++ {
 		hv := d.tmp[7+3*i]
-		d.comp[i].h = int(hv >> 4)
-		d.comp[i].v = int(hv & 0x0f)
-		d.comp[i].c = d.tmp[6+3*i]
-		d.comp[i].tq = d.tmp[8+3*i]
-		if d.nComp == nGrayComponent {
-			continue
-		}
-		// For color images, we only support 4:4:4, 4:2:2 or 4:2:0 chroma
-		// downsampling ratios. This implies that the (h, v) values for the Y
-		// component are either (1, 1), (2, 1) or (2, 2), and the (h, v)
-		// values for the Cr and Cb components must be (1, 1).
+		d.comps[i].c = d.tmp[6+3*i]
+		d.comps[i].h = hv >> 4
+		d.comps[i].v = hv & 0x0f
+		d.comps[i].tq = d.tmp[8+3*i]
+		// We only support YCbCr images, and 4:4:4, 4:2:2 or 4:2:0 chroma downsampling ratios. This implies that
+		// the (h, v) values for the Y component are either (1, 1), (2, 1) or (2, 2), and the
+		// (h, v) values for the Cr and Cb components must be (1, 1).
 		if i == 0 {
 			if hv != 0x11 && hv != 0x21 && hv != 0x22 {
 				return UnsupportedError("luma downsample ratio")
 			}
-		} else if hv != 0x11 {
-			return UnsupportedError("chroma downsample ratio")
+		} else {
+			if hv != 0x11 {
+				return UnsupportedError("chroma downsample ratio")
+			}
 		}
 	}
 	return nil
@@ -196,88 +176,110 @@ func (d *decoder) processDQT(n int) os.Error {
 	return nil
 }
 
-// makeImg allocates and initializes the destination image.
-func (d *decoder) makeImg(h0, v0, mxx, myy int) {
-	if d.nComp == nGrayComponent {
-		d.img1 = image.NewGray(8*mxx, 8*myy)
-		d.img1.Rect = image.Rect(0, 0, d.width, d.height)
-		return
+// Set the Pixel (px, py)'s RGB value, based on its YCbCr value.
+func (d *decoder) calcPixel(px, py, lumaBlock, lumaIndex, chromaIndex int) {
+	y, cb, cr := d.blocks[0][lumaBlock][lumaIndex], d.blocks[1][0][chromaIndex], d.blocks[2][0][chromaIndex]
+	// The JFIF specification (http://www.w3.org/Graphics/JPEG/jfif3.pdf, page 3) gives the formula
+	// for translating YCbCr to RGB as:
+	//   R = Y + 1.402 (Cr-128)
+	//   G = Y - 0.34414 (Cb-128) - 0.71414 (Cr-128)
+	//   B = Y + 1.772 (Cb-128)
+	yPlusHalf := 100000*y + 50000
+	cb -= 128
+	cr -= 128
+	r := (yPlusHalf + 140200*cr) / 100000
+	g := (yPlusHalf - 34414*cb - 71414*cr) / 100000
+	b := (yPlusHalf + 177200*cb) / 100000
+	if r < 0 {
+		r = 0
+	} else if r > 255 {
+		r = 255
 	}
-	var subsampleRatio ycbcr.SubsampleRatio
-	n := h0 * v0
-	switch n {
-	case 1:
-		subsampleRatio = ycbcr.SubsampleRatio444
-	case 2:
-		subsampleRatio = ycbcr.SubsampleRatio422
-	case 4:
-		subsampleRatio = ycbcr.SubsampleRatio420
-	default:
-		panic("unreachable")
+	if g < 0 {
+		g = 0
+	} else if g > 255 {
+		g = 255
 	}
-	b := make([]byte, mxx*myy*(1*8*8*n+2*8*8))
-	d.img3 = &ycbcr.YCbCr{
-		Y:              b[mxx*myy*(0*8*8*n+0*8*8) : mxx*myy*(1*8*8*n+0*8*8)],
-		Cb:             b[mxx*myy*(1*8*8*n+0*8*8) : mxx*myy*(1*8*8*n+1*8*8)],
-		Cr:             b[mxx*myy*(1*8*8*n+1*8*8) : mxx*myy*(1*8*8*n+2*8*8)],
-		SubsampleRatio: subsampleRatio,
-		YStride:        mxx * 8 * h0,
-		CStride:        mxx * 8,
-		Rect:           image.Rect(0, 0, d.width, d.height),
+	if b < 0 {
+		b = 0
+	} else if b > 255 {
+		b = 255
+	}
+	d.image.Pix[py*d.image.Stride+px] = image.RGBAColor{uint8(r), uint8(g), uint8(b), 0xff}
+}
+
+// Convert the MCU from YCbCr to RGB.
+func (d *decoder) convertMCU(mx, my, h0, v0 int) {
+	lumaBlock := 0
+	for v := 0; v < v0; v++ {
+		for h := 0; h < h0; h++ {
+			chromaBase := 8*4*v + 4*h
+			py := 8 * (v0*my + v)
+			for y := 0; y < 8 && py < d.height; y++ {
+				px := 8 * (h0*mx + h)
+				lumaIndex := 8 * y
+				chromaIndex := chromaBase + 8*(y/v0)
+				for x := 0; x < 8 && px < d.width; x++ {
+					d.calcPixel(px, py, lumaBlock, lumaIndex, chromaIndex)
+					if h0 == 1 {
+						chromaIndex += 1
+					} else {
+						chromaIndex += x % 2
+					}
+					lumaIndex++
+					px++
+				}
+				py++
+			}
+			lumaBlock++
+		}
 	}
 }
 
 // Specified in section B.2.3.
 func (d *decoder) processSOS(n int) os.Error {
-	if d.nComp == 0 {
-		return FormatError("missing SOF marker")
+	if d.image == nil {
+		d.image = image.NewRGBA(d.width, d.height)
 	}
-	if n != 4+2*d.nComp {
+	if n != 4+2*nComponent {
 		return UnsupportedError("SOS has wrong length")
 	}
-	_, err := io.ReadFull(d.r, d.tmp[0:4+2*d.nComp])
+	_, err := io.ReadFull(d.r, d.tmp[0:4+2*nComponent])
 	if err != nil {
 		return err
 	}
-	if int(d.tmp[0]) != d.nComp {
+	if d.tmp[0] != nComponent {
 		return UnsupportedError("SOS has wrong number of image components")
 	}
-	var scan [nColorComponent]struct {
+	var scanComps [nComponent]struct {
 		td uint8 // DC table selector.
 		ta uint8 // AC table selector.
 	}
-	for i := 0; i < d.nComp; i++ {
+	h0, v0 := int(d.comps[0].h), int(d.comps[0].v) // The h and v values from the Y components.
+	for i := 0; i < nComponent; i++ {
 		cs := d.tmp[1+2*i] // Component selector.
-		if cs != d.comp[i].c {
+		if cs != d.comps[i].c {
 			return UnsupportedError("scan components out of order")
 		}
-		scan[i].td = d.tmp[2+2*i] >> 4
-		scan[i].ta = d.tmp[2+2*i] & 0x0f
+		scanComps[i].td = d.tmp[2+2*i] >> 4
+		scanComps[i].ta = d.tmp[2+2*i] & 0x0f
 	}
 	// mxx and myy are the number of MCUs (Minimum Coded Units) in the image.
-	h0, v0 := d.comp[0].h, d.comp[0].v // The h and v values from the Y components.
-	mxx := (d.width + 8*h0 - 1) / (8 * h0)
-	myy := (d.height + 8*v0 - 1) / (8 * v0)
-	if d.img1 == nil && d.img3 == nil {
-		d.makeImg(h0, v0, mxx, myy)
-	}
+	mxx := (d.width + 8*int(h0) - 1) / (8 * int(h0))
+	myy := (d.height + 8*int(v0) - 1) / (8 * int(v0))
 
 	mcu, expectedRST := 0, uint8(rst0Marker)
-	var (
-		b  block
-		dc [nColorComponent]int
-	)
+	var allZeroes [blockSize]int
+	var dc [nComponent]int
 	for my := 0; my < myy; my++ {
 		for mx := 0; mx < mxx; mx++ {
-			for i := 0; i < d.nComp; i++ {
-				qt := &d.quant[d.comp[i].tq]
-				for j := 0; j < d.comp[i].h*d.comp[i].v; j++ {
-					// TODO(nigeltao): make this a "var b block" once the compiler's escape
-					// analysis is good enough to allocate it on the stack, not the heap.
-					b = block{}
+			for i := 0; i < nComponent; i++ {
+				qt := &d.quant[d.comps[i].tq]
+				for j := 0; j < int(d.comps[i].h*d.comps[i].v); j++ {
+					d.blocks[i][j] = allZeroes
 
 					// Decode the DC coefficient, as specified in section F.2.2.1.
-					value, err := d.decodeHuffman(&d.huff[dcTable][scan[i].td])
+					value, err := d.decodeHuffman(&d.huff[dcTableClass][scanComps[i].td])
 					if err != nil {
 						return err
 					}
@@ -289,60 +291,38 @@ func (d *decoder) processSOS(n int) os.Error {
 						return err
 					}
 					dc[i] += dcDelta
-					b[0] = dc[i] * qt[0]
+					d.blocks[i][j][0] = dc[i] * qt[0]
 
 					// Decode the AC coefficients, as specified in section F.2.2.2.
 					for k := 1; k < blockSize; k++ {
-						value, err := d.decodeHuffman(&d.huff[acTable][scan[i].ta])
+						value, err := d.decodeHuffman(&d.huff[acTableClass][scanComps[i].ta])
 						if err != nil {
 							return err
 						}
-						val0 := value >> 4
-						val1 := value & 0x0f
-						if val1 != 0 {
-							k += int(val0)
+						v0 := value >> 4
+						v1 := value & 0x0f
+						if v1 != 0 {
+							k += int(v0)
 							if k > blockSize {
 								return FormatError("bad DCT index")
 							}
-							ac, err := d.receiveExtend(val1)
+							ac, err := d.receiveExtend(v1)
 							if err != nil {
 								return err
 							}
-							b[unzig[k]] = ac * qt[k]
+							d.blocks[i][j][unzig[k]] = ac * qt[k]
 						} else {
-							if val0 != 0x0f {
+							if v0 != 0x0f {
 								break
 							}
 							k += 0x0f
 						}
 					}
 
-					// Perform the inverse DCT and store the MCU component to the image.
-					if d.nComp == nGrayComponent {
-						idct(d.tmp[:64], 8, &b)
-						// Convert from []uint8 to []image.GrayColor.
-						p := d.img1.Pix[8*(my*d.img1.Stride+mx):]
-						for y := 0; y < 8; y++ {
-							dst := p[y*d.img1.Stride:]
-							src := d.tmp[8*y:]
-							for x := 0; x < 8; x++ {
-								dst[x] = image.GrayColor{src[x]}
-							}
-						}
-					} else {
-						switch i {
-						case 0:
-							mx0 := h0*mx + (j % 2)
-							my0 := v0*my + (j / 2)
-							idct(d.img3.Y[8*(my0*d.img3.YStride+mx0):], d.img3.YStride, &b)
-						case 1:
-							idct(d.img3.Cb[8*(my*d.img3.CStride+mx):], d.img3.CStride, &b)
-						case 2:
-							idct(d.img3.Cr[8*(my*d.img3.CStride+mx):], d.img3.CStride, &b)
-						}
-					}
+					idct(&d.blocks[i][j])
 				} // for j
 			} // for i
+			d.convertMCU(mx, my, int(d.comps[0].h), int(d.comps[0].v))
 			mcu++
 			if d.ri > 0 && mcu%d.ri == 0 && mcu < mxx*myy {
 				// A more sophisticated decoder could use RST[0-7] markers to resynchronize from corrupt input,
@@ -361,7 +341,9 @@ func (d *decoder) processSOS(n int) os.Error {
 				// Reset the Huffman decoder.
 				d.b = bits{}
 				// Reset the DC components, as per section F.2.1.3.1.
-				dc = [nColorComponent]int{}
+				for i := 0; i < nComponent; i++ {
+					dc[i] = 0
+				}
 			}
 		} // for mx
 	} // for my
@@ -449,13 +431,7 @@ func (d *decoder) decode(r io.Reader, configOnly bool) (image.Image, os.Error) {
 			return nil, err
 		}
 	}
-	if d.img1 != nil {
-		return d.img1, nil
-	}
-	if d.img3 != nil {
-		return d.img3, nil
-	}
-	return nil, FormatError("missing SOS marker")
+	return d.image, nil
 }
 
 // Decode reads a JPEG image from r and returns it as an image.Image.
@@ -471,13 +447,7 @@ func DecodeConfig(r io.Reader) (image.Config, os.Error) {
 	if _, err := d.decode(r, true); err != nil {
 		return image.Config{}, err
 	}
-	switch d.nComp {
-	case nGrayComponent:
-		return image.Config{image.GrayColorModel, d.width, d.height}, nil
-	case nColorComponent:
-		return image.Config{ycbcr.YCbCrColorModel, d.width, d.height}, nil
-	}
-	return image.Config{}, FormatError("missing SOF marker")
+	return image.Config{image.RGBAColorModel, d.width, d.height}, nil
 }
 
 func init() {

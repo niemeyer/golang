@@ -2,8 +2,9 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package textproto implements generic support for text-based request/response
-// protocols in the style of HTTP, NNTP, and SMTP.
+// The textproto package implements generic support for
+// text-based request/response protocols in the style of
+// HTTP, NNTP, and SMTP.
 //
 // The package provides:
 //
@@ -77,7 +78,7 @@ func (c *Conn) Close() os.Error {
 // Dial connects to the given address on the given network using net.Dial
 // and then returns a new Conn for the connection.
 func Dial(network, addr string) (*Conn, os.Error) {
-	c, err := net.Dial(network, addr)
+	c, err := net.Dial(network, "", addr)
 	if err != nil {
 		return nil, err
 	}

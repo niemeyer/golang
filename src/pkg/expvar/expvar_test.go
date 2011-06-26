@@ -76,33 +76,33 @@ func TestString(t *testing.T) {
 }
 
 func TestMapCounter(t *testing.T) {
-	colors := NewMap("bike-shed-colors")
+	colours := NewMap("bike-shed-colours")
 
-	colors.Add("red", 1)
-	colors.Add("red", 2)
-	colors.Add("blue", 4)
-	colors.AddFloat("green", 4.125)
-	if x := colors.m["red"].(*Int).i; x != 3 {
-		t.Errorf("colors.m[\"red\"] = %v, want 3", x)
+	colours.Add("red", 1)
+	colours.Add("red", 2)
+	colours.Add("blue", 4)
+	colours.AddFloat("green", 4.125)
+	if x := colours.m["red"].(*Int).i; x != 3 {
+		t.Errorf("colours.m[\"red\"] = %v, want 3", x)
 	}
-	if x := colors.m["blue"].(*Int).i; x != 4 {
-		t.Errorf("colors.m[\"blue\"] = %v, want 4", x)
+	if x := colours.m["blue"].(*Int).i; x != 4 {
+		t.Errorf("colours.m[\"blue\"] = %v, want 4", x)
 	}
-	if x := colors.m["green"].(*Float).f; x != 4.125 {
-		t.Errorf("colors.m[\"green\"] = %v, want 3.14", x)
+	if x := colours.m["green"].(*Float).f; x != 4.125 {
+		t.Errorf("colours.m[\"green\"] = %v, want 3.14", x)
 	}
 
-	// colors.String() should be '{"red":3, "blue":4}',
+	// colours.String() should be '{"red":3, "blue":4}',
 	// though the order of red and blue could vary.
-	s := colors.String()
+	s := colours.String()
 	var j interface{}
 	err := json.Unmarshal([]byte(s), &j)
 	if err != nil {
-		t.Errorf("colors.String() isn't valid JSON: %v", err)
+		t.Errorf("colours.String() isn't valid JSON: %v", err)
 	}
 	m, ok := j.(map[string]interface{})
 	if !ok {
-		t.Error("colors.String() didn't produce a map.")
+		t.Error("colours.String() didn't produce a map.")
 	}
 	red := m["red"]
 	x, ok := red.(float64)
@@ -114,15 +114,41 @@ func TestMapCounter(t *testing.T) {
 	}
 }
 
-func TestFunc(t *testing.T) {
-	var x interface{} = []string{"a", "b"}
-	f := Func(func() interface{} { return x })
-	if s, exp := f.String(), `["a","b"]`; s != exp {
-		t.Errorf(`f.String() = %q, want %q`, s, exp)
+func TestIntFunc(t *testing.T) {
+	x := int64(4)
+	ix := IntFunc(func() int64 { return x })
+	if s := ix.String(); s != "4" {
+		t.Errorf("ix.String() = %v, want 4", s)
 	}
 
-	x = 17
-	if s, exp := f.String(), `17`; s != exp {
-		t.Errorf(`f.String() = %q, want %q`, s, exp)
+	x++
+	if s := ix.String(); s != "5" {
+		t.Errorf("ix.String() = %v, want 5", s)
+	}
+}
+
+func TestFloatFunc(t *testing.T) {
+	x := 8.5
+	ix := FloatFunc(func() float64 { return x })
+	if s := ix.String(); s != "8.5" {
+		t.Errorf("ix.String() = %v, want 3.14", s)
+	}
+
+	x -= 1.25
+	if s := ix.String(); s != "7.25" {
+		t.Errorf("ix.String() = %v, want 4.34", s)
+	}
+}
+
+func TestStringFunc(t *testing.T) {
+	x := "hello"
+	sx := StringFunc(func() string { return x })
+	if s, exp := sx.String(), `"hello"`; s != exp {
+		t.Errorf(`sx.String() = %q, want %q`, s, exp)
+	}
+
+	x = "goodbye"
+	if s, exp := sx.String(), `"goodbye"`; s != exp {
+		t.Errorf(`sx.String() = %q, want %q`, s, exp)
 	}
 }

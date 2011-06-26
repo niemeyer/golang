@@ -1,14 +1,4 @@
 <!-- The Go Memory Model -->
-<!-- subtitle Version of June 10, 2011 -->
-
-<style>
-p.rule {
-  font-style: italic;
-}
-span.event {
-  font-style: italic;
-}
-</style>
 
 <h2>Introduction</h2>
 
@@ -43,8 +33,8 @@ Also, if <span class="event">e<sub>1</sub></span> does not happen before <span c
 after <span class="event">e<sub>2</sub></span>, then we say that <span class="event">e<sub>1</sub></span> and <span class="event">e<sub>2</sub></span> happen concurrently.
 </p>
 
-<p class="rule">
-Within a single goroutine, the happens-before order is the
+<p>
+Within a single goroutine, the happens before order is the
 order expressed by the program.
 </p>
 
@@ -221,17 +211,6 @@ is guaranteed to print <code>"hello, world"</code>.  The write to <code>a</code>
 happens before the send on <code>c</code>, which happens before
 the corresponding receive on <code>c</code> completes, which happens before
 the <code>print</code>.
-</p>
-
-<p class="rule">
-The closing of a channel happens before a receive that returns a zero value
-because the channel is closed.
-</p>
-
-<p>
-In the previous example, replacing
-<code>c &lt;- 0</code> with <code>close(c)</code>
-yields a program with the same guaranteed behavior.
 </p>
 
 <p class="rule">

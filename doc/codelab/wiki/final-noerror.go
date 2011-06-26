@@ -35,14 +35,14 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 		p = &Page{Title: title}
 	}
 	t, _ := template.ParseFile("edit.html", nil)
-	t.Execute(w, p)
+	t.Execute(p, w)
 }
 
 func viewHandler(w http.ResponseWriter, r *http.Request) {
 	title := r.URL.Path[lenPath:]
 	p, _ := loadPage(title)
 	t, _ := template.ParseFile("view.html", nil)
-	t.Execute(w, p)
+	t.Execute(p, w)
 }
 
 func main() {

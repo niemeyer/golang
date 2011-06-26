@@ -30,13 +30,9 @@ func parse(name string, flags uint) *ast.File {
 			}
 			os.Exit(2)
 		}
-		fatalf("parsing %s: %s", name, err)
+		fatal("parsing %s: %s", name, err)
 	}
 	return ast1
-}
-
-func sourceLine(n ast.Node) int {
-	return fset.Position(n.Pos()).Line
 }
 
 // ReadGo populates f with information learned from reading the
@@ -73,13 +69,10 @@ func (f *File) ReadGo(name string) {
 			if s.Name != nil {
 				error(s.Path.Pos(), `cannot rename import "C"`)
 			}
-			cg := s.Doc
-			if cg == nil && len(d.Specs) == 1 {
-				cg = d.Doc
-			}
-			if cg != nil {
-				f.Preamble += fmt.Sprintf("#line %d %q\n", sourceLine(cg), name)
-				f.Preamble += doc.CommentText(cg) + "\n"
+			if s.Doc != nil {
+				f.Preamble += doc.CommentText(s.Doc) + "\n"
+			} else if len(d.Specs) == 1 && d.Doc != nil {
+				f.Preamble += doc.CommentText(d.Doc) + "\n"
 			}
 		}
 	}
@@ -180,7 +173,7 @@ func (f *File) saveExport(x interface{}, context string) {
 		return
 	}
 	for _, c := range n.Doc.List {
-		if !strings.HasPrefix(string(c.Text), "//export ") {
+		if string(c.Text[0:9]) != "//export " {
 			continue
 		}
 
@@ -305,9 +298,6 @@ func (f *File) walk(x interface{}, context string, visit func(*File, interface{}
 		f.walk(n.Stmt, "stmt", visit)
 	case *ast.ExprStmt:
 		f.walk(&n.X, "expr", visit)
-	case *ast.SendStmt:
-		f.walk(&n.Chan, "expr", visit)
-		f.walk(&n.Value, "expr", visit)
 	case *ast.IncDecStmt:
 		f.walk(&n.X, "expr", visit)
 	case *ast.AssignStmt:
@@ -325,30 +315,29 @@ func (f *File) walk(x interface{}, context string, visit func(*File, interface{}
 		f.walk(n.Results, "expr", visit)
 	case *ast.BranchStmt:
 	case *ast.BlockStmt:
-		f.walk(n.List, context, visit)
+		f.walk(n.List, "stmt", visit)
 	case *ast.IfStmt:
 		f.walk(n.Init, "stmt", visit)
 		f.walk(&n.Cond, "expr", visit)
 		f.walk(n.Body, "stmt", visit)
 		f.walk(n.Else, "stmt", visit)
 	case *ast.CaseClause:
-		if context == "typeswitch" {
-			context = "type"
-		} else {
-			context = "expr"
-		}
-		f.walk(n.List, context, visit)
+		f.walk(n.Values, "expr", visit)
 		f.walk(n.Body, "stmt", visit)
 	case *ast.SwitchStmt:
 		f.walk(n.Init, "stmt", visit)
 		f.walk(&n.Tag, "expr", visit)
-		f.walk(n.Body, "switch", visit)
+		f.walk(n.Body, "stmt", visit)
+	case *ast.TypeCaseClause:
+		f.walk(n.Types, "type", visit)
+		f.walk(n.Body, "stmt", visit)
 	case *ast.TypeSwitchStmt:
 		f.walk(n.Init, "stmt", visit)
 		f.walk(n.Assign, "stmt", visit)
-		f.walk(n.Body, "typeswitch", visit)
+		f.walk(n.Body, "stmt", visit)
 	case *ast.CommClause:
-		f.walk(n.Comm, "stmt", visit)
+		f.walk(n.Lhs, "expr", visit)
+		f.walk(n.Rhs, "expr", visit)
 		f.walk(n.Body, "stmt", visit)
 	case *ast.SelectStmt:
 		f.walk(n.Body, "stmt", visit)

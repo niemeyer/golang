@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-/*	Package datafmt implements syntax-directed, type-driven formatting
+/*	The datafmt package implements syntax-directed, type-driven formatting
 	of arbitrary data structures. Formatting a data structure consists of
 	two phases: first, a parser reads a format specification and builds a
 	"compiled" format. Then, the format can be applied repeatedly to
@@ -408,20 +408,20 @@ func (s *State) error(msg string) {
 //
 
 func typename(typ reflect.Type) string {
-	switch typ.Kind() {
-	case reflect.Array:
+	switch typ.(type) {
+	case *reflect.ArrayType:
 		return "array"
-	case reflect.Slice:
+	case *reflect.SliceType:
 		return "array"
-	case reflect.Chan:
+	case *reflect.ChanType:
 		return "chan"
-	case reflect.Func:
+	case *reflect.FuncType:
 		return "func"
-	case reflect.Interface:
+	case *reflect.InterfaceType:
 		return "interface"
-	case reflect.Map:
+	case *reflect.MapType:
 		return "map"
-	case reflect.Ptr:
+	case *reflect.PtrType:
 		return "ptr"
 	}
 	return typ.String()
@@ -519,38 +519,38 @@ func (s *State) eval(fexpr expr, value reflect.Value, index int) bool {
 
 		case "*":
 			// indirection: operation is type-specific
-			switch v := value; v.Kind() {
-			case reflect.Array:
+			switch v := value.(type) {
+			case *reflect.ArrayValue:
 				if v.Len() <= index {
 					return false
 				}
-				value = v.Index(index)
+				value = v.Elem(index)
 
-			case reflect.Slice:
+			case *reflect.SliceValue:
 				if v.IsNil() || v.Len() <= index {
 					return false
 				}
-				value = v.Index(index)
+				value = v.Elem(index)
 
-			case reflect.Map:
+			case *reflect.MapValue:
 				s.error("reflection support for maps incomplete")
 
-			case reflect.Ptr:
+			case *reflect.PtrValue:
 				if v.IsNil() {
 					return false
 				}
 				value = v.Elem()
 
-			case reflect.Interface:
+			case *reflect.InterfaceValue:
 				if v.IsNil() {
 					return false
 				}
 				value = v.Elem()
 
-			case reflect.Chan:
+			case *reflect.ChanValue:
 				s.error("reflection support for chans incomplete")
 
-			case reflect.Func:
+			case *reflect.FuncValue:
 				s.error("reflection support for funcs incomplete")
 
 			default:
@@ -560,9 +560,9 @@ func (s *State) eval(fexpr expr, value reflect.Value, index int) bool {
 		default:
 			// value is value of named field
 			var field reflect.Value
-			if sval := value; sval.Kind() == reflect.Struct {
+			if sval, ok := value.(*reflect.StructValue); ok {
 				field = sval.FieldByName(t.fieldName)
-				if !field.IsValid() {
+				if field == nil {
 					// TODO consider just returning false in this case
 					s.error(fmt.Sprintf("error: no field `%s` in `%s`", t.fieldName, value.Type()))
 				}
@@ -594,7 +594,7 @@ func (s *State) eval(fexpr expr, value reflect.Value, index int) bool {
 		s.eval(t.indent, value, index)
 		// if the indentation evaluates to nil, the state's output buffer
 		// didn't change - either way it's ok to append the difference to
-		// the current indentation
+		// the current identation
 		s.indent.Write(s.output.Bytes()[mark.outputLen:s.output.Len()])
 		s.restore(mark)
 
@@ -671,8 +671,8 @@ func (f Format) Eval(env Environment, args ...interface{}) ([]byte, os.Error) {
 
 	go func() {
 		for _, v := range args {
-			fld := reflect.ValueOf(v)
-			if !fld.IsValid() {
+			fld := reflect.NewValue(v)
+			if fld == nil {
 				errors <- os.NewError("nil argument")
 				return
 			}

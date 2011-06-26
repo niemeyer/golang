@@ -72,20 +72,6 @@ typedef struct {
 	uint32 FirstThunk;
 } IMAGE_IMPORT_DESCRIPTOR;
 
-typedef struct _IMAGE_EXPORT_DIRECTORY {
-	uint32 Characteristics;
-	uint32 TimeDateStamp;
-	uint16 MajorVersion;
-	uint16 MinorVersion;
-	uint32 Name;
-	uint32 Base;
-	uint32 NumberOfFunctions;
-	uint32 NumberOfNames;
-	uint32 AddressOfFunctions;
-	uint32 AddressOfNames;
-	uint32 AddressOfNameOrdinals;
-} IMAGE_EXPORT_DIRECTORY;
-
 #define PEBASE		0x00400000
 // SectionAlignment must be greater than or equal to FileAlignment.
 // The default is the page size for the architecture.
@@ -131,9 +117,6 @@ enum {
 	IMAGE_DIRECTORY_ENTRY_IAT = 12,
 	IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT = 13,
 	IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR = 14,
-
-	IMAGE_SUBSYSTEM_WINDOWS_GUI = 2,
-	IMAGE_SUBSYSTEM_WINDOWS_CUI = 3,
 };
 
 void peinit(void);
@@ -175,5 +158,3 @@ typedef struct {
 	uint32 NumberOfRvaAndSizes;
 	IMAGE_DATA_DIRECTORY DataDirectory[16];
 } PE64_IMAGE_OPTIONAL_HEADER;
-
-void setpersrc(Sym *sym);

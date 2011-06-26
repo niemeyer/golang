@@ -27,7 +27,7 @@ type ebnfParser struct {
 	prev    int         // offset of previous token
 	pos     token.Pos   // token position
 	tok     token.Token // one token look-ahead
-	lit     string      // token literal
+	lit     []byte      // token literal
 }
 
 
@@ -63,7 +63,7 @@ func (p *ebnfParser) errorExpected(pos token.Pos, msg string) {
 		// make the error message more specific
 		msg += ", found '" + p.tok.String() + "'"
 		if p.tok.IsLiteral() {
-			msg += " " + p.lit
+			msg += " " + string(p.lit)
 		}
 	}
 	p.Error(p.file.Position(pos), msg)
@@ -81,7 +81,7 @@ func (p *ebnfParser) expect(tok token.Token) token.Pos {
 
 
 func (p *ebnfParser) parseIdentifier(def bool) {
-	name := p.lit
+	name := string(p.lit)
 	p.expect(token.IDENT)
 	if def {
 		fmt.Fprintf(p.out, `<a id="%s">%s</a>`, name, name)
@@ -99,8 +99,7 @@ func (p *ebnfParser) parseTerm() bool {
 
 	case token.STRING:
 		p.next()
-		const ellipsis = "…" // U+2026, the horizontal ellipsis character
-		if p.tok == token.ILLEGAL && p.lit == ellipsis {
+		if p.tok == token.ELLIPSIS {
 			p.next()
 			p.expect(token.STRING)
 		}
@@ -129,9 +128,6 @@ func (p *ebnfParser) parseTerm() bool {
 
 
 func (p *ebnfParser) parseSequence() {
-	if !p.parseTerm() {
-		p.errorExpected(p.pos, "term")
-	}
 	for p.parseTerm() {
 	}
 }
@@ -151,9 +147,7 @@ func (p *ebnfParser) parseExpression() {
 func (p *ebnfParser) parseProduction() {
 	p.parseIdentifier(true)
 	p.expect(token.ASSIGN)
-	if p.tok != token.PERIOD {
-		p.parseExpression()
-	}
+	p.parseExpression()
 	p.expect(token.PERIOD)
 }
 
@@ -163,7 +157,7 @@ func (p *ebnfParser) parse(fset *token.FileSet, out io.Writer, src []byte) {
 	p.out = out
 	p.src = src
 	p.file = fset.AddFile("", fset.Base(), len(src))
-	p.scanner.Init(p.file, src, p, scanner.AllowIllegalChars)
+	p.scanner.Init(p.file, src, p, 0)
 	p.next() // initializes pos, tok, lit
 
 	// process source

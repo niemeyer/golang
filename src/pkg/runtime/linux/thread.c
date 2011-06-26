@@ -5,7 +5,6 @@
 #include "runtime.h"
 #include "defs.h"
 #include "os.h"
-#include "stack.h"
 
 extern SigTab runtime·sigtab[];
 
@@ -116,7 +115,7 @@ again:
 	//
 	// We only really care that (v&1) == 1 (the lock is held),
 	// and in fact there is a futex variant that could
-	// accommodate that check, but let's not get carried away.)
+	// accomodate that check, but let's not get carried away.)
 	futexsleep(&l->key, v+2);
 
 	// We're awake: remove ourselves from the count.
@@ -252,10 +251,10 @@ runtime·newosproc(M *m, G *g, void *stk, void (*fn)(void))
 			stk, m, g, fn, runtime·clone, m->id, m->tls[0], &m);
 	}
 
-	if((ret = runtime·clone(flags, stk, m, g, fn)) < 0) {
-		runtime·printf("runtime: failed to create new OS thread (have %d already; errno=%d)\n", runtime·mcount(), -ret);
-		runtime·throw("runtime.newosproc");
-	}
+	ret = runtime·clone(flags, stk, m, g, fn);
+
+	if(ret < 0)
+		*(int32*)123 = 123;
 }
 
 void
@@ -275,7 +274,7 @@ runtime·minit(void)
 {
 	// Initialize signal handling.
 	m->gsignal = runtime·malg(32*1024);	// OS X wants >=8K, Linux >=2K
-	runtime·signalstack(m->gsignal->stackguard - StackGuard, 32*1024);
+	runtime·signalstack(m->gsignal->stackguard, 32*1024);
 }
 
 void

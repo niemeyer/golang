@@ -9,7 +9,7 @@
  * data structures and must be kept in sync with this file:
  *
  *	../../cmd/gc/reflect.c
- *	../../cmd/ld/dwarf.c decodetype_*
+ *	../../cmd/ld/dwarf.c
  *	../reflect/type.go
  *	type.h
  */
@@ -35,7 +35,6 @@ type commonType struct {
 	kind          uint8   // enumeration for C
 	string        *string // string form; unnecessary  but undeniably useful
 	*uncommonType         // (relatively) uncommon fields
-	ptrToThis     *Type   // pointer to this type, if used in binary or has methods
 }
 
 // Values for commonType.kind.
@@ -71,7 +70,7 @@ const (
 )
 
 // Method on non-interface type
-type _method struct { // underscore is to avoid collision with C
+type method struct {
 	name    *string        // name of method
 	pkgPath *string        // nil for exported Names; otherwise import path
 	mtyp    *Type          // method type (without receiver)
@@ -85,9 +84,9 @@ type _method struct { // underscore is to avoid collision with C
 // Using a pointer to this struct reduces the overall size required
 // to describe an unnamed type with no methods.
 type uncommonType struct {
-	name    *string   // name of type
-	pkgPath *string   // import path; nil for built-in types like int, string
-	methods []_method // methods associated with type
+	name    *string  // name of type
+	pkgPath *string  // import path; nil for built-in types like int, string
+	methods []method // methods associated with type
 }
 
 // BoolType represents a boolean type.
@@ -117,9 +116,8 @@ type UnsafePointerType commonType
 // ArrayType represents a fixed array type.
 type ArrayType struct {
 	commonType
-	elem  *Type // array element type
-	slice *Type // slice type
-	len   uintptr
+	elem *Type // array element type
+	len  uintptr
 }
 
 // SliceType represents a slice type.
@@ -153,7 +151,7 @@ type FuncType struct {
 }
 
 // Method on interface type
-type _imethod struct { // underscore is to avoid collision with C
+type imethod struct {
 	name    *string // name of method
 	pkgPath *string // nil for exported Names; otherwise import path
 	typ     *Type   // .(*FuncType) underneath
@@ -162,7 +160,7 @@ type _imethod struct { // underscore is to avoid collision with C
 // InterfaceType represents an interface type.
 type InterfaceType struct {
 	commonType
-	methods []_imethod // sorted by hash
+	methods []imethod // sorted by hash
 }
 
 // MapType represents a map type.

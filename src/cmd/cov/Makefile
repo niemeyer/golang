@@ -17,6 +17,9 @@ OFILES=\
 HFILES=\
 	tree.h\
 
+LIB=\
+	../../../lib/libmach.a\
+
 NOINSTALL=1
 include ../../Make.ccmd
 

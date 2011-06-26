@@ -18,9 +18,9 @@ var armorEndOfLineOut = []byte("-----\n")
 // writeSlices writes its arguments to the given Writer.
 func writeSlices(out io.Writer, slices ...[]byte) (err os.Error) {
 	for _, s := range slices {
-		_, err = out.Write(s)
+		_, err := out.Write(s)
 		if err != nil {
-			return err
+			return
 		}
 	}
 	return
@@ -116,7 +116,6 @@ func (e *encoding) Close() (err os.Error) {
 	if err != nil {
 		return
 	}
-	e.breaker.Close()
 
 	var checksumBytes [3]byte
 	checksumBytes[0] = byte(e.crc >> 16)
@@ -145,9 +144,11 @@ func Encode(out io.Writer, blockType string, headers map[string]string) (w io.Wr
 		}
 	}
 
-	_, err = out.Write(newline)
-	if err != nil {
-		return
+	if len(headers) > 0 {
+		_, err := out.Write(newline)
+		if err != nil {
+			return
+		}
 	}
 
 	e := &encoding{

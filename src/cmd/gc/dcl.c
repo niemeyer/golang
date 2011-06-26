@@ -22,6 +22,7 @@ dflag(void)
 /*
  * declaration stack & operations
  */
+static	Sym*	dclstack;
 
 static void
 dcopy(Sym *a, Sym *b)
@@ -39,7 +40,6 @@ push(void)
 	Sym *d;
 
 	d = mal(sizeof(*d));
-	d->lastlineno = lineno;
 	d->link = dclstack;
 	dclstack = d;
 	return d;
@@ -61,7 +61,6 @@ void
 popdcl(void)
 {
 	Sym *d, *s;
-	int lno;
 
 //	if(dflag())
 //		print("revert\n");
@@ -70,9 +69,7 @@ popdcl(void)
 		if(d->name == nil)
 			break;
 		s = pkglookup(d->name, d->pkg);
-		lno = s->lastlineno;
 		dcopy(s, d);
-		d->lastlineno = lno;
 		if(dflag())
 			print("\t%L pop %S %p\n", lineno, s, s->def);
 	}
@@ -85,12 +82,19 @@ popdcl(void)
 void
 poptodcl(void)
 {
-	// pop the old marker and push a new one
-	// (cannot reuse the existing one)
-	// because we use the markers to identify blocks
-	// for the goto restriction checks.
-	popdcl();
-	markdcl();
+	Sym *d, *s;
+
+	for(d=dclstack; d!=S; d=d->link) {
+		if(d->name == nil)
+			break;
+		s = pkglookup(d->name, d->pkg);
+		dcopy(s, d);
+		if(dflag())
+			print("\t%L pop %S\n", lineno, s);
+	}
+	if(d == S)
+		fatal("poptodcl: no mark");
+	dclstack = d;
 }
 
 void
@@ -185,7 +189,6 @@ declare(Node *n, int ctxt)
 		else if(n->op == ONAME)
 			gen = ++vargen;
 		pushdcl(s);
-		n->curfn = curfn;
 	}
 	if(ctxt == PAUTO)
 		n->xoffset = BADWIDTH;
@@ -435,6 +438,20 @@ newtype(Sym *s)
 	return t;
 }
 
+/*
+ * type check top level declarations
+ */
+void
+dclchecks(void)
+{
+	NodeList *l;
+
+	for(l=externdcl; l; l=l->next) {
+		if(l->n->op != ONAME)
+			continue;
+		typecheck(&l->n, Erv);
+	}
+}
 
 /*
  * := declarations
@@ -508,30 +525,6 @@ colas(NodeList *left, NodeList *right)
 }
 
 /*
- * declare the arguments in an
- * interface field declaration.
- */
-void
-ifacedcl(Node *n)
-{
-	if(n->op != ODCLFIELD || n->right == N)
-		fatal("ifacedcl");
-
-	dclcontext = PAUTO;
-	markdcl();
-	funcdepth++;
-	n->outer = curfn;
-	curfn = n;
-	funcargs(n->right);
-
-	// funcbody is normally called after the parser has
-	// seen the body of a function but since an interface
-	// field declaration does not have a body, we must
-	// call it now to pop the current declaration context.
-	funcbody(n);
-}
-
-/*
  * declare the function proper
  * and declare the arguments.
  * called in extern-declaration context
@@ -568,7 +561,6 @@ funcargs(Node *nt)
 {
 	Node *n;
 	NodeList *l;
-	int gen;
 
 	if(nt->op != OTFUNC)
 		fatal("funcargs %O", nt->op);
@@ -598,7 +590,6 @@ funcargs(Node *nt)
 	}
 
 	// declare the out arguments.
-	gen = 0;
 	for(l=nt->rlist; l; l=l->next) {
 		n = l->n;
 		if(n->op != ODCLFIELD)
@@ -606,11 +597,6 @@ funcargs(Node *nt)
 		if(n->left != N) {
 			n->left->op = ONAME;
 			n->left->ntype = n->right;
-			if(isblank(n->left)) {
-				// Give it a name so we can assign to it during return.
-				snprint(namebuf, sizeof(namebuf), ".anon%d", gen++);
-				n->left->sym = lookup(namebuf);
-			}
 			declare(n->left, PPARAMOUT);
 		}
 	}
@@ -670,27 +656,18 @@ typedcl2(Type *pt, Type *t)
 {
 	Node *n;
 
-	// override declaration in unsafe.go for Pointer.
-	// there is no way in Go code to define unsafe.Pointer
-	// so we have to supply it.
-	if(incannedimport &&
-	   strcmp(importpkg->name, "unsafe") == 0 &&
-	   strcmp(pt->nod->sym->name, "Pointer") == 0) {
-		t = types[TUNSAFEPTR];
-	}
-
 	if(pt->etype == TFORW)
 		goto ok;
 	if(!eqtype(pt->orig, t))
-		yyerror("inconsistent definition for type %S during import\n\t%lT\n\t%lT", pt->sym, pt->orig, t);
+		yyerror("inconsistent definition for type %S during import\n\t%lT\n\t%lT", pt->sym, pt, t);
 	return;
 
 ok:
 	n = pt->nod;
-	copytype(pt->nod, t);
-	// unzero nod
+	*pt = *t;
+	pt->method = nil;
 	pt->nod = n;
-
+	pt->sym = n->sym;
 	pt->sym->lastlineno = parserline();
 	declare(n, PEXTERN);
 
@@ -707,15 +684,17 @@ ok:
  * turn a parsed struct into a type
  */
 static Type**
-stotype(NodeList *l, int et, Type **t, int funarg)
+stotype(NodeList *l, int et, Type **t)
 {
 	Type *f, *t1, *t2, **t0;
 	Strlit *note;
 	int lno;
-	Node *n, *left;
+	NodeList *init;
+	Node *n;
 	char *what;
 
 	t0 = t;
+	init = nil;
 	lno = lineno;
 	what = "field";
 	if(et == TINTER)
@@ -728,18 +707,15 @@ stotype(NodeList *l, int et, Type **t, int funarg)
 
 		if(n->op != ODCLFIELD)
 			fatal("stotype: oops %N\n", n);
-		left = n->left;
-		if(funarg && isblank(left))
-			left = N;
 		if(n->right != N) {
-			if(et == TINTER && left != N) {
+			if(et == TINTER && n->left != N) {
 				// queue resolution of method type for later.
 				// right now all we need is the name list.
 				// avoids cycles for recursive interface types.
 				n->type = typ(TINTERMETH);
 				n->type->nname = n->right;
 				n->right = N;
-				left->type = n->type;
+				n->left->type = n->type;
 				queuemethod(n);
 			} else {
 				typecheck(&n->right, Etype);
@@ -748,8 +724,8 @@ stotype(NodeList *l, int et, Type **t, int funarg)
 					*t0 = T;
 					return t0;
 				}
-				if(left != N)
-					left->type = n->type;
+				if(n->left != N)
+					n->left->type = n->type;
 				n->right = N;
 				if(n->embedded && n->type != T) {
 					t1 = n->type;
@@ -787,7 +763,7 @@ stotype(NodeList *l, int et, Type **t, int funarg)
 			break;
 		}
 
-		if(et == TINTER && left == N) {
+		if(et == TINTER && n->left == N) {
 			// embedded interface - inline the methods
 			if(n->type->etype != TINTER) {
 				if(n->type->etype == TFORW)
@@ -820,8 +796,8 @@ stotype(NodeList *l, int et, Type **t, int funarg)
 		f->width = BADWIDTH;
 		f->isddd = n->isddd;
 
-		if(left != N && left->op == ONAME) {
-			f->nname = left;
+		if(n->left != N && n->left->op == ONAME) {
+			f->nname = n->left;
 			f->embedded = n->embedded;
 			f->sym = f->nname->sym;
 			if(importpkg && !exportname(f->sym->name))
@@ -863,7 +839,7 @@ dostruct(NodeList *l, int et)
 	}
 	t = typ(et);
 	t->funarg = funarg;
-	stotype(l, et, &t->type, funarg);
+	stotype(l, et, &t->type);
 	if(t->type == T && l != nil) {
 		t->broke = 1;
 		return t;
@@ -957,6 +933,8 @@ checkarglist(NodeList *all, int input)
 			t = n;
 			n = N;
 		}
+		if(isblank(n))
+			n = N;
 		if(n != N && n->sym == S) {
 			t = n;
 			n = N;
@@ -1143,32 +1121,6 @@ addmethod(Sym *sf, Type *t, int local)
 	pa = pa->type;
 	f = methtype(pa);
 	if(f == T) {
-		t = pa;
-		if(t != T) {
-			if(isptr[t->etype]) {
-				if(t->sym != S) {
-					yyerror("invalid receiver type %T (%T is a pointer type)", pa, t);
-					return;
-				}
-				t = t->type;
-			}
-		}
-		if(t != T) {
-			if(t->sym == S) {
-				yyerror("invalid receiver type %T (%T is an unnamed type)", pa, t);
-				return;
-			}
-			if(isptr[t->etype]) {
-				yyerror("invalid receiver type %T (%T is a pointer type)", pa, t);
-				return;
-			}
-			if(t->etype == TINTER) {
-				yyerror("invalid receiver type %T (%T is an interface type)", pa, t);
-				return;
-			}
-		}
-		// Should have picked off all the reasons above,
-		// but just in case, fall back to generic error.
 		yyerror("invalid receiver type %T", pa);
 		return;
 	}
@@ -1199,9 +1151,9 @@ addmethod(Sym *sf, Type *t, int local)
 	}
 
 	if(d == T)
-		stotype(list1(n), 0, &pa->method, 0);
+		stotype(list1(n), 0, &pa->method);
 	else
-		stotype(list1(n), 0, &d->down, 0);
+		stotype(list1(n), 0, &d->down);
 	return;
 }
 
@@ -1234,6 +1186,9 @@ funccompile(Node *n, int isclosure)
 
 	if(curfn)
 		fatal("funccompile %S inside %S", n->nname->sym, curfn->nname->sym);
+	curfn = n;
+	typechecklist(n->nbody, Etop);
+	curfn = nil;
 
 	stksize = 0;
 	dclcontext = PAUTO;
@@ -1243,6 +1198,4 @@ funccompile(Node *n, int isclosure)
 	funcdepth = 0;
 	dclcontext = PEXTERN;
 }
-
-
 

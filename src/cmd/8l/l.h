@@ -39,7 +39,6 @@
 
 enum
 {
-	thechar = '8',
 	PtrSize = 4
 };
 
@@ -111,7 +110,6 @@ struct	Prog
 };
 #define	datasize	from.scale
 #define	textflag	from.scale
-#define	iscall(p)	((p)->as == ACALL)
 
 struct	Auto
 {
@@ -130,8 +128,6 @@ struct	Sym
 	uchar	reachable;
 	uchar	dynexport;
 	uchar	special;
-	uchar	stkcheck;
-	uchar	hide;
 	int32	value;
 	int32	size;
 	int32	sig;
@@ -139,7 +135,6 @@ struct	Sym
 	int32	plt;
 	int32	got;
 	Sym*	hash;	// in hash table
-	Sym*	allsym;	// in all symbol list
 	Sym*	next;	// in text or data list
 	Sym*	sub;	// in sub list
 	Sym*	outer;	// container of sub
@@ -147,7 +142,6 @@ struct	Sym
 	char*	file;
 	char*	dynimpname;
 	char*	dynimplib;
-	char*	dynimpvers;
 	
 	// STEXT
 	Auto*	autom;
@@ -171,6 +165,31 @@ struct	Optab
 
 enum
 {
+	Sxxx,
+	
+	/* order here is order in output file */
+	STEXT,
+	SELFDATA,
+	SMACHOPLT,
+	SRODATA,
+	SDATA,
+	SMACHO,	/* Mach-O __nl_symbol_ptr */
+	SMACHOGOT,
+	SWINDOWS,
+	SBSS,
+
+	SXREF,
+	SMACHODYNSTR,
+	SMACHODYNSYM,
+	SMACHOINDIRECTPLT,
+	SMACHOINDIRECTGOT,
+	SFILE,
+	SCONST,
+	SDYNIMPORT,
+
+	SSUB = 1<<8,	/* sub-symbol, linked from parent via ->sub list */
+
+	NHASH		= 10007,
 	MINSIZ		= 4,
 	STRINGSZ	= 200,
 	MINLC		= 1,
@@ -260,15 +279,11 @@ EXTERN union
 #define	cbuf	u.obuf
 #define	xbuf	u.ibuf
 
-#pragma	varargck	type	"A"	int
+#pragma	varargck	type	"A"	uint
 #pragma	varargck	type	"D"	Adr*
-#pragma	varargck	type	"I"	int
-#pragma	varargck	type	"I"	uchar*
 #pragma	varargck	type	"P"	Prog*
 #pragma	varargck	type	"R"	int
 #pragma	varargck	type	"S"	char*
-#pragma	varargck	type	"Y"	Sym*
-#pragma	varargck	type	"i"	char*
 
 EXTERN	int32	HEADR;
 EXTERN	int32	HEADTYPE;
@@ -300,7 +315,6 @@ EXTERN	int	maxop;
 EXTERN	int	nerrors;
 EXTERN	char*	noname;
 EXTERN	int32	pc;
-EXTERN	char*	interpreter;
 EXTERN	char*	rpath;
 EXTERN	int32	spsize;
 EXTERN	Sym*	symlist;
@@ -348,9 +362,9 @@ void	follow(void);
 void	instinit(void);
 void	listinit(void);
 Sym*	lookup(char*, int);
-void	lputb(int32);
+void	lput(int32);
 void	lputl(int32);
-void	vputl(uint64);
+void	vputl(uvlong);
 void	strnput(char*, int);
 void	main(int, char*[]);
 void*	mal(uint32);
@@ -386,6 +400,11 @@ void	deadcode(void);
 #define	LPUT(a)	lputl(a)
 #define	WPUT(a)	wputl(a)
 #define	VPUT(a)	vputl(a)
+
+#pragma	varargck	type	"D"	Adr*
+#pragma	varargck	type	"P"	Prog*
+#pragma	varargck	type	"R"	int
+#pragma	varargck	type	"A"	int
 
 /* Used by ../ld/dwarf.c */
 enum

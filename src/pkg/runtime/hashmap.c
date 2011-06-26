@@ -9,7 +9,7 @@
 /* Return a pointer to the struct/union of type "type"
    whose "field" field is addressed by pointer "p". */
 
-struct Hmap {	   /* a hash table; initialize with hash_init() */
+struct hash {	   /* a hash table; initialize with hash_init() */
 	uint32 count;	  /* elements in table - must be first */
 
 	uint8 datasize;   /* amount of data to store in entry */
@@ -82,7 +82,7 @@ struct hash_subtable {
 
 /* return a hash layer with 2**power empty entries */
 static struct hash_subtable *
-hash_subtable_new (Hmap *h, int32 power, int32 used)
+hash_subtable_new (struct hash *h, int32 power, int32 used)
 {
 	int32 elemsize = h->datasize + offsetof (struct hash_entry, data[0]);
 	int32 bytes = elemsize << power;
@@ -127,7 +127,7 @@ init_sizes (int64 hint, int32 *init_power, int32 *max_power)
 }
 
 static void
-hash_init (Hmap *h,
+hash_init (struct hash *h,
 		int32 datasize,
 		hash_hash_t (*data_hash) (uint32, void *),
 		uint32 (*data_eq) (uint32, void *, void *),
@@ -200,10 +200,10 @@ hash_remove_n (struct hash_subtable *st, struct hash_entry *dst_e, int32 n)
 
 static int32
 hash_insert_internal (struct hash_subtable **pst, int32 flags, hash_hash_t hash,
-		Hmap *h, void *data, void **pres);
+		struct hash *h, void *data, void **pres);
 
 static void
-hash_conv (Hmap *h,
+hash_conv (struct hash *h,
 		struct hash_subtable *st, int32 flags,
 		hash_hash_t hash,
 		struct hash_entry *e)
@@ -266,7 +266,7 @@ hash_conv (Hmap *h,
 }
 
 static void
-hash_grow (Hmap *h, struct hash_subtable **pst, int32 flags)
+hash_grow (struct hash *h, struct hash_subtable **pst, int32 flags)
 {
 	struct hash_subtable *old_st = *pst;
 	int32 elemsize = h->datasize + offsetof (struct hash_entry, data[0]);
@@ -290,7 +290,7 @@ hash_grow (Hmap *h, struct hash_subtable **pst, int32 flags)
 }
 
 static int32
-hash_lookup (Hmap *h, void *data, void **pres)
+hash_lookup (struct hash *h, void *data, void **pres)
 {
 	int32 elemsize = h->datasize + offsetof (struct hash_entry, data[0]);
 	hash_hash_t hash = (*h->data_hash) (h->keysize, data) & ~HASH_MASK;
@@ -331,7 +331,7 @@ hash_lookup (Hmap *h, void *data, void **pres)
 }
 
 static int32
-hash_remove (Hmap *h, void *data, void *arg)
+hash_remove (struct hash *h, void *data, void *arg)
 {
 	int32 elemsize = h->datasize + offsetof (struct hash_entry, data[0]);
 	hash_hash_t hash = (*h->data_hash) (h->keysize, data) & ~HASH_MASK;
@@ -374,7 +374,7 @@ hash_remove (Hmap *h, void *data, void *arg)
 
 static int32
 hash_insert_internal (struct hash_subtable **pst, int32 flags, hash_hash_t hash,
-				 Hmap *h, void *data, void **pres)
+				 struct hash *h, void *data, void **pres)
 {
 	int32 elemsize = h->datasize + offsetof (struct hash_entry, data[0]);
 
@@ -455,7 +455,7 @@ hash_insert_internal (struct hash_subtable **pst, int32 flags, hash_hash_t hash,
 }
 
 static int32
-hash_insert (Hmap *h, void *data, void **pres)
+hash_insert (struct hash *h, void *data, void **pres)
 {
 	int32 rc = hash_insert_internal (&h->st, 0, (*h->data_hash) (h->keysize, data), h, data, pres);
 
@@ -464,7 +464,7 @@ hash_insert (Hmap *h, void *data, void **pres)
 }
 
 static uint32
-hash_count (Hmap *h)
+hash_count (struct hash *h)
 {
 	return (h->count);
 }
@@ -571,7 +571,7 @@ hash_next (struct hash_iter *it)
 }
 
 static void
-hash_iter_init (Hmap *h, struct hash_iter *it)
+hash_iter_init (struct hash *h, struct hash_iter *it)
 {
 	it->elemsize = h->datasize + offsetof (struct hash_entry, data[0]);
 	it->changes = h->changes;
@@ -607,7 +607,7 @@ clean_st (struct hash_subtable *st, int32 *slots, int32 *used)
 }
 
 static void
-hash_destroy (Hmap *h)
+hash_destroy (struct hash *h)
 {
 	int32 slots = 0;
 	int32 used = 0;
@@ -646,7 +646,7 @@ hash_visit_internal (struct hash_subtable *st,
 }
 
 static void
-hash_visit (Hmap *h, void (*data_visit) (void *arg, int32 level, void *data), void *arg)
+hash_visit (struct hash *h, void (*data_visit) (void *arg, int32 level, void *data), void *arg)
 {
 	hash_visit_internal (h->st, 0, 0, data_visit, arg);
 }
@@ -776,22 +776,10 @@ runtime·makemap(Type *key, Type *val, int64 hint, Hmap *ret)
 	FLUSH(&ret);
 }
 
-// For reflect:
-//	func makemap(Type *mapType) (hmap *map)
-void
-reflect·makemap(MapType *t, Hmap *ret)
-{
-	ret = runtime·makemap_c(t->key, t->elem, 0);
-	FLUSH(&ret);
-}
-
 void
 runtime·mapaccess(Hmap *h, byte *ak, byte *av, bool *pres)
 {
 	byte *res;
-
-	if(h == nil)
-		runtime·panicstring("lookup in nil map");
 
 	if(runtime·gcwaiting)
 		runtime·gosched();
@@ -813,9 +801,6 @@ runtime·mapaccess1(Hmap *h, ...)
 {
 	byte *ak, *av;
 	bool pres;
-
-	if(h == nil)
-		runtime·panicstring("lookup in nil map");
 
 	ak = (byte*)&h + h->ko1;
 	av = (byte*)&h + h->vo1;
@@ -842,9 +827,6 @@ runtime·mapaccess2(Hmap *h, ...)
 {
 	byte *ak, *av, *ap;
 
-	if(h == nil)
-		runtime·panicstring("lookup in nil map");
-
 	ak = (byte*)&h + h->ko1;
 	av = (byte*)&h + h->vo1;
 	ap = (byte*)&h + h->po1;
@@ -864,42 +846,11 @@ runtime·mapaccess2(Hmap *h, ...)
 	}
 }
 
-// For reflect:
-//	func mapaccess(h map, key iword) (val iword, pres bool)
-// where an iword is the same word an interface value would use:
-// the actual data if it fits, or else a pointer to the data.
-void
-reflect·mapaccess(Hmap *h, uintptr key, uintptr val, bool pres)
-{
-	byte *ak, *av;
-
-	if(h == nil)
-		runtime·panicstring("lookup in nil map");
-	if(h->keysize <= sizeof(key))
-		ak = (byte*)&key;
-	else
-		ak = (byte*)key;
-	val = 0;
-	pres = false;
-	if(h->valsize <= sizeof(val))
-		av = (byte*)&val;
-	else {
-		av = runtime·mal(h->valsize);
-		val = (uintptr)av;
-	}
-	runtime·mapaccess(h, ak, av, &pres);
-	FLUSH(&val);
-	FLUSH(&pres);
-}
-
 void
 runtime·mapassign(Hmap *h, byte *ak, byte *av)
 {
 	byte *res;
 	int32 hit;
-
-	if(h == nil)
-		runtime·panicstring("assignment to entry in nil map");
 
 	if(runtime·gcwaiting)
 		runtime·gosched();
@@ -938,9 +889,6 @@ runtime·mapassign1(Hmap *h, ...)
 {
 	byte *ak, *av;
 
-	if(h == nil)
-		runtime·panicstring("assignment to entry in nil map");
-
 	ak = (byte*)&h + h->ko2;
 	av = (byte*)&h + h->vo2;
 
@@ -953,9 +901,6 @@ void
 runtime·mapassign2(Hmap *h, ...)
 {
 	byte *ak, *av, *ap;
-
-	if(h == nil)
-		runtime·panicstring("assignment to entry in nil map");
 
 	ak = (byte*)&h + h->ko2;
 	av = (byte*)&h + h->vo2;
@@ -973,30 +918,6 @@ runtime·mapassign2(Hmap *h, ...)
 		h->keyalg->print(h->keysize, ak);
 		runtime·prints("\n");
 	}
-}
-
-// For reflect:
-//	func mapassign(h map, key, val iword, pres bool)
-// where an iword is the same word an interface value would use:
-// the actual data if it fits, or else a pointer to the data.
-void
-reflect·mapassign(Hmap *h, uintptr key, uintptr val, bool pres)
-{
-	byte *ak, *av;
-
-	if(h == nil)
-		runtime·panicstring("lookup in nil map");
-	if(h->keysize <= sizeof(key))
-		ak = (byte*)&key;
-	else
-		ak = (byte*)key;
-	if(h->valsize <= sizeof(val))
-		av = (byte*)&val;
-	else
-		av = (byte*)val;
-	if(!pres)
-		av = nil;
-	runtime·mapassign(h, ak, av);
 }
 
 // mapiterinit(hmap *map[any]any, hiter *any);
@@ -1020,14 +941,14 @@ runtime·mapiterinit(Hmap *h, struct hash_iter *it)
 	}
 }
 
-// For reflect:
-//	func mapiterinit(h map) (it iter)
-void
-reflect·mapiterinit(Hmap *h, struct hash_iter *it)
+struct hash_iter*
+runtime·newmapiterinit(Hmap *h)
 {
+	struct hash_iter *it;
+
 	it = runtime·mal(sizeof *it);
-	FLUSH(&it);
 	runtime·mapiterinit(h, it);
+	return it;
 }
 
 // mapiternext(hiter *any);
@@ -1045,14 +966,6 @@ runtime·mapiternext(struct hash_iter *it)
 		runtime·printpointer(it->data);
 		runtime·prints("\n");
 	}
-}
-
-// For reflect:
-//	func mapiternext(it iter)
-void
-reflect·mapiternext(struct hash_iter *it)
-{
-	runtime·mapiternext(it);
 }
 
 // mapiter1(hiter *any) (key any);
@@ -1093,48 +1006,6 @@ runtime·mapiterkey(struct hash_iter *it, void *ak)
 		return false;
 	h->keyalg->copy(h->keysize, ak, res);
 	return true;
-}
-
-// For reflect:
-//	func mapiterkey(h map) (key iword, ok bool)
-// where an iword is the same word an interface value would use:
-// the actual data if it fits, or else a pointer to the data.
-void
-reflect·mapiterkey(struct hash_iter *it, uintptr key, bool ok)
-{
-	Hmap *h;
-	byte *res;
-
-	key = 0;
-	ok = false;
-	h = it->h;
-	res = it->data;
-	if(res == nil) {
-		key = 0;
-		ok = false;
-	} else {
-		key = 0;
-		if(h->keysize <= sizeof(key))
-			h->keyalg->copy(h->keysize, (byte*)&key, res);
-		else
-			key = (uintptr)res;
-		ok = true;
-	}
-	FLUSH(&key);
-	FLUSH(&ok);
-}
-
-// For reflect:
-//	func maplen(h map) (len int32)
-// Like len(m) in the actual language, we treat the nil map as length 0.
-void
-reflect·maplen(Hmap *h, int32 len)
-{
-	if(h == nil)
-		len = 0;
-	else
-		len = h->count;
-	FLUSH(&len);
 }
 
 // mapiter2(hiter *any) (key any, val any);

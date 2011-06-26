@@ -45,12 +45,7 @@ func TestScanBackwards(t *testing.T) {
 	}
 }
 
-func randCount() int {
-	if testing.Short() {
-		return 100
-	}
-	return 100000
-}
+const randCount = 100000
 
 func TestRandomAccess(t *testing.T) {
 	for _, s := range testStrings {
@@ -63,7 +58,7 @@ func TestRandomAccess(t *testing.T) {
 			t.Errorf("%s: expected %d runes; got %d", s, len(runes), str.RuneCount())
 			break
 		}
-		for j := 0; j < randCount(); j++ {
+		for j := 0; j < randCount; j++ {
 			i := rand.Intn(len(runes))
 			expect := runes[i]
 			got := str.At(i)
@@ -85,7 +80,7 @@ func TestRandomSliceAccess(t *testing.T) {
 			t.Errorf("%s: expected %d runes; got %d", s, len(runes), str.RuneCount())
 			break
 		}
-		for k := 0; k < randCount(); k++ {
+		for k := 0; k < randCount; k++ {
 			i := rand.Intn(len(runes))
 			j := rand.Intn(len(runes) + 1)
 			if i > j { // include empty strings

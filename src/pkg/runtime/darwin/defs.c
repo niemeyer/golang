@@ -116,10 +116,6 @@ enum {
 	
 	$SEGV_MAPERR = SEGV_MAPERR,
 	$SEGV_ACCERR = SEGV_ACCERR,
-	
-	$ITIMER_REAL = ITIMER_REAL,
-	$ITIMER_VIRTUAL = ITIMER_VIRTUAL,
-	$ITIMER_PROF = ITIMER_PROF,
 };
 
 typedef mach_msg_body_t	$MachBody;
@@ -134,8 +130,6 @@ typedef struct __sigaction	$Sigaction;	// used in syscalls
 // typedef struct sigaction	$Sigaction;	// used by the C library
 typedef union sigval $Sigval;
 typedef siginfo_t $Siginfo;
-typedef struct timeval	$Timeval;
-typedef struct itimerval	$Itimerval;
 
 typedef struct fp_control $FPControl;
 typedef struct fp_status $FPStatus;

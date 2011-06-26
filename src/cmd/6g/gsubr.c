@@ -48,7 +48,7 @@ clearp(Prog *p)
 
 /*
  * generate and return proc with p->as = as,
- * linked into program. pc is next instruction.
+ * linked into program.  pc is next instruction.
  */
 Prog*
 prog(int as)
@@ -98,19 +98,6 @@ patch(Prog *p, Prog *to)
 	p->to.offset = to->loc;
 }
 
-Prog*
-unpatch(Prog *p)
-{
-	Prog *q;
-
-	if(p->to.type != D_BRANCH)
-		fatal("unpatch: not a branch");
-	q = p->to.branch;
-	p->to.branch = P;
-	p->to.offset = 0;
-	return q;
-}
-
 /*
  * start a new Prog list.
  */
@@ -132,44 +119,6 @@ newplist(void)
 
 	return pl;
 }
-
-void
-clearstk(void)
-{
-	Plist *pl;
-	Prog *p1, *p2;
-	Node sp, di, cx, con, ax;
-
-	if((uint32)plast->firstpc->to.offset <= 0)
-		return;
-
-	// reestablish context for inserting code
-	// at beginning of function.
-	pl = plast;
-	p1 = pl->firstpc;
-	p2 = p1->link;
-	pc = mal(sizeof(*pc));
-	clearp(pc);
-	p1->link = pc;
-	
-	// zero stack frame
-	nodreg(&sp, types[tptr], D_SP);
-	nodreg(&di, types[tptr], D_DI);
-	nodreg(&cx, types[TUINT64], D_CX);
-	nodconst(&con, types[TUINT64], (uint32)p1->to.offset / widthptr);
-	gins(ACLD, N, N);
-	gins(AMOVQ, &sp, &di);
-	gins(AMOVQ, &con, &cx);
-	nodconst(&con, types[TUINT64], 0);
-	nodreg(&ax, types[TUINT64], D_AX);
-	gins(AMOVQ, &con, &ax);
-	gins(AREP, N, N);
-	gins(ASTOSQ, N, N);
-
-	// continue with original code.
-	gins(ANOP, N, N)->link = p2;
-	pc = P;
-}	
 
 void
 gused(Node *n)
@@ -297,7 +246,7 @@ anyregalloc(void)
 {
 	int i, j;
 
-	for(i=D_AX; i<=D_R15; i++) {
+	for(i=D_AL; i<=D_DI; i++) {
 		if(reg[i] == 0)
 			goto ok;
 		for(j=0; j<nelem(resvd); j++)
@@ -381,13 +330,11 @@ regfree(Node *n)
 {
 	int i;
 
-	if(n->op == ONAME)
+	if(n->op == ONAME && iscomplex[n->type->etype])
 		return;
 	if(n->op != OREGISTER && n->op != OINDREG)
 		fatal("regfree: not a register");
 	i = n->val.u.reg;
-	if(i == D_SP)
-		return;
 	if(i < 0 || i >= sizeof(reg))
 		fatal("regfree: reg out of range");
 	if(reg[i] <= 0)
@@ -941,7 +888,7 @@ Prog*
 gins(int as, Node *f, Node *t)
 {
 //	Node nod;
-	int32 w;
+//	int32 v;
 	Prog *p;
 	Addr af, at;
 
@@ -986,27 +933,6 @@ gins(int as, Node *f, Node *t)
 		p->to = at;
 	if(debug['g'])
 		print("%P\n", p);
-
-
-	w = 0;
-	switch(as) {
-	case AMOVB:
-		w = 1;
-		break;
-	case AMOVW:
-		w = 2;
-		break;
-	case AMOVL:
-		w = 4;
-		break;
-	case AMOVQ:
-		w = 8;
-		break;
-	}
-	if(w != 0 && f != N && (af.width > w || at.width > w)) {
-		fatal("bad width: %P (%d, %d)\n", p, af.width, at.width);
-	}
-
 	return p;
 }
 
@@ -1021,7 +947,7 @@ checkoffset(Addr *a, int canemitcode)
 		fatal("checkoffset %#llx, cannot emit code", a->offset);
 
 	// cannot rely on unmapped nil page at 0 to catch
-	// reference with large offset. instead, emit explicit
+	// reference with large offset.  instead, emit explicit
 	// test of 0(reg).
 	p = gins(ATESTB, nodintconst(0), N);
 	p->to = *a;
@@ -1039,7 +965,7 @@ naddr(Node *n, Addr *a, int canemitcode)
 	a->index = D_NONE;
 	a->type = D_NONE;
 	a->gotype = S;
-	a->node = N;
+
 	if(n == N)
 		return;
 
@@ -1118,8 +1044,6 @@ naddr(Node *n, Addr *a, int canemitcode)
 			break;
 		case PAUTO:
 			a->type = D_AUTO;
-			if (n->sym)
-				a->node = n->orig;
 			break;
 		case PPARAM:
 		case PPARAMOUT:
@@ -1182,9 +1106,8 @@ naddr(Node *n, Addr *a, int canemitcode)
 		naddr(n->left, a, canemitcode);
 		if(a->type == D_CONST && a->offset == 0)
 			break;	// len(nil)
-		a->etype = TUINT32;
+		a->etype = TUINT;
 		a->offset += Array_nel;
-		a->width = 4;
 		if(a->offset >= unmappedzero && a->offset-Array_nel < unmappedzero)
 			checkoffset(a, canemitcode);
 		break;
@@ -1194,9 +1117,8 @@ naddr(Node *n, Addr *a, int canemitcode)
 		naddr(n->left, a, canemitcode);
 		if(a->type == D_CONST && a->offset == 0)
 			break;	// cap(nil)
-		a->etype = TUINT32;
+		a->etype = TUINT;
 		a->offset += Array_cap;
-		a->width = 4;
 		if(a->offset >= unmappedzero && a->offset-Array_cap < unmappedzero)
 			checkoffset(a, canemitcode);
 		break;
@@ -2040,12 +1962,12 @@ oindex:
 		if(o & OAddable) {
 			n2 = *l;
 			n2.xoffset += Array_array;
-			n2.type = types[tptr];
+			n2.type = types[TUINT64];
 			gmove(&n2, reg);
 		} else {
 			n2 = *reg;
-			n2.op = OINDREG;
 			n2.xoffset = Array_array;
+			n2.op = OINDREG;
 			n2.type = types[tptr];
 			gmove(&n2, reg);
 		}

@@ -8,18 +8,17 @@ all: index.html
 
 include ../../../src/Make.common
 
-CLEANFILES+=index.html srcextract.bin htmlify.bin get.bin
+CLEANFILES+=index.html srcextract.bin htmlify.bin
 
 index.html: srcextract.bin htmlify.bin
-	PATH=.:$$PATH awk '/^!/{system(substr($$0,2)); next} {print}' < wiki.html | tr -d '\r' > index.html
+	awk '/^!/{system(substr($$0,2)); next} {print}' "$$@" < wiki.html > index.html
 
-test: get.bin
-	bash ./test.sh
-	rm -f get.6 get.bin
+test: final.bin
+	./test.sh
+	rm -f final.6 final.bin
 
 %.bin: %.$O
 	$(LD) -o $@ $<
-
-%.$O: %.go
+%.$O:
 	$(GC) $*.go
 

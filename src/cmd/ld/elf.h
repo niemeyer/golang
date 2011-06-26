@@ -110,6 +110,7 @@ typedef struct {
 #define ELFOSABI_OPENVMS	13	/* Open VMS */
 #define ELFOSABI_NSK		14	/* HP Non-Stop Kernel */
 #define ELFOSABI_ARM		97	/* ARM */
+#define ELFOSABI_NACL		123	/* Native Client */
 #define ELFOSABI_STANDALONE	255	/* Standalone (embedded) application */
 
 #define ELFOSABI_SYSV		ELFOSABI_NONE	/* symbol used in old spec */
@@ -215,9 +216,6 @@ typedef struct {
 #define SHT_SYMTAB_SHNDX	18	/* Section indexes (see SHN_XINDEX). */
 #define SHT_LOOS	0x60000000	/* First of OS specific semantics */
 #define SHT_HIOS	0x6fffffff	/* Last of OS specific semantics */
-#define SHT_GNU_VERDEF	0x6ffffffd
-#define SHT_GNU_VERNEED	0x6ffffffe
-#define SHT_GNU_VERSYM	0x6fffffff
 #define SHT_LOPROC	0x70000000	/* reserved range for processor */
 #define SHT_HIPROC	0x7fffffff	/* specific section header types */
 #define SHT_LOUSER	0x80000000	/* reserved range for application */
@@ -261,8 +259,8 @@ typedef struct {
 
 /* Values for d_tag. */
 #define DT_NULL		0	/* Terminating entry. */
-/* String table offset of a needed shared library. */
-#define DT_NEEDED	1
+#define DT_NEEDED	1	/* String table offset of a needed shared
+				   library. */
 #define DT_PLTRELSZ	2	/* Total size in bytes of PLT relocations. */
 #define DT_PLTGOT	3	/* Processor-dependent address. */
 #define DT_HASH		4	/* Address of symbol hash table. */
@@ -275,8 +273,8 @@ typedef struct {
 #define DT_SYMENT	11	/* Size of each symbol table entry. */
 #define DT_INIT		12	/* Address of initialization function. */
 #define DT_FINI		13	/* Address of finalization function. */
-/* String table offset of shared object name. */
-#define DT_SONAME	14
+#define DT_SONAME	14	/* String table offset of shared object
+				   name. */
 #define DT_RPATH	15	/* String table offset of library path. [sup] */
 #define DT_SYMBOLIC	16	/* Indicates "symbolic" linking. [sup] */
 #define DT_REL		17	/* Address of ElfNN_Rel relocations. */
@@ -284,52 +282,49 @@ typedef struct {
 #define DT_RELENT	19	/* Size of each ElfNN_Rel relocation. */
 #define DT_PLTREL	20	/* Type of relocation used for PLT. */
 #define DT_DEBUG	21	/* Reserved (not used). */
-/* Indicates there may be relocations in non-writable segments. [sup] */
-#define DT_TEXTREL	22
+#define DT_TEXTREL	22	/* Indicates there may be relocations in
+				   non-writable segments. [sup] */
 #define DT_JMPREL	23	/* Address of PLT relocations. */
 #define	DT_BIND_NOW	24	/* [sup] */
-/* Address of the array of pointers to initialization functions */
-#define	DT_INIT_ARRAY	25
-/* Address of the array of pointers to termination functions */
-#define	DT_FINI_ARRAY	26
-/* Size in bytes of the array of initialization functions. */
-#define	DT_INIT_ARRAYSZ	27
-/* Size in bytes of the array of terminationfunctions. */
-#define	DT_FINI_ARRAYSZ	28
-/* String table offset of a null-terminated library search path string. */
-#define	DT_RUNPATH	29
+#define	DT_INIT_ARRAY	25	/* Address of the array of pointers to
+				   initialization functions */
+#define	DT_FINI_ARRAY	26	/* Address of the array of pointers to
+				   termination functions */
+#define	DT_INIT_ARRAYSZ	27	/* Size in bytes of the array of
+				   initialization functions. */
+#define	DT_FINI_ARRAYSZ	28	/* Size in bytes of the array of
+				   terminationfunctions. */
+#define	DT_RUNPATH	29	/* String table offset of a null-terminated
+				   library search path string. */
 #define	DT_FLAGS	30	/* Object specific flag values. */
-/*	Values greater than or equal to DT_ENCODING and less than
-	DT_LOOS follow the rules for the interpretation of the d_un
-	union as follows: even == 'd_ptr', even == 'd_val' or none */
-#define	DT_ENCODING	32
-/* Address of the array of pointers to pre-initialization functions. */
-#define	DT_PREINIT_ARRAY 32
-/* Size in bytes of the array of pre-initialization functions. */
-#define	DT_PREINIT_ARRAYSZ 33
+#define	DT_ENCODING	32	/* Values greater than or equal to DT_ENCODING
+				   and less than DT_LOOS follow the rules for
+				   the interpretation of the d_un union
+				   as follows: even == 'd_ptr', even == 'd_val'
+				   or none */
+#define	DT_PREINIT_ARRAY 32	/* Address of the array of pointers to
+				   pre-initialization functions. */
+#define	DT_PREINIT_ARRAYSZ 33	/* Size in bytes of the array of
+				   pre-initialization functions. */
 #define	DT_LOOS		0x6000000d	/* First OS-specific */
 #define	DT_HIOS		0x6ffff000	/* Last OS-specific */
 #define	DT_LOPROC	0x70000000	/* First processor-specific type. */
 #define	DT_HIPROC	0x7fffffff	/* Last processor-specific type. */
 
-#define	DT_VERNEED	0x6ffffffe
-#define	DT_VERNEEDNUM	0x6fffffff
-#define	DT_VERSYM	0x6ffffff0
-
 /* Values for DT_FLAGS */
-/*	Indicates that the object being loaded may make reference to
-	the $ORIGIN substitution string */
-#define	DF_ORIGIN	0x0001
+#define	DF_ORIGIN	0x0001	/* Indicates that the object being loaded may
+				   make reference to the $ORIGIN substitution
+				   string */
 #define	DF_SYMBOLIC	0x0002	/* Indicates "symbolic" linking. */
-/* Indicates there may be relocations in non-writable segments. */
-#define	DF_TEXTREL	0x0004
-/*	Indicates that the dynamic linker should process all
-	relocations for the object containing this entry before
-	transferring control to the program.  */
-#define	DF_BIND_NOW	0x0008
-/*	Indicates that the shared object or executable contains code
-	using a static thread-local storage scheme.  */
-#define	DF_STATIC_TLS	0x0010
+#define	DF_TEXTREL	0x0004	/* Indicates there may be relocations in
+				   non-writable segments. */
+#define	DF_BIND_NOW	0x0008	/* Indicates that the dynamic linker should
+				   process all relocations for the object
+				   containing this entry before transferring
+				   control to the program. */
+#define	DF_STATIC_TLS	0x0010	/* Indicates that the shared object or
+				   executable contains code using a static
+				   thread-local storage scheme. */
 
 /* Values for n_type.  Used in core files. */
 #define NT_PRSTATUS	1	/* Process status. */
@@ -951,10 +946,10 @@ typedef Elf64_Shdr ElfShdr;
 typedef Elf64_Phdr ElfPhdr;
 
 void	elfinit(void);
-ElfEhdr	*getElfEhdr(void);
+ElfEhdr	*getElfEhdr();
 ElfShdr	*newElfShstrtab(vlong);
 ElfShdr	*newElfShdr(vlong);
-ElfPhdr	*newElfPhdr(void);
+ElfPhdr	*newElfPhdr();
 uint32	elfwritehdr(void);
 uint32	elfwritephdrs(void);
 uint32	elfwriteshdrs(void);
@@ -967,18 +962,12 @@ uint64	endelf(void);
 extern	int	numelfphdr;
 extern	int	numelfshdr;
 extern	int	iself;
-extern	int	elfverneed;
 int	elfwriteinterp(void);
 void	elfinterp(ElfShdr*, uint64, char*);
 void	elfdynhash(void);
 ElfPhdr* elfphload(Segment*);
 ElfShdr* elfshbits(Section*);
 void	elfsetstring(char*, int);
-void	elfaddverneed(Sym*);
-
-EXTERN	int	elfstrsize;
-EXTERN	char*	elfstrdat;
-EXTERN	int	elftextsh;
 
 /*
  * Total amount of space to reserve at the start of the file

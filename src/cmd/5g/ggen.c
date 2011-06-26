@@ -7,9 +7,107 @@
 #include "gg.h"
 #include "opt.h"
 
+static Prog *pret;
+
 void
-defframe(Prog *ptxt)
+compile(Node *fn)
 {
+	Plist *pl;
+	Node nod1;
+	Prog *ptxt;
+	int32 lno;
+	Type *t;
+	Iter save;
+
+	if(newproc == N) {
+		newproc = sysfunc("newproc");
+		deferproc = sysfunc("deferproc");
+		deferreturn = sysfunc("deferreturn");
+		panicindex = sysfunc("panicindex");
+		panicslice = sysfunc("panicslice");
+		throwreturn = sysfunc("throwreturn");
+	}
+
+	if(fn->nbody == nil)
+		return;
+
+	// set up domain for labels
+	labellist = L;
+
+	lno = setlineno(fn);
+
+	curfn = fn;
+	dowidth(curfn->type);
+
+	if(curfn->type->outnamed) {
+		// add clearing of the output parameters
+		t = structfirst(&save, getoutarg(curfn->type));
+		while(t != T) {
+			if(t->nname != N)
+				curfn->nbody = concat(list1(nod(OAS, t->nname, N)), curfn->nbody);
+			t = structnext(&save);
+		}
+	}
+
+	hasdefer = 0;
+	walk(curfn);
+	if(nerrors != 0 || isblank(curfn->nname))
+		goto ret;
+
+	allocparams();
+
+	continpc = P;
+	breakpc = P;
+
+	pl = newplist();
+	pl->name = curfn->nname;
+	
+	setlineno(curfn);
+
+	nodconst(&nod1, types[TINT32], 0);
+	ptxt = gins(ATEXT, curfn->nname, &nod1);
+	afunclit(&ptxt->from);
+
+	ginit();
+	genlist(curfn->enter);
+	
+	pret = nil;
+	if(hasdefer || curfn->exit) {
+		Prog *p1;
+
+		p1 = gjmp(nil);
+		pret = gjmp(nil);
+		patch(p1, pc);
+	}
+
+	genlist(curfn->nbody);
+	gclean();
+	checklabels();
+	if(nerrors != 0)
+		goto ret;
+
+	if(curfn->type->outtuple != 0)
+		ginscall(throwreturn, 0);
+
+	if(pret)
+		patch(pret, pc);
+	ginit();
+	if(hasdefer)
+		ginscall(deferreturn, 0);
+	if(curfn->exit)
+		genlist(curfn->exit);
+	gclean();
+	if(nerrors != 0)
+		goto ret;
+	if(curfn->endlineno)
+		lineno = curfn->endlineno;
+	pc->as = ARET;	// overwrite AEND
+	pc->lineno = lineno;
+
+	if(!debug['N'] || debug['R'] || debug['P']) {
+		regopt(ptxt);
+	}
+
 	// fill in argument size
 	ptxt->to.type = D_CONST2;
 	ptxt->reg = 0; // flags
@@ -20,32 +118,12 @@ defframe(Prog *ptxt)
 		maxstksize = stksize;
 	ptxt->to.offset = rnd(maxstksize+maxarg, widthptr);
 	maxstksize = 0;
-}
 
-// Sweep the prog list to mark any used nodes.
-void
-markautoused(Prog* p)
-{
-	for (; p; p = p->link) {
-		if (p->from.name == D_AUTO && p->from.node)
-			p->from.node->used++;
+	if(debug['f'])
+		frame(0);
 
-		if (p->to.name == D_AUTO && p->to.node)
-			p->to.node->used++;
-	}
-}
-
-// Fixup instructions after compactframe has moved all autos around.
-void
-fixautoused(Prog* p)
-{
-	for (; p; p = p->link) {
-		if (p->from.name == D_AUTO && p->from.node)
-			p->from.offset += p->from.node->stkdelta;
-
-		if (p->to.name == D_AUTO && p->to.node)
-			p->to.offset += p->to.node->stkdelta;
-	}
+ret:
+	lineno = lno;
 }
 
 /*
@@ -119,7 +197,7 @@ ginscall(Node *f, int proc)
 			nodconst(&con, types[TINT32], 0);
 			p = gins(ACMP, &con, N);
 			p->reg = 0;
-			patch(gbranch(ABNE, T), retpc);
+			patch(gbranch(ABNE, T), pret);
 		}
 		break;
 	}
@@ -173,13 +251,13 @@ cgen_callinter(Node *n, Node *res, int proc)
 	nodindreg(&nodsp, types[tptr], REGSP);
 	nodsp.xoffset = 4;
 	nodo.xoffset += widthptr;
-	cgen(&nodo, &nodsp);	// 4(SP) = 4(REG) -- i.data
+	cgen(&nodo, &nodsp);	// 4(SP) = 8(REG) -- i.s
 
 	nodo.xoffset -= widthptr;
-	cgen(&nodo, &nodr);	// REG = 0(REG) -- i.tab
+	cgen(&nodo, &nodr);	// REG = 0(REG) -- i.m
 
 	nodo.xoffset = n->left->xoffset + 3*widthptr + 8;
-	cgen(&nodo, &nodr);	// REG = 20+offset(REG) -- i.tab->fun[f]
+	cgen(&nodo, &nodr);	// REG = 32+offset(REG) -- i.m->fun[f]
 
 	// BOTCH nodr.type = fntype;
 	nodr.type = n->left->type;
@@ -323,7 +401,7 @@ cgen_ret(Node *n)
 {
 	genlist(n->list);		// copy out args
 	if(hasdefer || curfn->exit)
-		gjmp(retpc);
+		gjmp(pret);
 	else
 		gins(ARET, N, N);
 }

@@ -97,7 +97,6 @@ E3:
 	RET
 
 
-// func subVW(z, x []Word, y Word) (c Word)
 TEXT ·subVW(SB),7,$0
 	MOVW	z+0(FP), R1
 	MOVW	x+12(FP), R2
@@ -132,8 +131,8 @@ E4:
 	RET
 
 
-// func shlVU(z, x []Word, s uint) (c Word)
-TEXT ·shlVU(SB),7,$0
+// func shlVW(z, x []Word, s Word) (c Word)
+TEXT ·shlVW(SB),7,$0
 	MOVW	n+4(FP), R5
 	CMP	$0, R5
 	BEQ	X7
@@ -181,8 +180,7 @@ X7:
 	RET
 
 
-// func shrVU(z, x []Word, s uint) (c Word)
-TEXT ·shrVU(SB),7,$0
+TEXT ·shrVW(SB),7,$0
 	MOVW	n+4(FP), R5
 	CMP	$0, R5
 	BEQ	X6
@@ -231,7 +229,6 @@ X6:
 	RET
 
 
-// func mulAddVWW(z, x []Word, y, r Word) (c Word)
 TEXT ·mulAddVWW(SB),7,$0
 	MOVW	$0, R0
 	MOVW	z+0(FP), R1
@@ -259,7 +256,6 @@ E8:
 	RET
 
 
-// func addMulVVW(z, x []Word, y Word) (c Word)
 TEXT ·addMulVVW(SB),7,$0
 	MOVW	$0, R0
 	MOVW	z+0(FP), R1
@@ -290,13 +286,11 @@ E9:
 	RET
 
 
-// divWVW(z* Word, xn Word, x []Word, y Word) (r Word)
 TEXT ·divWVW(SB),7,$0
 	// ARM has no multiword division, so use portable code.
 	B ·divWVW_g(SB)
 
 
-// func divWW(x1, x0, y Word) (q, r Word)
 TEXT ·divWW(SB),7,$0
 	// ARM has no multiword division, so use portable code.
 	B ·divWW_g(SB)

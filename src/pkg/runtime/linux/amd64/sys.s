@@ -36,31 +36,6 @@ TEXT runtime·write(SB),7,$0-24
 	SYSCALL
 	RET
 
-TEXT runtime·raisesigpipe(SB),7,$12
-	MOVL	$186, AX	// syscall - gettid
-	SYSCALL
-	MOVL	AX, DI	// arg 1 tid
-	MOVL	$13, SI	// arg 2 SIGPIPE
-	MOVL	$200, AX	// syscall - tkill
-	SYSCALL
-	RET
-
-TEXT runtime·setitimer(SB),7,$0-24
-	MOVL	8(SP), DI
-	MOVQ	16(SP), SI
-	MOVQ	24(SP), DX
-	MOVL	$38, AX			// syscall entry
-	SYSCALL
-	RET
-
-TEXT runtime·mincore(SB),7,$0-24
-	MOVQ	8(SP), DI
-	MOVQ	16(SP), SI
-	MOVQ	24(SP), DX
-	MOVL	$27, AX			// syscall entry
-	SYSCALL
-	RET
-
 TEXT runtime·gettime(SB), 7, $32
 	LEAQ	8(SP), DI
 	MOVQ	$0, SI
@@ -89,8 +64,8 @@ TEXT runtime·sigtramp(SB),7,$64
 	get_tls(BX)
 
 	// save g
-	MOVQ	g(BX), R10
-	MOVQ	R10, 40(SP)
+	MOVQ	g(BX), BP
+	MOVQ	BP, 40(SP)
 
 	// g = m->gsignal
 	MOVQ	m(BX), BP
@@ -100,14 +75,12 @@ TEXT runtime·sigtramp(SB),7,$64
 	MOVQ	DI, 0(SP)
 	MOVQ	SI, 8(SP)
 	MOVQ	DX, 16(SP)
-	MOVQ	R10, 24(SP)
-
 	CALL	runtime·sighandler(SB)
 
 	// restore g
 	get_tls(BX)
-	MOVQ	40(SP), R10
-	MOVQ	R10, g(BX)
+	MOVQ	40(SP), BP
+	MOVQ	BP, g(BX)
 	RET
 
 TEXT runtime·sigignore(SB),7,$0

@@ -5,7 +5,6 @@
 package netchan
 
 import (
-	"net"
 	"strings"
 	"testing"
 	"time"
@@ -24,7 +23,7 @@ func exportSend(exp *Exporter, n int, t *testing.T, done chan bool) {
 	}
 	go func() {
 		for i := 0; i < n; i++ {
-			ch <- base + i
+			ch <- base+i
 		}
 		close(ch)
 		if done != nil {
@@ -41,8 +40,8 @@ func exportReceive(exp *Exporter, t *testing.T, expDone chan bool) {
 		t.Fatal("exportReceive:", err)
 	}
 	for i := 0; i < count; i++ {
-		v, ok := <-ch
-		if !ok {
+		v := <-ch
+		if closed(ch) {
 			if i != closeCount {
 				t.Errorf("exportReceive expected close at %d; got one at %d", closeCount, i)
 			}
@@ -62,7 +61,7 @@ func importSend(imp *Importer, n int, t *testing.T, done chan bool) {
 	}
 	go func() {
 		for i := 0; i < n; i++ {
-			ch <- base + i
+			ch <- base+i
 		}
 		close(ch)
 		if done != nil {
@@ -78,8 +77,8 @@ func importReceive(imp *Importer, t *testing.T, done chan bool) {
 		t.Fatal("importReceive:", err)
 	}
 	for i := 0; i < count; i++ {
-		v, ok := <-ch
-		if !ok {
+		v := <-ch
+		if closed(ch) {
 			if i != closeCount {
 				t.Errorf("importReceive expected close at %d; got one at %d", closeCount, i)
 			}
@@ -95,13 +94,27 @@ func importReceive(imp *Importer, t *testing.T, done chan bool) {
 }
 
 func TestExportSendImportReceive(t *testing.T) {
-	exp, imp := pair(t)
+	exp, err := NewExporter("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal("new exporter:", err)
+	}
+	imp, err := NewImporter("tcp", exp.Addr().String())
+	if err != nil {
+		t.Fatal("new importer:", err)
+	}
 	exportSend(exp, count, t, nil)
 	importReceive(imp, t, nil)
 }
 
 func TestExportReceiveImportSend(t *testing.T) {
-	exp, imp := pair(t)
+	exp, err := NewExporter("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal("new exporter:", err)
+	}
+	imp, err := NewImporter("tcp", exp.Addr().String())
+	if err != nil {
+		t.Fatal("new importer:", err)
+	}
 	expDone := make(chan bool)
 	done := make(chan bool)
 	go func() {
@@ -114,13 +127,27 @@ func TestExportReceiveImportSend(t *testing.T) {
 }
 
 func TestClosingExportSendImportReceive(t *testing.T) {
-	exp, imp := pair(t)
+	exp, err := NewExporter("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal("new exporter:", err)
+	}
+	imp, err := NewImporter("tcp", exp.Addr().String())
+	if err != nil {
+		t.Fatal("new importer:", err)
+	}
 	exportSend(exp, closeCount, t, nil)
 	importReceive(imp, t, nil)
 }
 
 func TestClosingImportSendExportReceive(t *testing.T) {
-	exp, imp := pair(t)
+	exp, err := NewExporter("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal("new exporter:", err)
+	}
+	imp, err := NewImporter("tcp", exp.Addr().String())
+	if err != nil {
+		t.Fatal("new importer:", err)
+	}
 	expDone := make(chan bool)
 	done := make(chan bool)
 	go func() {
@@ -133,10 +160,17 @@ func TestClosingImportSendExportReceive(t *testing.T) {
 }
 
 func TestErrorForIllegalChannel(t *testing.T) {
-	exp, imp := pair(t)
+	exp, err := NewExporter("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal("new exporter:", err)
+	}
+	imp, err := NewImporter("tcp", exp.Addr().String())
+	if err != nil {
+		t.Fatal("new importer:", err)
+	}
 	// Now export a channel.
 	ch := make(chan int, 1)
-	err := exp.Export("aChannel", ch, Send)
+	err = exp.Export("aChannel", ch, Send)
 	if err != nil {
 		t.Fatal("export:", err)
 	}
@@ -166,7 +200,14 @@ func TestErrorForIllegalChannel(t *testing.T) {
 
 // Not a great test but it does at least invoke Drain.
 func TestExportDrain(t *testing.T) {
-	exp, imp := pair(t)
+	exp, err := NewExporter("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal("new exporter:", err)
+	}
+	imp, err := NewImporter("tcp", exp.Addr().String())
+	if err != nil {
+		t.Fatal("new importer:", err)
+	}
 	done := make(chan bool)
 	go func() {
 		exportSend(exp, closeCount, t, nil)
@@ -178,19 +219,16 @@ func TestExportDrain(t *testing.T) {
 	<-done
 }
 
-// Not a great test but it does at least invoke Drain.
-func TestImportDrain(t *testing.T) {
-	exp, imp := pair(t)
-	expDone := make(chan bool)
-	go exportReceive(exp, t, expDone)
-	<-expDone
-	importSend(imp, closeCount, t, nil)
-	imp.Drain(0)
-}
-
 // Not a great test but it does at least invoke Sync.
 func TestExportSync(t *testing.T) {
-	exp, imp := pair(t)
+	exp, err := NewExporter("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal("new exporter:", err)
+	}
+	imp, err := NewImporter("tcp", exp.Addr().String())
+	if err != nil {
+		t.Fatal("new importer:", err)
+	}
 	done := make(chan bool)
 	exportSend(exp, closeCount, t, nil)
 	go importReceive(imp, t, done)
@@ -201,9 +239,16 @@ func TestExportSync(t *testing.T) {
 // Test hanging up the send side of an export.
 // TODO: test hanging up the receive side of an export.
 func TestExportHangup(t *testing.T) {
-	exp, imp := pair(t)
+	exp, err := NewExporter("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal("new exporter:", err)
+	}
+	imp, err := NewImporter("tcp", exp.Addr().String())
+	if err != nil {
+		t.Fatal("new importer:", err)
+	}
 	ech := make(chan int)
-	err := exp.Export("exportedSend", ech, Send)
+	err = exp.Export("exportedSend", ech, Send)
 	if err != nil {
 		t.Fatal("export:", err)
 	}
@@ -222,8 +267,8 @@ func TestExportHangup(t *testing.T) {
 	}
 	// Now hang up the channel.  Importer should see it close.
 	exp.Hangup("exportedSend")
-	v, ok := <-ich
-	if ok {
+	v = <-ich
+	if !closed(ich) {
 		t.Fatal("expected channel to be closed; got value", v)
 	}
 }
@@ -231,9 +276,16 @@ func TestExportHangup(t *testing.T) {
 // Test hanging up the send side of an import.
 // TODO: test hanging up the receive side of an import.
 func TestImportHangup(t *testing.T) {
-	exp, imp := pair(t)
+	exp, err := NewExporter("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal("new exporter:", err)
+	}
+	imp, err := NewImporter("tcp", exp.Addr().String())
+	if err != nil {
+		t.Fatal("new importer:", err)
+	}
 	ech := make(chan int)
-	err := exp.Export("exportedRecv", ech, Recv)
+	err = exp.Export("exportedRecv", ech, Recv)
 	if err != nil {
 		t.Fatal("export:", err)
 	}
@@ -252,8 +304,8 @@ func TestImportHangup(t *testing.T) {
 	}
 	// Now hang up the channel.  Exporter should see it close.
 	imp.Hangup("exportedRecv")
-	v, ok := <-ech
-	if ok {
+	v = <-ech
+	if !closed(ech) {
 		t.Fatal("expected channel to be closed; got value", v)
 	}
 }
@@ -291,7 +343,14 @@ func exportLoopback(exp *Exporter, t *testing.T) {
 // This test checks that channel operations can proceed
 // even when other concurrent operations are blocked.
 func TestIndependentSends(t *testing.T) {
-	exp, imp := pair(t)
+	exp, err := NewExporter("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal("new exporter:", err)
+	}
+	imp, err := NewImporter("tcp", exp.Addr().String())
+	if err != nil {
+		t.Fatal("new importer:", err)
+	}
 
 	exportLoopback(exp, t)
 
@@ -318,10 +377,25 @@ type value struct {
 }
 
 func TestCrossConnect(t *testing.T) {
-	e1, i1 := pair(t)
-	e2, i2 := pair(t)
+	e1, err := NewExporter("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal("new exporter:", err)
+	}
+	i1, err := NewImporter("tcp", e1.Addr().String())
+	if err != nil {
+		t.Fatal("new importer:", err)
+	}
 
-	crossExport(e1, e2, t)
+	e2, err := NewExporter("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal("new exporter:", err)
+	}
+	i2, err := NewImporter("tcp", e2.Addr().String())
+	if err != nil {
+		t.Fatal("new importer:", err)
+	}
+
+	go crossExport(e1, e2, t)
 	crossImport(i1, i2, t)
 }
 
@@ -339,7 +413,7 @@ func crossExport(e1, e2 *Exporter, t *testing.T) {
 		t.Fatal("exportReceive:", err)
 	}
 
-	go crossLoop("export", s, r, t)
+	crossLoop("export", s, r, t)
 }
 
 // Import side of cross-traffic.
@@ -378,13 +452,20 @@ const flowCount = 100
 
 // test flow control from exporter to importer.
 func TestExportFlowControl(t *testing.T) {
-	exp, imp := pair(t)
+	exp, err := NewExporter("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal("new exporter:", err)
+	}
+	imp, err := NewImporter("tcp", exp.Addr().String())
+	if err != nil {
+		t.Fatal("new importer:", err)
+	}
 
 	sendDone := make(chan bool, 1)
 	exportSend(exp, flowCount, t, sendDone)
 
 	ch := make(chan int)
-	err := imp.ImportNValues("exportedSend", ch, Recv, 20, -1)
+	err = imp.ImportNValues("exportedSend", ch, Recv, 20, -1)
 	if err != nil {
 		t.Fatal("importReceive:", err)
 	}
@@ -394,10 +475,17 @@ func TestExportFlowControl(t *testing.T) {
 
 // test flow control from importer to exporter.
 func TestImportFlowControl(t *testing.T) {
-	exp, imp := pair(t)
+	exp, err := NewExporter("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal("new exporter:", err)
+	}
+	imp, err := NewImporter("tcp", exp.Addr().String())
+	if err != nil {
+		t.Fatal("new importer:", err)
+	}
 
 	ch := make(chan int)
-	err := exp.Export("exportedRecv", ch, Recv)
+	err = exp.Export("exportedRecv", ch, Recv)
 	if err != nil {
 		t.Fatal("importReceive:", err)
 	}
@@ -409,7 +497,7 @@ func TestImportFlowControl(t *testing.T) {
 
 func testFlow(sendDone chan bool, ch <-chan int, N int, t *testing.T) {
 	go func() {
-		time.Sleep(0.5e9)
+		time.Sleep(1e9)
 		sendDone <- false
 	}()
 
@@ -424,12 +512,4 @@ func testFlow(sendDone chan bool, ch <-chan int, N int, t *testing.T) {
 	if n != N {
 		t.Fatalf("expected %d values; got %d", N, n)
 	}
-}
-
-func pair(t *testing.T) (*Exporter, *Importer) {
-	c0, c1 := net.Pipe()
-	exp := NewExporter()
-	go exp.ServeConn(c0)
-	imp := NewImporter(c1)
-	return exp, imp
 }

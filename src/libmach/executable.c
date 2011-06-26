@@ -991,6 +991,7 @@ machdotout(int fd, Fhdr *fp, ExecHdr *hp)
 {
 	uvlong (*swav)(uvlong);
 	uint32 (*swal)(uint32);
+	ushort (*swab)(ushort);
 	Machhdr *mp;
 	MachCmd **cmd;
 	MachSymSeg *symtab;
@@ -1011,6 +1012,7 @@ machdotout(int fd, Fhdr *fp, ExecHdr *hp)
 		return 0;
 	}
 
+	swab = leswab;
 	swal = leswal;
 	swav = leswav;
 

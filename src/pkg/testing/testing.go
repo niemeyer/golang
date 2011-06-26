@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package testing provides support for automated testing of Go packages.
+// The testing package provides support for automated testing of Go packages.
 // It is intended to be used in concert with the ``gotest'' utility, which automates
 // execution of any function of the form
 //     func TestXxx(*testing.T)
@@ -12,7 +12,7 @@
 //
 // Functions of the form
 //     func BenchmarkXxx(*testing.B)
-// are considered benchmarks, and are executed by gotest when the -test.bench
+// are considered benchmarks, and are executed by gotest when the -benchmarks
 // flag is provided.
 //
 // A sample benchmark function looks like this:
@@ -43,31 +43,11 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"runtime/pprof"
-	"time"
 )
 
-var (
-	// The short flag requests that tests run more quickly, but its functionality
-	// is provided by test writers themselves.  The testing package is just its
-	// home.  The all.bash installation script sets it to make installation more
-	// efficient, but by default the flag is off so a plain "gotest" will do a
-	// full test of the package.
-	short = flag.Bool("test.short", false, "run smaller test suite to save time")
-
-	// Report as tests are run; default is silent for success.
-	chatty         = flag.Bool("test.v", false, "verbose: print additional output")
-	match          = flag.String("test.run", "", "regular expression to select tests to run")
-	memProfile     = flag.String("test.memprofile", "", "write a memory profile to the named file after execution")
-	memProfileRate = flag.Int("test.memprofilerate", 0, "if >=0, sets runtime.MemProfileRate")
-	cpuProfile     = flag.String("test.cpuprofile", "", "write a cpu profile to the named file during execution")
-	timeout        = flag.Int64("test.timeout", 0, "if > 0, sets time limit for tests in seconds")
-)
-
-// Short reports whether the -test.short flag is set.
-func Short() bool {
-	return *short
-}
+// Report as tests are run; default is silent for success.
+var chatty = flag.Bool("v", false, "verbose: print additional output")
+var match = flag.String("match", "", "regular expression to select tests to run")
 
 
 // Insert final newline if needed and tabs after internal newlines.
@@ -111,7 +91,7 @@ func (t *T) FailNow() {
 // and records the text in the error log.
 func (t *T) Log(args ...interface{}) { t.errors += "\t" + tabify(fmt.Sprintln(args...)) }
 
-// Logf formats its arguments according to the format, analogous to Printf(),
+// Log formats its arguments according to the format, analogous to Printf(),
 // and records the text in the error log.
 func (t *T) Logf(format string, args ...interface{}) {
 	t.errors += "\t" + tabify(fmt.Sprintf(format, args...))
@@ -155,27 +135,16 @@ func tRunner(t *T, test *InternalTest) {
 
 // An internal function but exported because it is cross-package; part of the implementation
 // of gotest.
-func Main(matchString func(pat, str string) (bool, os.Error), tests []InternalTest, benchmarks []InternalBenchmark) {
+func Main(matchString func(pat, str string) (bool, os.Error), tests []InternalTest) {
 	flag.Parse()
-
-	before()
-	startAlarm()
-	RunTests(matchString, tests)
-	stopAlarm()
-	RunBenchmarks(matchString, benchmarks)
-	after()
-}
-
-func RunTests(matchString func(pat, str string) (bool, os.Error), tests []InternalTest) {
 	ok := true
 	if len(tests) == 0 {
 		println("testing: warning: no tests to run")
 	}
-	procs := runtime.GOMAXPROCS(-1)
 	for i := 0; i < len(tests); i++ {
 		matched, err := matchString(*match, tests[i].Name)
 		if err != nil {
-			println("invalid regexp for -test.run:", err.String())
+			println("invalid regexp for -match:", err.String())
 			os.Exit(1)
 		}
 		if !matched {
@@ -184,24 +153,16 @@ func RunTests(matchString func(pat, str string) (bool, os.Error), tests []Intern
 		if *chatty {
 			println("=== RUN ", tests[i].Name)
 		}
-		ns := -time.Nanoseconds()
 		t := new(T)
 		t.ch = make(chan *T)
 		go tRunner(t, &tests[i])
 		<-t.ch
-		ns += time.Nanoseconds()
-		tstr := fmt.Sprintf("(%.2f seconds)", float64(ns)/1e9)
-		if p := runtime.GOMAXPROCS(-1); t.failed == false && p != procs {
-			t.failed = true
-			t.errors = fmt.Sprintf("%s left GOMAXPROCS set to %d\n", tests[i].Name, p)
-			procs = p
-		}
 		if t.failed {
-			println("--- FAIL:", tests[i].Name, tstr)
+			println("--- FAIL:", tests[i].Name)
 			print(t.errors)
 			ok = false
 		} else if *chatty {
-			println("--- PASS:", tests[i].Name, tstr)
+			println("--- PASS:", tests[i].Name)
 			print(t.errors)
 		}
 	}
@@ -210,64 +171,4 @@ func RunTests(matchString func(pat, str string) (bool, os.Error), tests []Intern
 		os.Exit(1)
 	}
 	println("PASS")
-}
-
-// before runs before all testing.
-func before() {
-	if *memProfileRate > 0 {
-		runtime.MemProfileRate = *memProfileRate
-	}
-	if *cpuProfile != "" {
-		f, err := os.Create(*cpuProfile)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "testing: %s", err)
-			return
-		}
-		if err := pprof.StartCPUProfile(f); err != nil {
-			fmt.Fprintf(os.Stderr, "testing: can't start cpu profile: %s", err)
-			f.Close()
-			return
-		}
-		// Could save f so after can call f.Close; not worth the effort.
-	}
-
-}
-
-// after runs after all testing.
-func after() {
-	if *cpuProfile != "" {
-		pprof.StopCPUProfile() // flushes profile to disk
-	}
-	if *memProfile != "" {
-		f, err := os.Create(*memProfile)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "testing: %s", err)
-			return
-		}
-		if err = pprof.WriteHeapProfile(f); err != nil {
-			fmt.Fprintf(os.Stderr, "testing: can't write %s: %s", *memProfile, err)
-		}
-		f.Close()
-	}
-}
-
-var timer *time.Timer
-
-// startAlarm starts an alarm if requested.
-func startAlarm() {
-	if *timeout > 0 {
-		timer = time.AfterFunc(*timeout*1e9, alarm)
-	}
-}
-
-// stopAlarm turns off the alarm.
-func stopAlarm() {
-	if *timeout > 0 {
-		timer.Stop()
-	}
-}
-
-// alarm is called if the timeout expires.
-func alarm() {
-	panic("test timed out")
 }

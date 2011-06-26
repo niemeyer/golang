@@ -15,6 +15,16 @@ enum {
 	PAGE_EXECUTE_READWRITE = 0x40,
 };
 
+static void
+abort(int8 *name)
+{
+	uintptr errno;
+
+	errno = (uintptr)runtime·stdcall(runtime·GetLastError, 0);
+	runtime·printf("%s failed with errno=%d\n", name, errno);
+	runtime·throw(name);
+}
+
 #pragma dynimport runtime·VirtualAlloc VirtualAlloc "kernel32.dll"
 #pragma dynimport runtime·VirtualFree VirtualFree "kernel32.dll"
 extern void *runtime·VirtualAlloc;
@@ -23,8 +33,12 @@ extern void *runtime·VirtualFree;
 void*
 runtime·SysAlloc(uintptr n)
 {
-	mstats.sys += n;
-	return runtime·stdcall(runtime·VirtualAlloc, 4, nil, n, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+	void *v;
+
+	v = runtime·stdcall(runtime·VirtualAlloc, 4, nil, n, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+	if(v == 0)
+		abort("VirtualAlloc");
+	return v;
 }
 
 void
@@ -39,32 +53,13 @@ runtime·SysFree(void *v, uintptr n)
 {
 	uintptr r;
 
-	mstats.sys -= n;
+	USED(n);
 	r = (uintptr)runtime·stdcall(runtime·VirtualFree, 3, v, 0, MEM_RELEASE);
 	if(r == 0)
-		runtime·throw("runtime: failed to release pages");
-}
-
-void*
-runtime·SysReserve(void *v, uintptr n)
-{
-	// v is just a hint.
-	// First try at v.
-	v = runtime·stdcall(runtime·VirtualAlloc, 4, v, n, MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-	if(v != nil)
-		return v;
-	
-	// Next let the kernel choose the address.
-	return runtime·stdcall(runtime·VirtualAlloc, 4, nil, n, MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+		abort("VirtualFree");
 }
 
 void
-runtime·SysMap(void *v, uintptr n)
+runtime·SysMemInit(void)
 {
-	void *p;
-	
-	mstats.sys += n;
-	p = runtime·stdcall(runtime·VirtualAlloc, 4, v, n, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
-	if(p != v)
-		runtime·throw("runtime: cannot map pages in arena address space");
 }

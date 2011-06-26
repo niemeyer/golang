@@ -27,7 +27,12 @@ runtime·dumpregs(Context *r)
 void
 runtime·initsig(int32)
 {
-	runtime·siginit();
+}
+
+String
+runtime·signame(int32)
+{
+	return runtime·emptystring;
 }
 
 uint32
@@ -52,7 +57,6 @@ runtime·sighandler(ExceptionRecord *info, void *frame, Context *r)
 		gp->sig = info->ExceptionCode;
 		gp->sigcode0 = info->ExceptionInformation[0];
 		gp->sigcode1 = info->ExceptionInformation[1];
-		gp->sigpc = r->Eip;
 
 		// Only push runtime·sigpanic if r->eip != 0.
 		// If r->eip == 0, probably panicked because of a
@@ -85,14 +89,7 @@ runtime·sighandler(ExceptionRecord *info, void *frame, Context *r)
 		runtime·dumpregs(r);
 	}
 
+	runtime·breakpoint();
 	runtime·exit(2);
 	return 0;
-}
-
-void
-runtime·resetcpuprofiler(int32 hz)
-{
-	// TODO: Enable profiling interrupts.
-	
-	m->profilehz = hz;
 }

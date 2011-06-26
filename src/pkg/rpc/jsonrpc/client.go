@@ -98,9 +98,6 @@ func (c *clientCodec) ReadResponseHeader(r *rpc.Response) os.Error {
 }
 
 func (c *clientCodec) ReadResponseBody(x interface{}) os.Error {
-	if x == nil {
-		return nil
-	}
 	return json.Unmarshal(*c.resp.Result, x)
 }
 
@@ -116,7 +113,7 @@ func NewClient(conn io.ReadWriteCloser) *rpc.Client {
 
 // Dial connects to a JSON-RPC server at the specified network address.
 func Dial(network, address string) (*rpc.Client, os.Error) {
-	conn, err := net.Dial(network, address)
+	conn, err := net.Dial(network, "", address)
 	if err != nil {
 		return nil, err
 	}

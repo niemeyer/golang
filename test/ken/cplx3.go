@@ -25,9 +25,9 @@ func main() {
 	println(c)
 
 	var a interface{}
-	switch c := reflect.ValueOf(a); c.Kind() {
-	case reflect.Complex64, reflect.Complex128:
-		v := c.Complex()
+	switch c := reflect.NewValue(a).(type) {
+	case *reflect.ComplexValue:
+		v := c.Get()
 		_, _ = complex128(v), true
 	}
 }

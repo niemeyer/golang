@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package mime implements parts of the MIME spec.
+// The mime package implements parts of the MIME spec.
 package mime
 
 import (
@@ -33,7 +33,7 @@ var mimeTypes = map[string]string{
 var mimeLock sync.RWMutex
 
 func loadMimeFile(filename string) {
-	f, err := os.Open(filename)
+	f, err := os.Open(filename, os.O_RDONLY, 0666)
 	if err != nil {
 		return
 	}

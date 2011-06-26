@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package pem implements the PEM data encoding, which originated in Privacy
+// This package implements the PEM data encoding, which originated in Privacy
 // Enhanced Mail. The most common use of PEM encoding today is in TLS keys and
 // certificates. See RFC 1421.
 package pem
@@ -86,7 +86,7 @@ func Decode(data []byte) (p *Block, rest []byte) {
 
 	typeLine, rest := getLine(rest)
 	if !bytes.HasSuffix(typeLine, pemEndOfLine) {
-		return decodeError(data, rest)
+		goto Error
 	}
 	typeLine = typeLine[0 : len(typeLine)-len(pemEndOfLine)]
 
@@ -118,30 +118,29 @@ func Decode(data []byte) (p *Block, rest []byte) {
 
 	i := bytes.Index(rest, pemEnd)
 	if i < 0 {
-		return decodeError(data, rest)
+		goto Error
 	}
 	base64Data := removeWhitespace(rest[0:i])
 
 	p.Bytes = make([]byte, base64.StdEncoding.DecodedLen(len(base64Data)))
 	n, err := base64.StdEncoding.Decode(p.Bytes, base64Data)
 	if err != nil {
-		return decodeError(data, rest)
+		goto Error
 	}
 	p.Bytes = p.Bytes[0:n]
 
 	_, rest = getLine(rest[i+len(pemEnd):])
 
 	return
-}
 
-func decodeError(data, rest []byte) (*Block, []byte) {
+Error:
 	// If we get here then we have rejected a likely looking, but
 	// ultimately invalid PEM block. We need to start over from a new
 	// position.  We have consumed the preamble line and will have consumed
 	// any lines which could be header lines. However, a valid preamble
 	// line is not a valid header line, therefore we cannot have consumed
 	// the preamble line for the any subsequent block. Thus, we will always
-	// find any valid block, no matter what bytes precede it.
+	// find any valid block, no matter what bytes preceed it.
 	//
 	// For example, if the input is
 	//
@@ -155,11 +154,11 @@ func decodeError(data, rest []byte) (*Block, []byte) {
 	//
 	// we've failed to parse using the first BEGIN line
 	// and now will try again, using the second BEGIN line.
-	p, rest := Decode(rest)
+	p, rest = Decode(rest)
 	if p == nil {
 		rest = data
 	}
-	return p, rest
+	return
 }
 
 const pemLineLength = 64

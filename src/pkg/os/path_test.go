@@ -6,7 +6,6 @@ package os_test
 
 import (
 	. "os"
-	"path/filepath"
 	"testing"
 	"runtime"
 	"syscall"
@@ -30,11 +29,10 @@ func TestMkdirAll(t *testing.T) {
 
 	// Make file.
 	fpath := path + "/file"
-	f, err := Create(fpath)
+	_, err = Open(fpath, O_WRONLY|O_CREAT, 0666)
 	if err != nil {
 		t.Fatalf("create %q: %s", fpath, err)
 	}
-	defer f.Close()
 
 	// Can't make directory named after file.
 	err = MkdirAll(fpath, 0777)
@@ -45,8 +43,8 @@ func TestMkdirAll(t *testing.T) {
 	if !ok {
 		t.Fatalf("MkdirAll %q returned %T, not *PathError", fpath, err)
 	}
-	if filepath.Clean(perr.Path) != filepath.Clean(fpath) {
-		t.Fatalf("MkdirAll %q returned wrong error path: %q not %q", fpath, filepath.Clean(perr.Path), filepath.Clean(fpath))
+	if perr.Path != fpath {
+		t.Fatalf("MkdirAll %q returned wrong error path: %q not %q", fpath, perr.Path, fpath)
 	}
 
 	// Can't make subdirectory of file.
@@ -59,16 +57,8 @@ func TestMkdirAll(t *testing.T) {
 	if !ok {
 		t.Fatalf("MkdirAll %q returned %T, not *PathError", ffpath, err)
 	}
-	if filepath.Clean(perr.Path) != filepath.Clean(fpath) {
-		t.Fatalf("MkdirAll %q returned wrong error path: %q not %q", ffpath, filepath.Clean(perr.Path), filepath.Clean(fpath))
-	}
-
-	if syscall.OS == "windows" {
-		path := `_test\_TestMkdirAll_\dir\.\dir2\`
-		err := MkdirAll(path, 0777)
-		if err != nil {
-			t.Fatalf("MkdirAll %q: %s", path, err)
-		}
+	if perr.Path != fpath {
+		t.Fatalf("MkdirAll %q returned wrong error path: %q not %q", ffpath, perr.Path, fpath)
 	}
 }
 
@@ -82,7 +72,7 @@ func TestRemoveAll(t *testing.T) {
 	if err := MkdirAll(path, 0777); err != nil {
 		t.Fatalf("MkdirAll %q: %s", path, err)
 	}
-	fd, err := Create(fpath)
+	fd, err := Open(fpath, O_WRONLY|O_CREAT, 0666)
 	if err != nil {
 		t.Fatalf("create %q: %s", fpath, err)
 	}
@@ -98,12 +88,12 @@ func TestRemoveAll(t *testing.T) {
 	if err = MkdirAll(dpath, 0777); err != nil {
 		t.Fatalf("MkdirAll %q: %s", dpath, err)
 	}
-	fd, err = Create(fpath)
+	fd, err = Open(fpath, O_WRONLY|O_CREAT, 0666)
 	if err != nil {
 		t.Fatalf("create %q: %s", fpath, err)
 	}
 	fd.Close()
-	fd, err = Create(dpath + "/file")
+	fd, err = Open(dpath+"/file", O_WRONLY|O_CREAT, 0666)
 	if err != nil {
 		t.Fatalf("create %q: %s", fpath, err)
 	}
@@ -131,7 +121,7 @@ func TestRemoveAll(t *testing.T) {
 		}
 
 		for _, s := range []string{fpath, dpath + "/file1", path + "/zzz"} {
-			fd, err = Create(s)
+			fd, err = Open(s, O_WRONLY|O_CREAT, 0666)
 			if err != nil {
 				t.Fatalf("create %q: %s", s, err)
 			}
@@ -166,8 +156,8 @@ func TestRemoveAll(t *testing.T) {
 }
 
 func TestMkdirAllWithSymlink(t *testing.T) {
-	if runtime.GOOS == "windows" || runtime.GOOS == "plan9" {
-		t.Log("Skipping test: symlinks don't exist under Windows/Plan 9")
+	if runtime.GOOS == "windows" {
+		t.Log("Skipping test: symlinks don't exist under Windows")
 		return
 	}
 
@@ -188,21 +178,4 @@ func TestMkdirAllWithSymlink(t *testing.T) {
 	if err != nil {
 		t.Errorf("MkdirAll %q: %s", path, err)
 	}
-}
-
-func TestMkdirAllAtSlash(t *testing.T) {
-	if runtime.GOOS == "windows" || runtime.GOOS == "plan9" {
-		return
-	}
-	RemoveAll("/_go_os_test")
-	err := MkdirAll("/_go_os_test/dir", 0777)
-	if err != nil {
-		pathErr, ok := err.(*PathError)
-		// common for users not to be able to write to /
-		if ok && pathErr.Error == EACCES {
-			return
-		}
-		t.Fatalf(`MkdirAll "/_go_os_test/dir": %v`, err)
-	}
-	RemoveAll("/_go_os_test")
 }

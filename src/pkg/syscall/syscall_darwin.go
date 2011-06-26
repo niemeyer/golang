@@ -12,58 +12,7 @@
 
 package syscall
 
-import "unsafe"
-
 const OS = "darwin"
-
-type SockaddrDatalink struct {
-	Len    uint8
-	Family uint8
-	Index  uint16
-	Type   uint8
-	Nlen   uint8
-	Alen   uint8
-	Slen   uint8
-	Data   [12]int8
-	raw    RawSockaddrDatalink
-}
-
-// ParseDirent parses up to max directory entries in buf,
-// appending the names to names.  It returns the number
-// bytes consumed from buf, the number of entries added
-// to names, and the new names slice.
-func ParseDirent(buf []byte, max int, names []string) (consumed int, count int, newnames []string) {
-	origlen := len(buf)
-	for max != 0 && len(buf) > 0 {
-		dirent := (*Dirent)(unsafe.Pointer(&buf[0]))
-		if dirent.Reclen == 0 {
-			buf = nil
-			break
-		}
-		buf = buf[dirent.Reclen:]
-		if dirent.Ino == 0 { // File absent in directory.
-			continue
-		}
-		bytes := (*[10000]byte)(unsafe.Pointer(&dirent.Name[0]))
-		var name = string(bytes[0:dirent.Namlen])
-		if name == "." || name == ".." { // Useless names
-			continue
-		}
-		max--
-		count++
-		names = append(names, name)
-	}
-	return origlen - len(buf), count, names
-}
-
-//sys   ptrace(request int, pid int, addr uintptr, data uintptr) (errno int)
-func PtraceAttach(pid int) (errno int) { return ptrace(PT_ATTACH, pid, 0, 0) }
-func PtraceDetach(pid int) (errno int) { return ptrace(PT_DETACH, pid, 0, 0) }
-
-// TODO
-func Sendfile(outfd int, infd int, offset *int64, count int) (written int, errno int) {
-	return -1, ENOSYS
-}
 
 /*
  * Wrapped
@@ -84,8 +33,8 @@ func Kill(pid int, signum int) (errno int) { return kill(pid, signum, 1) }
 //sys	Chown(path string, uid int, gid int) (errno int)
 //sys	Chroot(path string) (errno int)
 //sys	Close(fd int) (errno int)
-//sysnb	Dup(fd int) (nfd int, errno int)
-//sysnb	Dup2(from int, to int) (errno int)
+//sys	Dup(fd int) (nfd int, errno int)
+//sys	Dup2(from int, to int) (errno int)
 //sys	Exchangedata(path1 string, path2 string, options int) (errno int)
 //sys	Exit(code int)
 //sys	Fchdir(fd int) (errno int)
@@ -100,20 +49,20 @@ func Kill(pid int, signum int) (errno int) { return kill(pid, signum, 1) }
 //sys	Ftruncate(fd int, length int64) (errno int)
 //sys	Getdirentries(fd int, buf []byte, basep *uintptr) (n int, errno int) = SYS_GETDIRENTRIES64
 //sys	Getdtablesize() (size int)
-//sysnb	Getegid() (egid int)
-//sysnb	Geteuid() (uid int)
+//sys	Getegid() (egid int)
+//sys	Geteuid() (uid int)
 //sys	Getfsstat(buf []Statfs_t, flags int) (n int, errno int) = SYS_GETFSSTAT64
-//sysnb	Getgid() (gid int)
-//sysnb	Getpgid(pid int) (pgid int, errno int)
-//sysnb	Getpgrp() (pgrp int)
-//sysnb	Getpid() (pid int)
-//sysnb	Getppid() (ppid int)
+//sys	Getgid() (gid int)
+//sys	Getpgid(pid int) (pgid int, errno int)
+//sys	Getpgrp() (pgrp int)
+//sys	Getpid() (pid int)
+//sys	Getppid() (ppid int)
 //sys	Getpriority(which int, who int) (prio int, errno int)
-//sysnb	Getrlimit(which int, lim *Rlimit) (errno int)
-//sysnb	Getrusage(who int, rusage *Rusage) (errno int)
-//sysnb	Getsid(pid int) (sid int, errno int)
-//sysnb	Getuid() (uid int)
-//sysnb	Issetugid() (tainted bool)
+//sys	Getrlimit(which int, lim *Rlimit) (errno int)
+//sys	Getrusage(who int, rusage *Rusage) (errno int)
+//sys	Getsid(pid int) (sid int, errno int)
+//sys	Getuid() (uid int)
+//sys	Issetugid() (tainted bool)
 //sys	Kqueue() (fd int, errno int)
 //sys	Lchown(path string, uid int, gid int) (errno int)
 //sys	Link(path string, link string) (errno int)
@@ -134,18 +83,18 @@ func Kill(pid int, signum int) (errno int) { return kill(pid, signum, 1) }
 //sys	Seek(fd int, offset int64, whence int) (newoffset int64, errno int) = SYS_LSEEK
 //sys	Select(n int, r *FdSet, w *FdSet, e *FdSet, timeout *Timeval) (errno int)
 //sys	Setegid(egid int) (errno int)
-//sysnb	Seteuid(euid int) (errno int)
-//sysnb	Setgid(gid int) (errno int)
+//sys	Seteuid(euid int) (errno int)
+//sys	Setgid(gid int) (errno int)
 //sys	Setlogin(name string) (errno int)
-//sysnb	Setpgid(pid int, pgid int) (errno int)
+//sys	Setpgid(pid int, pgid int) (errno int)
 //sys	Setpriority(which int, who int, prio int) (errno int)
 //sys	Setprivexec(flag int) (errno int)
-//sysnb	Setregid(rgid int, egid int) (errno int)
-//sysnb	Setreuid(ruid int, euid int) (errno int)
-//sysnb	Setrlimit(which int, lim *Rlimit) (errno int)
-//sysnb	Setsid() (pid int, errno int)
-//sysnb	Settimeofday(tp *Timeval) (errno int)
-//sysnb	Setuid(uid int) (errno int)
+//sys	Setregid(rgid int, egid int) (errno int)
+//sys	Setreuid(ruid int, euid int) (errno int)
+//sys	Setrlimit(which int, lim *Rlimit) (errno int)
+//sys	Setsid() (pid int, errno int)
+//sys	Settimeofday(tp *Timeval) (errno int)
+//sys	Setuid(uid int) (errno int)
 //sys	Stat(path string, stat *Stat_t) (errno int) = SYS_STAT64
 //sys	Statfs(path string, stat *Statfs_t) (errno int) = SYS_STATFS64
 //sys	Symlink(path string, link string) (errno int)

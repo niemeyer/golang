@@ -2,6 +2,16 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// DNS client: see RFC 1035.
+// Has to be linked into package net for Dial.
+
+// TODO(rsc):
+//	Check periodically whether /etc/resolv.conf has changed.
+//	Could potentially handle many outstanding lookups faster.
+//	Could have a small cache.
+//	Random UDP source port (net.Dial should do that for us).
+//	Random request IDs.
+
 package net
 
 import (
@@ -9,6 +19,8 @@ import (
 	"fmt"
 	"os"
 	"rand"
+	"sync"
+	"time"
 )
 
 // DNSError represents a DNS lookup error.
@@ -36,30 +48,53 @@ func (e *DNSError) Temporary() bool { return e.IsTimeout }
 
 const noSuchHost = "no such host"
 
-// reverseaddr returns the in-addr.arpa. or ip6.arpa. hostname of the IP
-// address addr suitable for rDNS (PTR) record lookup or an error if it fails
-// to parse the IP address.
-func reverseaddr(addr string) (arpa string, err os.Error) {
-	ip := ParseIP(addr)
-	if ip == nil {
-		return "", &DNSError{Error: "unrecognized address", Name: addr}
+// Send a request on the connection and hope for a reply.
+// Up to cfg.attempts attempts.
+func exchange(cfg *dnsConfig, c Conn, name string, qtype uint16) (*dnsMsg, os.Error) {
+	if len(name) >= 256 {
+		return nil, &DNSError{Error: "name too long", Name: name}
 	}
-	if ip.To4() != nil {
-		return fmt.Sprintf("%d.%d.%d.%d.in-addr.arpa.", ip[15], ip[14], ip[13], ip[12]), nil
+	out := new(dnsMsg)
+	out.id = uint16(rand.Int()) ^ uint16(time.Nanoseconds())
+	out.question = []dnsQuestion{
+		{name, qtype, dnsClassINET},
 	}
-	// Must be IPv6
-	var buf bytes.Buffer
-	// Add it, in reverse, to the buffer
-	for i := len(ip) - 1; i >= 0; i-- {
-		s := fmt.Sprintf("%02x", ip[i])
-		buf.WriteByte(s[1])
-		buf.WriteByte('.')
-		buf.WriteByte(s[0])
-		buf.WriteByte('.')
+	out.recursion_desired = true
+	msg, ok := out.Pack()
+	if !ok {
+		return nil, &DNSError{Error: "internal error - cannot pack message", Name: name}
 	}
-	// Append "ip6.arpa." and return (buf already has the final .)
-	return buf.String() + "ip6.arpa.", nil
+
+	for attempt := 0; attempt < cfg.attempts; attempt++ {
+		n, err := c.Write(msg)
+		if err != nil {
+			return nil, err
+		}
+
+		c.SetReadTimeout(int64(cfg.timeout) * 1e9) // nanoseconds
+
+		buf := make([]byte, 2000) // More than enough.
+		n, err = c.Read(buf)
+		if err != nil {
+			if e, ok := err.(Error); ok && e.Timeout() {
+				continue
+			}
+			return nil, err
+		}
+		buf = buf[0:n]
+		in := new(dnsMsg)
+		if !in.Unpack(buf) || in.id != out.id {
+			continue
+		}
+		return in, nil
+	}
+	var server string
+	if a := c.RemoteAddr(); a != nil {
+		server = a.String()
+	}
+	return nil, &DNSError{Error: "no answer from server", Name: name, Server: server, IsTimeout: true}
 }
+
 
 // Find answer for name in dns message.
 // On return, if err == nil, addrs != nil.
@@ -85,19 +120,15 @@ func answer(name, server string, dns *dnsMsg, qtype uint16) (cname string, addrs
 Cname:
 	for cnameloop := 0; cnameloop < 10; cnameloop++ {
 		addrs = addrs[0:0]
-		for _, rr := range dns.answer {
-			if _, justHeader := rr.(*dnsRR_Header); justHeader {
-				// Corrupt record: we only have a
-				// header. That header might say it's
-				// of type qtype, but we don't
-				// actually have it. Skip.
-				continue
-			}
+		for i := 0; i < len(dns.answer); i++ {
+			rr := dns.answer[i]
 			h := rr.Header()
 			if h.Class == dnsClassINET && h.Name == name {
 				switch h.Rrtype {
 				case qtype:
-					addrs = append(addrs, rr)
+					n := len(addrs)
+					addrs = addrs[0 : n+1]
+					addrs[n] = rr
 				case dnsTypeCNAME:
 					// redirect to cname
 					name = rr.(*dnsRR_CNAME).Cname
@@ -113,6 +144,54 @@ Cname:
 
 	return "", nil, &DNSError{Error: "too many redirects", Name: name, Server: server}
 }
+
+// Do a lookup for a single name, which must be rooted
+// (otherwise answer will not find the answers).
+func tryOneName(cfg *dnsConfig, name string, qtype uint16) (cname string, addrs []dnsRR, err os.Error) {
+	if len(cfg.servers) == 0 {
+		return "", nil, &DNSError{Error: "no DNS servers", Name: name}
+	}
+	for i := 0; i < len(cfg.servers); i++ {
+		// Calling Dial here is scary -- we have to be sure
+		// not to dial a name that will require a DNS lookup,
+		// or Dial will call back here to translate it.
+		// The DNS config parser has already checked that
+		// all the cfg.servers[i] are IP addresses, which
+		// Dial will use without a DNS lookup.
+		server := cfg.servers[i] + ":53"
+		c, cerr := Dial("udp", "", server)
+		if cerr != nil {
+			err = cerr
+			continue
+		}
+		msg, merr := exchange(cfg, c, name, qtype)
+		c.Close()
+		if merr != nil {
+			err = merr
+			continue
+		}
+		cname, addrs, err = answer(name, server, msg, qtype)
+		if err == nil || err.(*DNSError).Error == noSuchHost {
+			break
+		}
+	}
+	return
+}
+
+func convertRR_A(records []dnsRR) []string {
+	addrs := make([]string, len(records))
+	for i := 0; i < len(records); i++ {
+		rr := records[i]
+		a := rr.(*dnsRR_A).A
+		addrs[i] = IPv4(byte(a>>24), byte(a>>16), byte(a>>8), byte(a)).String()
+	}
+	return addrs
+}
+
+var cfg *dnsConfig
+var dnserr os.Error
+
+func loadConfig() { cfg, dnserr = dnsReadConfig() }
 
 func isDomainName(s string) bool {
 	// See RFC 1035, RFC 3696.
@@ -162,7 +241,83 @@ func isDomainName(s string) bool {
 	return ok
 }
 
-// An SRV represents a single DNS SRV record.
+var onceLoadConfig sync.Once
+
+func lookup(name string, qtype uint16) (cname string, addrs []dnsRR, err os.Error) {
+	if !isDomainName(name) {
+		return name, nil, &DNSError{Error: "invalid domain name", Name: name}
+	}
+	onceLoadConfig.Do(loadConfig)
+	if dnserr != nil || cfg == nil {
+		err = dnserr
+		return
+	}
+	// If name is rooted (trailing dot) or has enough dots,
+	// try it by itself first.
+	rooted := len(name) > 0 && name[len(name)-1] == '.'
+	if rooted || count(name, '.') >= cfg.ndots {
+		rname := name
+		if !rooted {
+			rname += "."
+		}
+		// Can try as ordinary name.
+		cname, addrs, err = tryOneName(cfg, rname, qtype)
+		if err == nil {
+			return
+		}
+	}
+	if rooted {
+		return
+	}
+
+	// Otherwise, try suffixes.
+	for i := 0; i < len(cfg.search); i++ {
+		rname := name + "." + cfg.search[i]
+		if rname[len(rname)-1] != '.' {
+			rname += "."
+		}
+		cname, addrs, err = tryOneName(cfg, rname, qtype)
+		if err == nil {
+			return
+		}
+	}
+
+	// Last ditch effort: try unsuffixed.
+	rname := name
+	if !rooted {
+		rname += "."
+	}
+	cname, addrs, err = tryOneName(cfg, rname, qtype)
+	if err == nil {
+		return
+	}
+	return
+}
+
+// LookupHost looks for name using the local hosts file and DNS resolver.
+// It returns the canonical name for the host and an array of that
+// host's addresses.
+func LookupHost(name string) (cname string, addrs []string, err os.Error) {
+	onceLoadConfig.Do(loadConfig)
+	if dnserr != nil || cfg == nil {
+		err = dnserr
+		return
+	}
+	// Use entries from /etc/hosts if they match.
+	addrs = lookupStaticHost(name)
+	if len(addrs) > 0 {
+		cname = name
+		return
+	}
+	var records []dnsRR
+	cname, records, err = lookup(name, dnsTypeA)
+	if err != nil {
+		return
+	}
+	addrs = convertRR_A(records)
+	return
+}
+
 type SRV struct {
 	Target   string
 	Port     uint16
@@ -170,55 +325,90 @@ type SRV struct {
 	Weight   uint16
 }
 
-// byPriorityWeight sorts SRV records by ascending priority and weight.
-type byPriorityWeight []*SRV
-
-func (s byPriorityWeight) Len() int { return len(s) }
-
-func (s byPriorityWeight) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
-
-func (s byPriorityWeight) Less(i, j int) bool {
-	return s[i].Priority < s[j].Priority ||
-		(s[i].Priority == s[j].Priority && s[i].Weight < s[j].Weight)
+// LookupSRV tries to resolve an SRV query of the given service,
+// protocol, and domain name, as specified in RFC 2782. In most cases
+// the proto argument can be the same as the corresponding
+// Addr.Network().
+func LookupSRV(service, proto, name string) (cname string, addrs []*SRV, err os.Error) {
+	target := "_" + service + "._" + proto + "." + name
+	var records []dnsRR
+	cname, records, err = lookup(target, dnsTypeSRV)
+	if err != nil {
+		return
+	}
+	addrs = make([]*SRV, len(records))
+	for i := 0; i < len(records); i++ {
+		r := records[i].(*dnsRR_SRV)
+		addrs[i] = &SRV{r.Target, r.Port, r.Priority, r.Weight}
+	}
+	return
 }
 
-// shuffleSRVByWeight shuffles SRV records by weight using the algorithm
-// described in RFC 2782.  
-func shuffleSRVByWeight(addrs []*SRV) {
-	sum := 0
-	for _, addr := range addrs {
-		sum += int(addr.Weight)
-	}
-	for sum > 0 && len(addrs) > 1 {
-		s := 0
-		n := rand.Intn(sum + 1)
-		for i := range addrs {
-			s += int(addrs[i].Weight)
-			if s >= n {
-				if i > 0 {
-					t := addrs[i]
-					copy(addrs[1:i+1], addrs[0:i])
-					addrs[0] = t
-				}
-				break
-			}
-		}
-		sum -= int(addrs[0].Weight)
-		addrs = addrs[1:]
-	}
-}
-
-// An MX represents a single DNS MX record.
 type MX struct {
 	Host string
 	Pref uint16
 }
 
-// byPref implements sort.Interface to sort MX records by preference
-type byPref []*MX
+func LookupMX(name string) (entries []*MX, err os.Error) {
+	var records []dnsRR
+	_, records, err = lookup(name, dnsTypeMX)
+	if err != nil {
+		return
+	}
+	entries = make([]*MX, len(records))
+	for i := range records {
+		r := records[i].(*dnsRR_MX)
+		entries[i] = &MX{r.Mx, r.Pref}
+	}
+	return
+}
 
-func (s byPref) Len() int { return len(s) }
+// reverseaddr returns the in-addr.arpa. or ip6.arpa. hostname of the IP
+// address addr suitable for rDNS (PTR) record lookup or an error if it fails
+// to parse the IP address.
+func reverseaddr(addr string) (arpa string, err os.Error) {
+	ip := ParseIP(addr)
+	if ip == nil {
+		return "", &DNSError{Error: "unrecognized address", Name: addr}
+	}
+	if ip.To4() != nil {
+		return fmt.Sprintf("%d.%d.%d.%d.in-addr.arpa.", ip[15], ip[14], ip[13], ip[12]), nil
+	}
+	// Must be IPv6
+	var buf bytes.Buffer
+	// Add it, in reverse, to the buffer
+	for i := len(ip) - 1; i >= 0; i-- {
+		s := fmt.Sprintf("%02x", ip[i])
+		buf.WriteByte(s[1])
+		buf.WriteByte('.')
+		buf.WriteByte(s[0])
+		buf.WriteByte('.')
+	}
+	// Append "ip6.arpa." and return (buf already has the final .)
+	return buf.String() + "ip6.arpa.", nil
+}
 
-func (s byPref) Less(i, j int) bool { return s[i].Pref < s[j].Pref }
-
-func (s byPref) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+// LookupAddr performs a reverse lookup for the given address, returning a list
+// of names mapping to that address.
+func LookupAddr(addr string) (name []string, err os.Error) {
+	name = lookupStaticAddr(addr)
+	if len(name) > 0 {
+		return
+	}
+	var arpa string
+	arpa, err = reverseaddr(addr)
+	if err != nil {
+		return
+	}
+	var records []dnsRR
+	_, records, err = lookup(arpa, dnsTypePTR)
+	if err != nil {
+		return
+	}
+	name = make([]string, len(records))
+	for i := range records {
+		r := records[i].(*dnsRR_PTR)
+		name[i] = r.Ptr
+	}
+	return
+}

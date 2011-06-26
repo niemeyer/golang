@@ -23,12 +23,6 @@ indexes:
   - name: __key__
     direction: desc
 
-- kind: Commit
-  ancestor: yes
-  properties:
-  - name: __key__
-    direction: desc
-
 - kind: Project
   properties:
   - name: approved

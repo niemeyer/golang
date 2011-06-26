@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"http"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"regexp"
@@ -41,7 +42,7 @@ func codewalk(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// If directory exists, serve list of code walks.
-	dir, err := fs.Lstat(abspath)
+	dir, err := os.Lstat(abspath)
 	if err == nil && dir.IsDirectory() {
 		codewalkDir(w, r, relpath, abspath)
 		return
@@ -113,8 +114,8 @@ func (st *Codestep) String() string {
 
 
 // loadCodewalk reads a codewalk from the named XML file.
-func loadCodewalk(filename string) (*Codewalk, os.Error) {
-	f, err := fs.Open(filename)
+func loadCodewalk(file string) (*Codewalk, os.Error) {
+	f, err := os.Open(file, os.O_RDONLY, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +125,7 @@ func loadCodewalk(filename string) (*Codewalk, os.Error) {
 	p.Entity = xml.HTMLEntity
 	err = p.Unmarshal(cw, nil)
 	if err != nil {
-		return nil, &os.PathError{"parsing", filename, err}
+		return nil, &os.PathError{"parsing", file, err}
 	}
 
 	// Compute file list, evaluate line numbers for addresses.
@@ -134,8 +135,8 @@ func loadCodewalk(filename string) (*Codewalk, os.Error) {
 		if i < 0 {
 			i = len(st.Src)
 		}
-		filename := st.Src[0:i]
-		data, err := fs.ReadFile(absolutePath(filename, *goroot))
+		file := st.Src[0:i]
+		data, err := ioutil.ReadFile(absolutePath(file, *goroot))
 		if err != nil {
 			st.Err = err
 			continue
@@ -157,8 +158,8 @@ func loadCodewalk(filename string) (*Codewalk, os.Error) {
 			st.Hi = byteToLine(data, hi-1)
 		}
 		st.Data = data
-		st.File = filename
-		m[filename] = true
+		st.File = file
+		m[file] = true
 	}
 
 	// Make list of files
@@ -183,7 +184,7 @@ func codewalkDir(w http.ResponseWriter, r *http.Request, relpath, abspath string
 		Title string
 	}
 
-	dir, err := fs.ReadDir(abspath)
+	dir, err := ioutil.ReadDir(abspath)
 	if err != nil {
 		log.Print(err)
 		serveError(w, r, relpath, err)
@@ -191,15 +192,14 @@ func codewalkDir(w http.ResponseWriter, r *http.Request, relpath, abspath string
 	}
 	var v vector.Vector
 	for _, fi := range dir {
-		name := fi.Name()
 		if fi.IsDirectory() {
-			v.Push(&elem{name + "/", ""})
-		} else if strings.HasSuffix(name, ".xml") {
-			cw, err := loadCodewalk(abspath + "/" + name)
+			v.Push(&elem{fi.Name + "/", ""})
+		} else if strings.HasSuffix(fi.Name, ".xml") {
+			cw, err := loadCodewalk(abspath + "/" + fi.Name)
 			if err != nil {
 				continue
 			}
-			v.Push(&elem{name[0 : len(name)-len(".xml")], cw.Title})
+			v.Push(&elem{fi.Name[0 : len(fi.Name)-len(".xml")], cw.Title})
 		}
 	}
 
@@ -216,7 +216,7 @@ func codewalkDir(w http.ResponseWriter, r *http.Request, relpath, abspath string
 // the usual godoc HTML wrapper.
 func codewalkFileprint(w http.ResponseWriter, r *http.Request, f string) {
 	abspath := absolutePath(f, *goroot)
-	data, err := fs.ReadFile(abspath)
+	data, err := ioutil.ReadFile(abspath)
 	if err != nil {
 		log.Print(err)
 		serveError(w, r, f, err)

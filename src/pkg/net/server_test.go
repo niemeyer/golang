@@ -25,7 +25,7 @@ func runEcho(fd io.ReadWriter, done chan<- int) {
 
 	for {
 		n, err := fd.Read(buf[0:])
-		if err != nil || n == 0 || string(buf[:n]) == "END" {
+		if err != nil || n == 0 {
 			break
 		}
 		fd.Write(buf[0:n])
@@ -54,15 +54,13 @@ func runServe(t *testing.T, network, addr string, listening chan<- string, done 
 }
 
 func connect(t *testing.T, network, addr string, isEmpty bool) {
-	var fd Conn
-	var err os.Error
+	var laddr string
 	if network == "unixgram" {
-		fd, err = DialUnix(network, &UnixAddr{addr + ".local", network}, &UnixAddr{addr, network})
-	} else {
-		fd, err = Dial(network, addr)
+		laddr = addr + ".local"
 	}
+	fd, err := Dial(network, laddr, addr)
 	if err != nil {
-		t.Fatalf("net.Dial(%q, %q) = _, %v", network, addr, err)
+		t.Fatalf("net.Dial(%q, %q, %q) = _, %v", network, laddr, addr, err)
 	}
 	fd.SetReadTimeout(1e9) // 1s
 
@@ -81,33 +79,19 @@ func connect(t *testing.T, network, addr string, isEmpty bool) {
 	if n != len(b) || err1 != nil {
 		t.Fatalf("fd.Read() = %d, %v (want %d, nil)", n, err1, len(b))
 	}
-
-	// Send explicit ending for unixpacket.
-	// Older Linux kernels do stop reads on close.
-	if network == "unixpacket" {
-		fd.Write([]byte("END"))
-	}
-
 	fd.Close()
 }
 
 func doTest(t *testing.T, network, listenaddr, dialaddr string) {
-	t.Logf("Test %q %q %q\n", network, listenaddr, dialaddr)
-	switch listenaddr {
-	case "", "0.0.0.0", "[::]", "[::ffff:0.0.0.0]":
-		if testing.Short() || avoidMacFirewall {
-			t.Logf("skip wildcard listen during short test")
-			return
-		}
-	}
+	t.Logf("Test %s %s %s\n", network, listenaddr, dialaddr)
 	listening := make(chan string)
 	done := make(chan int)
-	if network == "tcp" || network == "tcp4" || network == "tcp6" {
+	if network == "tcp" {
 		listenaddr += ":0" // any available port
 	}
 	go runServe(t, network, listenaddr, listening, done)
 	addr := <-listening // wait for server to start
-	if network == "tcp" || network == "tcp4" || network == "tcp6" {
+	if network == "tcp" {
 		dialaddr += addr[strings.LastIndex(addr, ":"):]
 	}
 	connect(t, network, dialaddr, false)
@@ -115,33 +99,12 @@ func doTest(t *testing.T, network, listenaddr, dialaddr string) {
 }
 
 func TestTCPServer(t *testing.T) {
-	doTest(t, "tcp", "", "127.0.0.1")
 	doTest(t, "tcp", "0.0.0.0", "127.0.0.1")
-	doTest(t, "tcp", "127.0.0.1", "127.0.0.1")
-	doTest(t, "tcp4", "", "127.0.0.1")
-	doTest(t, "tcp4", "0.0.0.0", "127.0.0.1")
-	doTest(t, "tcp4", "127.0.0.1", "127.0.0.1")
-	if supportsIPv6 {
-		doTest(t, "tcp", "", "[::1]")
-		doTest(t, "tcp", "[::]", "[::1]")
-		doTest(t, "tcp", "[::1]", "[::1]")
-		doTest(t, "tcp6", "", "[::1]")
-		doTest(t, "tcp6", "[::]", "[::1]")
-		doTest(t, "tcp6", "[::1]", "[::1]")
-	}
-	if supportsIPv6 && supportsIPv4map {
-		doTest(t, "tcp", "[::ffff:0.0.0.0]", "127.0.0.1")
+	doTest(t, "tcp", "", "127.0.0.1")
+	if kernelSupportsIPv6() {
+		doTest(t, "tcp", "[::]", "[::ffff:127.0.0.1]")
 		doTest(t, "tcp", "[::]", "127.0.0.1")
-		doTest(t, "tcp4", "[::ffff:0.0.0.0]", "127.0.0.1")
-		doTest(t, "tcp6", "", "127.0.0.1")
-		doTest(t, "tcp6", "[::ffff:0.0.0.0]", "127.0.0.1")
-		doTest(t, "tcp6", "[::]", "127.0.0.1")
-		doTest(t, "tcp", "127.0.0.1", "[::ffff:127.0.0.1]")
-		doTest(t, "tcp", "[::ffff:127.0.0.1]", "127.0.0.1")
-		doTest(t, "tcp4", "127.0.0.1", "[::ffff:127.0.0.1]")
-		doTest(t, "tcp4", "[::ffff:127.0.0.1]", "127.0.0.1")
-		doTest(t, "tcp6", "127.0.0.1", "[::ffff:127.0.0.1]")
-		doTest(t, "tcp6", "[::ffff:127.0.0.1]", "127.0.0.1")
+		doTest(t, "tcp", "0.0.0.0", "[::ffff:127.0.0.1]")
 	}
 }
 
@@ -170,16 +133,13 @@ func runPacket(t *testing.T, network, addr string, listening chan<- string, done
 	listening <- c.LocalAddr().String()
 	c.SetReadTimeout(10e6) // 10ms
 	var buf [1000]byte
-Run:
 	for {
 		n, addr, err := c.ReadFrom(buf[0:])
 		if e, ok := err.(Error); ok && e.Timeout() {
-			select {
-			case done <- 1:
-				break Run
-			default:
-				continue Run
+			if done <- 1 {
+				break
 			}
+			continue
 		}
 		if err != nil {
 			break
@@ -216,7 +176,7 @@ func TestUDPServer(t *testing.T) {
 	for _, isEmpty := range []bool{false, true} {
 		doTestPacket(t, "udp", "0.0.0.0", "127.0.0.1", isEmpty)
 		doTestPacket(t, "udp", "", "127.0.0.1", isEmpty)
-		if supportsIPv6 && supportsIPv4map {
+		if kernelSupportsIPv6() {
 			doTestPacket(t, "udp", "[::]", "[::ffff:127.0.0.1]", isEmpty)
 			doTestPacket(t, "udp", "[::]", "127.0.0.1", isEmpty)
 			doTestPacket(t, "udp", "0.0.0.0", "[::ffff:127.0.0.1]", isEmpty)

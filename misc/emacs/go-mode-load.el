@@ -18,11 +18,10 @@
 ;;   (let ((generated-autoload-file buffer-file-name)) (update-file-autoloads "go-mode.el"))
 
 
-;;;### (autoloads (gofmt-before-save gofmt go-mode) "go-mode" "go-mode.el"
-;;;;;;  (19917 17808))
+;;;### (autoloads (go-mode) "go-mode" "go-mode.el" (19168 32439))
 ;;; Generated autoloads from go-mode.el
 
-(autoload 'go-mode "go-mode" "\
+(autoload (quote go-mode) "go-mode" "\
 Major mode for editing Go source text.
 
 This provides basic syntax highlighting for keywords, built-ins,
@@ -31,19 +30,7 @@ functions, and some types.  It also provides indentation that is
 
 \(fn)" t nil)
 
-(add-to-list 'auto-mode-alist (cons "\\.go$" #'go-mode))
-
-(autoload 'gofmt "go-mode" "\
-Pipe the current buffer through the external tool `gofmt`.
-Replace the current buffer on success; display errors on failure.
-
-\(fn)" t nil)
-
-(autoload 'gofmt-before-save "go-mode" "\
-Add this to .emacs to run gofmt on the current buffer when saving:
- (add-hook 'before-save-hook #'gofmt-before-save)
-
-\(fn)" t nil)
+(add-to-list (quote auto-mode-alist) (cons "\\.go$" (function go-mode)))
 
 ;;;***
 

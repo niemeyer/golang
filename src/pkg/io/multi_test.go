@@ -20,9 +20,8 @@ func TestMultiReader(t *testing.T) {
 	nread := 0
 	withFooBar := func(tests func()) {
 		r1 := strings.NewReader("foo ")
-		r2 := strings.NewReader("")
-		r3 := strings.NewReader("bar")
-		mr = MultiReader(r1, r2, r3)
+		r2 := strings.NewReader("bar")
+		mr = MultiReader(r1, r2)
 		buf = make([]byte, 20)
 		tests()
 	}

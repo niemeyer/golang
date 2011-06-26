@@ -316,9 +316,9 @@ func TestNumSubexp(t *testing.T) {
 }
 
 func BenchmarkLiteral(b *testing.B) {
-	x := strings.Repeat("x", 50) + "y"
+	x := strings.Repeat("x", 50)
 	b.StopTimer()
-	re := MustCompile("y")
+	re := MustCompile(x)
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		if !re.MatchString(x) {
@@ -329,9 +329,9 @@ func BenchmarkLiteral(b *testing.B) {
 }
 
 func BenchmarkNotLiteral(b *testing.B) {
-	x := strings.Repeat("x", 50) + "y"
+	x := strings.Repeat("x", 49)
 	b.StopTimer()
-	re := MustCompile(".y")
+	re := MustCompile("^" + x)
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		if !re.MatchString(x) {
@@ -356,7 +356,7 @@ func BenchmarkMatchClass(b *testing.B) {
 
 func BenchmarkMatchClass_InRange(b *testing.B) {
 	b.StopTimer()
-	// 'b' is between 'a' and 'c', so the charclass
+	// 'b' is betwen 'a' and 'c', so the charclass
 	// range checking is no help here.
 	x := strings.Repeat("bbbb", 20) + "c"
 	re := MustCompile("[ac]")

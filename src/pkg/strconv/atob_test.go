@@ -24,13 +24,11 @@ var atobtests = []atobTest{
 	{"F", false, nil},
 	{"FALSE", false, nil},
 	{"false", false, nil},
-	{"False", false, nil},
 	{"1", true, nil},
 	{"t", true, nil},
 	{"T", true, nil},
 	{"TRUE", true, nil},
 	{"true", true, nil},
-	{"True", true, nil},
 }
 
 func TestAtob(t *testing.T) {

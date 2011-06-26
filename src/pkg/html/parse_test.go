@@ -15,6 +15,12 @@ import (
 	"testing"
 )
 
+type devNull struct{}
+
+func (devNull) Write(p []byte) (int, os.Error) {
+	return len(p), nil
+}
+
 func pipeErr(err os.Error) io.Reader {
 	pr, pw := io.Pipe()
 	pw.CloseWithError(err)
@@ -22,7 +28,7 @@ func pipeErr(err os.Error) io.Reader {
 }
 
 func readDat(filename string, c chan io.Reader) {
-	f, err := os.Open("testdata/webkit/" + filename)
+	f, err := os.Open("testdata/webkit/"+filename, os.O_RDONLY, 0600)
 	if err != nil {
 		c <- pipeErr(err)
 		return
@@ -135,7 +141,7 @@ func TestParser(t *testing.T) {
 				t.Fatal(err)
 			}
 			// Skip the #error section.
-			if _, err := io.Copy(ioutil.Discard, <-rc); err != nil {
+			if _, err := io.Copy(devNull{}, <-rc); err != nil {
 				t.Fatal(err)
 			}
 			// Compare the parsed tree to the #document section.

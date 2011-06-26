@@ -10,10 +10,11 @@ import (
 	"exec"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"patch"
-	"path/filepath"
+	"path"
 	"sort"
 	"strings"
 )
@@ -185,7 +186,7 @@ func main() {
 
 // make parent directory for name, if necessary
 func makeParent(name string) {
-	parent, _ := filepath.Split(name)
+	parent, _ := path.Split(name)
 	chk(mkdirAll(parent, 0755))
 }
 
@@ -329,27 +330,55 @@ var lookPathCache = make(map[string]string)
 // It provides input on standard input to the command.
 func run(argv []string, input []byte) (out string, err os.Error) {
 	if len(argv) < 1 {
-		return "", &runError{dup(argv), os.EINVAL}
+		err = os.EINVAL
+		goto Error
 	}
-
 	prog, ok := lookPathCache[argv[0]]
 	if !ok {
 		prog, err = exec.LookPath(argv[0])
 		if err != nil {
-			return "", &runError{dup(argv), err}
+			goto Error
 		}
 		lookPathCache[argv[0]] = prog
 	}
-
-	cmd := exec.Command(prog, argv[1:]...)
-	if len(input) > 0 {
-		cmd.Stdin = bytes.NewBuffer(input)
+	// fmt.Fprintf(os.Stderr, "%v\n", argv);
+	var cmd *exec.Cmd
+	if len(input) == 0 {
+		cmd, err = exec.Run(prog, argv, os.Environ(), "", exec.DevNull, exec.Pipe, exec.MergeWithStdout)
+		if err != nil {
+			goto Error
+		}
+	} else {
+		cmd, err = exec.Run(prog, argv, os.Environ(), "", exec.Pipe, exec.Pipe, exec.MergeWithStdout)
+		if err != nil {
+			goto Error
+		}
+		go func() {
+			cmd.Stdin.Write(input)
+			cmd.Stdin.Close()
+		}()
 	}
-	bs, err := cmd.CombinedOutput()
+	defer cmd.Close()
+	var buf bytes.Buffer
+	_, err = io.Copy(&buf, cmd.Stdout)
+	out = buf.String()
 	if err != nil {
-		return "", &runError{dup(argv), err}
+		cmd.Wait(0)
+		goto Error
 	}
-	return string(bs), nil
+	w, err := cmd.Wait(0)
+	if err != nil {
+		goto Error
+	}
+	if !w.Exited() || w.ExitStatus() != 0 {
+		err = w
+		goto Error
+	}
+	return
+
+Error:
+	err = &runError{dup(argv), err}
+	return
 }
 
 // A runError represents an error that occurred while running a command.

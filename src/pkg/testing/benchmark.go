@@ -8,11 +8,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"runtime"
 	"time"
 )
 
-var matchBenchmarks = flag.String("test.bench", "", "regular expression to select benchmarks to run")
+var matchBenchmarks = flag.String("benchmarks", "", "regular expression to select benchmarks to run")
 
 // An internal type but exported because it is cross-package; part of the implementation
 // of gotest.
@@ -65,9 +64,6 @@ func (b *B) nsPerOp() int64 {
 
 // runN runs a single benchmark for the specified number of iterations.
 func (b *B) runN(n int) {
-	// Try to get a comparable environment for each run
-	// by clearing garbage from previous runs.
-	runtime.GC()
 	b.N = n
 	b.ResetTimer()
 	b.StartTimer()
@@ -143,13 +139,14 @@ func (b *B) run() BenchmarkResult {
 		b.runN(n)
 	}
 	return BenchmarkResult{b.N, b.ns, b.bytes}
+
 }
 
 // The results of a benchmark run.
 type BenchmarkResult struct {
 	N     int   // The number of iterations.
 	Ns    int64 // The total time taken.
-	Bytes int64 // Bytes processed in one iteration.
+	Bytes int64 // The total number of bytes processed.
 }
 
 func (r BenchmarkResult) NsPerOp() int64 {
@@ -159,20 +156,13 @@ func (r BenchmarkResult) NsPerOp() int64 {
 	return r.Ns / int64(r.N)
 }
 
-func (r BenchmarkResult) mbPerSec() float64 {
-	if r.Bytes <= 0 || r.Ns <= 0 || r.N <= 0 {
-		return 0
-	}
-	return float64(r.Bytes) * float64(r.N) / float64(r.Ns) * 1e3
-}
-
 func (r BenchmarkResult) String() string {
-	mbs := r.mbPerSec()
+	ns := r.NsPerOp()
 	mb := ""
-	if mbs != 0 {
-		mb = fmt.Sprintf("\t%7.2f MB/s", mbs)
+	if ns > 0 && r.Bytes > 0 {
+		mb = fmt.Sprintf("\t%7.2f MB/s", (float64(r.Bytes)/1e6)/(float64(ns)/1e9))
 	}
-	return fmt.Sprintf("%8d\t%10d ns/op%s", r.N, r.NsPerOp(), mb)
+	return fmt.Sprintf("%8d\t%10d ns/op%s", r.N, ns, mb)
 }
 
 // An internal function but exported because it is cross-package; part of the implementation
@@ -182,11 +172,10 @@ func RunBenchmarks(matchString func(pat, str string) (bool, os.Error), benchmark
 	if len(*matchBenchmarks) == 0 {
 		return
 	}
-	procs := runtime.GOMAXPROCS(-1)
 	for _, Benchmark := range benchmarks {
 		matched, err := matchString(*matchBenchmarks, Benchmark.Name)
 		if err != nil {
-			println("invalid regexp for -test.bench:", err.String())
+			println("invalid regexp for -benchmarks:", err.String())
 			os.Exit(1)
 		}
 		if !matched {
@@ -194,12 +183,7 @@ func RunBenchmarks(matchString func(pat, str string) (bool, os.Error), benchmark
 		}
 		b := &B{benchmark: Benchmark}
 		r := b.run()
-		print(fmt.Sprintf("%s\t%v\n", Benchmark.Name, r))
-		if p := runtime.GOMAXPROCS(-1); p != procs {
-			print(fmt.Sprintf("%s left GOMAXPROCS set to %d\n", Benchmark.Name, p))
-			procs = p
-		}
-
+		fmt.Printf("%s\t%v\n", Benchmark.Name, r)
 	}
 }
 

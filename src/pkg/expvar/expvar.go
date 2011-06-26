@@ -2,9 +2,9 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package expvar provides a standardized interface to public variables, such
-// as operation counters in servers. It exposes these variables via HTTP at
-// /debug/vars in JSON format.
+// The expvar package provides a standardized interface to public variables,
+// such as operation counters in servers. It exposes these variables via
+// HTTP at /debug/vars in JSON format.
 //
 // Operations to set or modify these public variables are atomic.
 //
@@ -180,14 +180,23 @@ func (v *String) String() string { return strconv.Quote(v.s) }
 
 func (v *String) Set(value string) { v.s = value }
 
-// Func implements Var by calling the function
-// and formatting the returned value using JSON.
-type Func func() interface{}
+// IntFunc wraps a func() int64 to create a value that satisfies the Var interface.
+// The function will be called each time the Var is evaluated.
+type IntFunc func() int64
 
-func (f Func) String() string {
-	v, _ := json.Marshal(f())
-	return string(v)
-}
+func (v IntFunc) String() string { return strconv.Itoa64(v()) }
+
+// FloatFunc wraps a func() float64 to create a value that satisfies the Var interface.
+// The function will be called each time the Var is evaluated.
+type FloatFunc func() float64
+
+func (v FloatFunc) String() string { return strconv.Ftoa64(v(), 'g', -1) }
+
+// StringFunc wraps a func() string to create value that satisfies the Var interface.
+// The function will be called each time the Var is evaluated.
+type StringFunc func() string
+
+func (f StringFunc) String() string { return strconv.Quote(f()) }
 
 
 // All published variables.
@@ -260,7 +269,7 @@ func Iter() <-chan KeyValue {
 }
 
 func expvarHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.SetHeader("content-type", "application/json; charset=utf-8")
 	fmt.Fprintf(w, "{\n")
 	first := true
 	for name, value := range vars {
@@ -273,16 +282,18 @@ func expvarHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "\n}\n")
 }
 
-func cmdline() interface{} {
-	return os.Args
+func memstats() string {
+	b, _ := json.MarshalIndent(&runtime.MemStats, "", "\t")
+	return string(b)
 }
 
-func memstats() interface{} {
-	return runtime.MemStats
+func cmdline() string {
+	b, _ := json.Marshal(os.Args)
+	return string(b)
 }
 
 func init() {
 	http.Handle("/debug/vars", http.HandlerFunc(expvarHandler))
-	Publish("cmdline", Func(cmdline))
-	Publish("memstats", Func(memstats))
+	Publish("cmdline", StringFunc(cmdline))
+	Publish("memstats", StringFunc(memstats))
 }

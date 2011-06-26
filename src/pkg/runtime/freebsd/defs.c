@@ -19,7 +19,6 @@
 #include <sys/rtprio.h>
 #include <sys/thr.h>
 #include <sys/_sigset.h>
-#include <sys/unistd.h>
 
 enum {
 	$PROT_NONE = PROT_NONE,
@@ -87,10 +86,6 @@ enum {
 	
 	$SEGV_MAPERR = SEGV_MAPERR,
 	$SEGV_ACCERR = SEGV_ACCERR,
-	
-	$ITIMER_REAL = ITIMER_REAL,
-	$ITIMER_VIRTUAL = ITIMER_VIRTUAL,
-	$ITIMER_PROF = ITIMER_PROF,
 };
 
 typedef struct rtprio	$Rtprio;
@@ -104,5 +99,3 @@ typedef siginfo_t $Siginfo;
 
 typedef mcontext_t $Mcontext;
 typedef ucontext_t $Ucontext;
-typedef struct timeval $Timeval;
-typedef struct itimerval $Itimerval;

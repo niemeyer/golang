@@ -38,28 +38,11 @@ TEXT runtime·write(SB),7,$0
 	SYSCALL
 	RET
 
-TEXT runtime·raisesigpipe(SB),7,$24
-	get_tls(CX)
-	MOVQ	m(CX), DX
-	MOVL	$13, DI	// arg 1 SIGPIPE
-	MOVQ	m_procid(DX), SI	// arg 2 thread_port
-	MOVL	$(0x2000000+328), AX	// syscall entry __pthread_kill
-	SYSCALL
-	RET
-
-TEXT runtime·setitimer(SB), 7, $0
-	MOVL	8(SP), DI
-	MOVQ	16(SP), SI
-	MOVQ	24(SP), DX
-	MOVL	$(0x2000000+83), AX	// syscall entry
-	SYSCALL
-	RET
-
 // void gettime(int64 *sec, int32 *usec)
 TEXT runtime·gettime(SB), 7, $32
 	MOVQ	SP, DI	// must be non-nil, unused
 	MOVQ	$0, SI
-	MOVL	$(0x2000000+116), AX
+	MOVQ	$(0x2000000+116), AX
 	SYSCALL
 	MOVQ	sec+0(FP), DI
 	MOVQ	AX, (DI)
@@ -83,8 +66,8 @@ TEXT runtime·sigtramp(SB),7,$64
 	get_tls(BX)
 	
 	// save g
-	MOVQ	g(BX), R10
-	MOVQ	R10, 48(SP)
+	MOVQ	g(BX), BP
+	MOVQ	BP, 40(SP)
 	
 	// g = m->gsignal
 	MOVQ	m(BX), BP
@@ -94,21 +77,18 @@ TEXT runtime·sigtramp(SB),7,$64
 	MOVL	DX, 0(SP)
 	MOVQ	CX, 8(SP)
 	MOVQ	R8, 16(SP)
-	MOVQ	R10, 24(SP)
-
-	MOVQ	R8, 32(SP)	// save ucontext
-	MOVQ	SI, 40(SP)	// save infostyle
+	MOVQ	R8, 24(SP)	// save ucontext
+	MOVQ	SI, 32(SP)	// save infostyle
 	CALL	DI
 
 	// restore g
 	get_tls(BX)
-	MOVQ	48(SP), R10
-	MOVQ	R10, g(BX)
+	MOVQ	40(SP), BP
+	MOVQ	BP, g(BX)
 
-	// call sigreturn
 	MOVL	$(0x2000000+184), AX	// sigreturn(ucontext, infostyle)
-	MOVQ	32(SP), DI	// saved ucontext
-	MOVQ	40(SP), SI	// saved infostyle
+	MOVQ	24(SP), DI	// saved ucontext
+	MOVQ	32(SP), SI	// saved infostyle
 	SYSCALL
 	INT $3	// not reached
 
@@ -155,12 +135,13 @@ TEXT runtime·bsdthread_create(SB),7,$0
 	MOVQ	mm+16(SP), SI	// "arg"
 	MOVQ	stk+8(SP), DX	// stack
 	MOVQ	gg+24(SP), R10	// "pthread"
-	MOVQ	$0x01000000, R8	// flags = PTHREAD_START_CUSTOM
+// TODO(rsc): why do we get away with 0 flags here but not on 386?
+	MOVQ	$0, R8	// flags
 	MOVQ	$0, R9	// paranoia
 	MOVQ	$(0x2000000+360), AX	// bsdthread_create
 	SYSCALL
 	JCC 3(PC)
-	NEGL	AX
+	MOVL	$-1, AX
 	RET
 	MOVL	$0, AX
 	RET

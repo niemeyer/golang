@@ -2,20 +2,13 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package sha256 implements the SHA224 and SHA256 hash algorithms as defined
-// in FIPS 180-2.
+// This package implements the SHA224 and SHA256 hash algorithms as defined in FIPS 180-2.
 package sha256
 
 import (
-	"crypto"
 	"hash"
 	"os"
 )
-
-func init() {
-	crypto.RegisterHash(crypto.SHA224, New224)
-	crypto.RegisterHash(crypto.SHA256, New)
-}
 
 // The size of a SHA256 checksum in bytes.
 const Size = 32

@@ -7,8 +7,8 @@ include ../../../src/Make.inc
 TARG=gobuilder
 GOFILES=\
 	exec.go\
+	hg.go\
 	http.go\
 	main.go\
-	package.go\
 
 include ../../../src/Make.cmd

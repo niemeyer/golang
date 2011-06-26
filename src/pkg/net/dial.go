@@ -6,7 +6,9 @@ package net
 
 import "os"
 
-// Dial connects to the address addr on the network net.
+// Dial connects to the remote address raddr on the network net.
+// If the string laddr is not empty, it is used as the local address
+// for the connection.
 //
 // Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only),
 // "udp", "udp4" (IPv4-only), "udp6" (IPv6-only), "ip", "ip4"
@@ -14,56 +16,79 @@ import "os"
 //
 // For IP networks, addresses have the form host:port.  If host is
 // a literal IPv6 address, it must be enclosed in square brackets.
-// The functions JoinHostPort and SplitHostPort manipulate 
-// addresses in this form.
 //
 // Examples:
-//	Dial("tcp", "12.34.56.78:80")
-//	Dial("tcp", "google.com:80")
-//	Dial("tcp", "[de:ad:be:ef::ca:fe]:80")
+//	Dial("tcp", "", "12.34.56.78:80")
+//	Dial("tcp", "", "google.com:80")
+//	Dial("tcp", "", "[de:ad:be:ef::ca:fe]:80")
+//	Dial("tcp", "127.0.0.1:123", "127.0.0.1:88")
 //
-func Dial(net, addr string) (c Conn, err os.Error) {
-	raddr := addr
-	if raddr == "" {
-		return nil, &OpError{"dial", net, nil, errMissingAddress}
-	}
-	switch net {
+func Dial(net, laddr, raddr string) (c Conn, err os.Error) {
+	switch prefixBefore(net, ':') {
 	case "tcp", "tcp4", "tcp6":
-		var ra *TCPAddr
-		if ra, err = ResolveTCPAddr(net, raddr); err != nil {
-			goto Error
+		var la, ra *TCPAddr
+		if laddr != "" {
+			if la, err = ResolveTCPAddr(laddr); err != nil {
+				goto Error
+			}
 		}
-		c, err := DialTCP(net, nil, ra)
+		if raddr != "" {
+			if ra, err = ResolveTCPAddr(raddr); err != nil {
+				goto Error
+			}
+		}
+		c, err := DialTCP(net, la, ra)
 		if err != nil {
 			return nil, err
 		}
 		return c, nil
 	case "udp", "udp4", "udp6":
-		var ra *UDPAddr
-		if ra, err = ResolveUDPAddr(net, raddr); err != nil {
-			goto Error
+		var la, ra *UDPAddr
+		if laddr != "" {
+			if la, err = ResolveUDPAddr(laddr); err != nil {
+				goto Error
+			}
 		}
-		c, err := DialUDP(net, nil, ra)
+		if raddr != "" {
+			if ra, err = ResolveUDPAddr(raddr); err != nil {
+				goto Error
+			}
+		}
+		c, err := DialUDP(net, la, ra)
 		if err != nil {
 			return nil, err
 		}
 		return c, nil
 	case "unix", "unixgram", "unixpacket":
-		var ra *UnixAddr
-		if ra, err = ResolveUnixAddr(net, raddr); err != nil {
-			goto Error
+		var la, ra *UnixAddr
+		if raddr != "" {
+			if ra, err = ResolveUnixAddr(net, raddr); err != nil {
+				goto Error
+			}
 		}
-		c, err = DialUnix(net, nil, ra)
+		if laddr != "" {
+			if la, err = ResolveUnixAddr(net, laddr); err != nil {
+				goto Error
+			}
+		}
+		c, err = DialUnix(net, la, ra)
 		if err != nil {
 			return nil, err
 		}
 		return c, nil
 	case "ip", "ip4", "ip6":
-		var ra *IPAddr
-		if ra, err = ResolveIPAddr(net, raddr); err != nil {
-			goto Error
+		var la, ra *IPAddr
+		if laddr != "" {
+			if la, err = ResolveIPAddr(laddr); err != nil {
+				goto Error
+			}
 		}
-		c, err := DialIP(net, nil, ra)
+		if raddr != "" {
+			if ra, err = ResolveIPAddr(raddr); err != nil {
+				goto Error
+			}
+		}
+		c, err := DialIP(net, la, ra)
 		if err != nil {
 			return nil, err
 		}
@@ -83,7 +108,7 @@ func Listen(net, laddr string) (l Listener, err os.Error) {
 	case "tcp", "tcp4", "tcp6":
 		var la *TCPAddr
 		if laddr != "" {
-			if la, err = ResolveTCPAddr(net, laddr); err != nil {
+			if la, err = ResolveTCPAddr(laddr); err != nil {
 				return nil, err
 			}
 		}
@@ -112,11 +137,11 @@ func Listen(net, laddr string) (l Listener, err os.Error) {
 // The network string net must be a packet-oriented network:
 // "udp", "udp4", "udp6", or "unixgram".
 func ListenPacket(net, laddr string) (c PacketConn, err os.Error) {
-	switch net {
+	switch prefixBefore(net, ':') {
 	case "udp", "udp4", "udp6":
 		var la *UDPAddr
 		if laddr != "" {
-			if la, err = ResolveUDPAddr(net, laddr); err != nil {
+			if la, err = ResolveUDPAddr(laddr); err != nil {
 				return nil, err
 			}
 		}
@@ -137,25 +162,18 @@ func ListenPacket(net, laddr string) (c PacketConn, err os.Error) {
 			return nil, err
 		}
 		return c, nil
-	}
-
-	var rawnet string
-	if rawnet, _, err = splitNetProto(net); err != nil {
-		switch rawnet {
-		case "ip", "ip4", "ip6":
-			var la *IPAddr
-			if laddr != "" {
-				if la, err = ResolveIPAddr(rawnet, laddr); err != nil {
-					return nil, err
-				}
-			}
-			c, err := ListenIP(net, la)
-			if err != nil {
+	case "ip", "ip4", "ip6":
+		var la *IPAddr
+		if laddr != "" {
+			if la, err = ResolveIPAddr(laddr); err != nil {
 				return nil, err
 			}
-			return c, nil
 		}
+		c, err := ListenIP(net, la)
+		if err != nil {
+			return nil, err
+		}
+		return c, nil
 	}
-
 	return nil, UnknownNetworkError(net)
 }

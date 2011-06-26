@@ -1,27 +1,24 @@
-#!/usr/bin/env bash
+#1/bin/bash
 
-set -e
-wiki_pid=
+./final.bin &
+wiki_pid=$!
+
 cleanup() {
 	kill $wiki_pid
-	rm -f test_*.out Test.txt final-test.bin final-test.go
+	rm -f test_*.out Test.txt
+	exit ${1:-1}
 }
-trap cleanup 0 INT
-
-gomake get.bin
-addr=$(./get.bin -addr)
-sed s/:8080/$addr/ < final.go > final-test.go
-gomake final-test.bin
-(./final-test.bin) &
-wiki_pid=$!
+trap cleanup INT
 
 sleep 1
 
-./get.bin http://$addr/edit/Test > test_edit.out
-diff -u test_edit.out test_edit.good
-./get.bin -post=body=some%20content http://$addr/save/Test
-diff -u Test.txt test_Test.txt.good
-./get.bin http://$addr/view/Test > test_view.out
-diff -u test_view.out test_view.good
+curl -s -o test_edit.out http://localhost:8080/edit/Test 
+cmp test_edit.out test_edit.good || cleanup 1
+curl -s -o /dev/null -d body=some%20content http://localhost:8080/save/Test
+cmp Test.txt test_Test.txt.good || cleanup 1
+curl -s -o test_view.out http://localhost:8080/view/Test
+cmp test_view.out test_view.good || cleanup 1
 
-echo PASS
+echo "Passed"
+cleanup 0
+

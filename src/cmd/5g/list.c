@@ -87,10 +87,6 @@ Dconv(Fmt *fp)
 	int32 v;
 
 	a = va_arg(fp->args, Addr*);
-	if(a == A) {
-		sprint(str, "<nil>");
-		goto conv;
-	}
 	i = a->type;
 	switch(i) {
 
@@ -187,7 +183,7 @@ Dconv(Fmt *fp)
 //		a->type = D_ADDR;
 //		goto conv;
 	}
-conv:
+//conv:
 	return fmtstrcpy(fp, str);
 }
 

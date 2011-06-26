@@ -9,4 +9,7 @@ TARG=gopack
 OFILES=\
 	ar.$O\
 
+LIB=\
+	../../../lib/libmach.a\
+
 include ../../Make.ccmd

@@ -9,5 +9,6 @@ GOFILES=\
 	download.go\
 	main.go\
 	make.go\
+	parse.go\
 
 include ../../Make.cmd

@@ -6,10 +6,8 @@ include ../../../Make.inc
 
 TARG=image/jpeg
 GOFILES=\
-	fdct.go\
 	huffman.go\
 	idct.go\
 	reader.go\
-	writer.go\
 
 include ../../../Make.pkg

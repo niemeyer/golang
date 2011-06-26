@@ -94,14 +94,10 @@ func searchFiles(a []*File, x int) int {
 
 
 func (s *FileSet) file(p Pos) *File {
-	if f := s.last; f != nil && f.base <= int(p) && int(p) <= f.base+f.size {
-		return f
-	}
 	if i := searchFiles(s.files, int(p)); i >= 0 {
 		f := s.files[i]
 		// f.base <= int(p) by definition of searchFiles
 		if int(p) <= f.base+f.size {
-			s.last = f
 			return f
 		}
 	}
@@ -135,7 +131,7 @@ func (f *File) position(p Pos) (pos Position) {
 func (s *FileSet) Position(p Pos) (pos Position) {
 	if p != NoPos {
 		// TODO(gri) consider optimizing the case where p
-		//           is in the last file added, or perhaps
+		//           is in the last file addded, or perhaps
 		//           looked at - will eliminate one level
 		//           of search
 		s.mutex.RLock()
@@ -157,7 +153,7 @@ type lineInfo struct {
 
 // AddLineInfo adds alternative file and line number information for
 // a given file offset. The offset must be larger than the offset for
-// the previously added alternative line info and smaller than the
+// the previously added alternative line info and not larger than the
 // file size; otherwise the information is ignored.
 //
 // AddLineInfo is typically used to register alternative position
@@ -165,7 +161,7 @@ type lineInfo struct {
 //
 func (f *File) AddLineInfo(offset int, filename string, line int) {
 	f.set.mutex.Lock()
-	if i := len(f.infos); i == 0 || f.infos[i-1].offset < offset && offset < f.size {
+	if i := len(f.infos); i == 0 || f.infos[i-1].offset < offset && offset <= f.size {
 		f.infos = append(f.infos, lineInfo{offset, filename, line})
 	}
 	f.set.mutex.Unlock()
@@ -216,30 +212,27 @@ func (f *File) LineCount() int {
 
 // AddLine adds the line offset for a new line.
 // The line offset must be larger than the offset for the previous line
-// and smaller than the file size; otherwise the line offset is ignored.
+// and not larger than the file size; otherwise the line offset is ignored.
 //
 func (f *File) AddLine(offset int) {
 	f.set.mutex.Lock()
-	if i := len(f.lines); (i == 0 || f.lines[i-1] < offset) && offset < f.size {
+	if i := len(f.lines); (i == 0 || f.lines[i-1] < offset) && offset <= f.size {
 		f.lines = append(f.lines, offset)
 	}
 	f.set.mutex.Unlock()
 }
 
 
-// SetLines sets the line offsets for a file and returns true if successful.
-// The line offsets are the offsets of the first character of each line;
-// for instance for the content "ab\nc\n" the line offsets are {0, 3}.
-// An empty file has an empty line offset table.
+// SetLines sets all line offsets for a file and returns true if successful.
 // Each line offset must be larger than the offset for the previous line
-// and smaller than the file size; otherwise SetLines fails and returns
+// and not larger than the file size; otherwise the SetLines fails and returns
 // false.
 //
 func (f *File) SetLines(lines []int) bool {
 	// verify validity of lines table
 	size := f.size
 	for i, offset := range lines {
-		if i > 0 && offset <= lines[i-1] || size <= offset {
+		if i > 0 && offset <= lines[i-1] || size < offset {
 			return false
 		}
 	}
@@ -249,27 +242,6 @@ func (f *File) SetLines(lines []int) bool {
 	f.lines = lines
 	f.set.mutex.Unlock()
 	return true
-}
-
-
-// SetLinesForContent sets the line offsets for the given file content.
-func (f *File) SetLinesForContent(content []byte) {
-	var lines []int
-	line := 0
-	for offset, b := range content {
-		if line >= 0 {
-			lines = append(lines, line)
-		}
-		line = -1
-		if b == '\n' {
-			line = offset + 1
-		}
-	}
-
-	// set lines table
-	f.set.mutex.Lock()
-	f.lines = lines
-	f.set.mutex.Unlock()
 }
 
 
@@ -320,26 +292,8 @@ func (f *File) Position(p Pos) (pos Position) {
 }
 
 
-func searchInts(a []int, x int) int {
-	// This function body is a manually inlined version of:
-	//
-	//   return sort.Search(len(a), func(i int) bool { return a[i] > x }) - 1
-	//
-	// With better compiler optimizations, this may not be needed in the
-	// future, but at the moment this change improves the go/printer
-	// benchmark performance by ~30%. This has a direct impact on the
-	// speed of gofmt and thus seems worthwhile (2011-04-29).
-	i, j := 0, len(a)
-	for i < j {
-		h := i + (j-i)/2 // avoid overflow when computing h
-		// i ≤ h < j
-		if a[h] <= x {
-			i = h + 1
-		} else {
-			j = h
-		}
-	}
-	return i - 1
+func searchUints(a []int, x int) int {
+	return sort.Search(len(a), func(i int) bool { return a[i] > x }) - 1
 }
 
 
@@ -351,17 +305,14 @@ func searchLineInfos(a []lineInfo, x int) int {
 // info returns the file name, line, and column number for a file offset.
 func (f *File) info(offset int) (filename string, line, column int) {
 	filename = f.name
-	if i := searchInts(f.lines, offset); i >= 0 {
+	if i := searchUints(f.lines, offset); i >= 0 {
 		line, column = i+1, offset-f.lines[i]+1
 	}
-	if len(f.infos) > 0 {
-		// almost no files have extra line infos
-		if i := searchLineInfos(f.infos, offset); i >= 0 {
-			alt := &f.infos[i]
-			filename = alt.filename
-			if i := searchInts(f.lines, alt.offset); i >= 0 {
-				line += alt.line - i - 1
-			}
+	if i := searchLineInfos(f.infos, offset); i >= 0 {
+		alt := &f.infos[i]
+		filename = alt.filename
+		if i := searchUints(f.lines, alt.offset); i >= 0 {
+			line += alt.line - i - 1
 		}
 	}
 	return
@@ -373,10 +324,10 @@ func (f *File) info(offset int) (filename string, line, column int) {
 // may invoke them concurrently.
 //
 type FileSet struct {
-	mutex sync.RWMutex // protects the file set
-	base  int          // base offset for the next file
-	files []*File      // list of files in the order added to the set
-	last  *File        // cache of last file looked up
+	mutex sync.RWMutex  // protects the file set
+	base  int           // base offset for the next file
+	files []*File       // list of files in the order added to the set
+	index map[*File]int // file -> files index for quick lookup
 }
 
 
@@ -384,6 +335,7 @@ type FileSet struct {
 func NewFileSet() *FileSet {
 	s := new(FileSet)
 	s.base = 1 // 0 == NoPos
+	s.index = make(map[*File]int)
 	return s
 }
 
@@ -429,8 +381,8 @@ func (s *FileSet) AddFile(filename string, base, size int) *File {
 	}
 	// add the file to the file set
 	s.base = base
+	s.index[f] = len(s.files)
 	s.files = append(s.files, f)
-	s.last = f
 	return f
 }
 

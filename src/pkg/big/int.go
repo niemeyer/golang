@@ -8,10 +8,7 @@ package big
 
 import (
 	"fmt"
-	"io"
-	"os"
 	"rand"
-	"strings"
 )
 
 // An Int represents a signed multi-precision integer.
@@ -311,134 +308,43 @@ func (x *Int) Cmp(y *Int) (r int) {
 
 
 func (x *Int) String() string {
-	switch {
-	case x == nil:
-		return "<nil>"
-	case x.neg:
-		return "-" + x.abs.decimalString()
+	s := ""
+	if x.neg {
+		s = "-"
 	}
-	return x.abs.decimalString()
+	return s + x.abs.string(10)
 }
 
 
-func charset(ch int) string {
+func fmtbase(ch int) int {
 	switch ch {
 	case 'b':
-		return lowercaseDigits[0:2]
+		return 2
 	case 'o':
-		return lowercaseDigits[0:8]
-	case 'd', 's', 'v':
-		return lowercaseDigits[0:10]
+		return 8
+	case 'd':
+		return 10
 	case 'x':
-		return lowercaseDigits[0:16]
-	case 'X':
-		return uppercaseDigits[0:16]
+		return 16
 	}
-	return "" // unknown format
+	return 10
 }
 
 
 // Format is a support routine for fmt.Formatter. It accepts
-// the formats 'b' (binary), 'o' (octal), 'd' (decimal), 'x'
-// (lowercase hexadecimal), and 'X' (uppercase hexadecimal).
+// the formats 'b' (binary), 'o' (octal), 'd' (decimal) and
+// 'x' (hexadecimal).
 //
 func (x *Int) Format(s fmt.State, ch int) {
-	cs := charset(ch)
-
-	// special cases
-	switch {
-	case cs == "":
-		// unknown format
-		fmt.Fprintf(s, "%%!%c(big.Int=%s)", ch, x.String())
-		return
-	case x == nil:
-		fmt.Fprint(s, "<nil>")
-		return
-	}
-
-	// determine format
-	format := "%s"
-	if s.Flag('#') {
-		switch ch {
-		case 'o':
-			format = "0%s"
-		case 'x':
-			format = "0x%s"
-		case 'X':
-			format = "0X%s"
-		}
-	}
 	if x.neg {
-		format = "-" + format
+		fmt.Fprint(s, "-")
 	}
-
-	fmt.Fprintf(s, format, x.abs.string(cs))
+	fmt.Fprint(s, x.abs.string(fmtbase(ch)))
 }
 
 
-// scan sets z to the integer value corresponding to the longest possible prefix
-// read from r representing a signed integer number in a given conversion base.
-// It returns z, the actual conversion base used, and an error, if any. In the
-// error case, the value of z is undefined. The syntax follows the syntax of
-// integer literals in Go.
-//
-// The base argument must be 0 or a value from 2 through MaxBase. If the base
-// is 0, the string prefix determines the actual conversion base. A prefix of
-// ``0x'' or ``0X'' selects base 16; the ``0'' prefix selects base 8, and a
-// ``0b'' or ``0B'' prefix selects base 2. Otherwise the selected base is 10.
-//
-func (z *Int) scan(r io.RuneScanner, base int) (*Int, int, os.Error) {
-	// determine sign
-	ch, _, err := r.ReadRune()
-	if err != nil {
-		return z, 0, err
-	}
-	neg := false
-	switch ch {
-	case '-':
-		neg = true
-	case '+': // nothing to do
-	default:
-		r.UnreadRune()
-	}
-
-	// determine mantissa
-	z.abs, base, err = z.abs.scan(r, base)
-	if err != nil {
-		return z, base, err
-	}
-	z.neg = len(z.abs) > 0 && neg // 0 has no sign
-
-	return z, base, nil
-}
-
-
-// Scan is a support routine for fmt.Scanner; it sets z to the value of
-// the scanned number. It accepts the formats 'b' (binary), 'o' (octal),
-// 'd' (decimal), 'x' (lowercase hexadecimal), and 'X' (uppercase hexadecimal).
-func (z *Int) Scan(s fmt.ScanState, ch int) os.Error {
-	base := 0
-	switch ch {
-	case 'b':
-		base = 2
-	case 'o':
-		base = 8
-	case 'd':
-		base = 10
-	case 'x', 'X':
-		base = 16
-	case 's', 'v':
-		// let scan determine the base
-	default:
-		return os.NewError("Int.Scan: invalid verb")
-	}
-	_, _, err := z.scan(s, base)
-	return err
-}
-
-
-// Int64 returns the int64 representation of x.
-// If x cannot be represented in an int64, the result is undefined.
+// Int64 returns the int64 representation of z.
+// If z cannot be represented in an int64, the result is undefined.
 func (x *Int) Int64() int64 {
 	if len(x.abs) == 0 {
 		return 0
@@ -458,35 +364,91 @@ func (x *Int) Int64() int64 {
 // and returns z and a boolean indicating success. If SetString fails,
 // the value of z is undefined.
 //
-// The base argument must be 0 or a value from 2 through MaxBase. If the base
-// is 0, the string prefix determines the actual conversion base. A prefix of
-// ``0x'' or ``0X'' selects base 16; the ``0'' prefix selects base 8, and a
-// ``0b'' or ``0B'' prefix selects base 2. Otherwise the selected base is 10.
+// If the base argument is 0, the string prefix determines the actual
+// conversion base. A prefix of ``0x'' or ``0X'' selects base 16; the
+// ``0'' prefix selects base 8, and a ``0b'' or ``0B'' prefix selects
+// base 2. Otherwise the selected base is 10.
 //
 func (z *Int) SetString(s string, base int) (*Int, bool) {
-	r := strings.NewReader(s)
-	_, _, err := z.scan(r, base)
-	if err != nil {
+	if len(s) == 0 || base < 0 || base == 1 || 16 < base {
 		return z, false
 	}
-	_, _, err = r.ReadRune()
-	return z, err == os.EOF // err == os.EOF => scan consumed all of s
+
+	neg := s[0] == '-'
+	if neg || s[0] == '+' {
+		s = s[1:]
+		if len(s) == 0 {
+			return z, false
+		}
+	}
+
+	var scanned int
+	z.abs, _, scanned = z.abs.scan(s, base)
+	if scanned != len(s) {
+		return z, false
+	}
+	z.neg = len(z.abs) > 0 && neg // 0 has no sign
+
+	return z, true
 }
 
 
-// SetBytes interprets buf as the bytes of a big-endian unsigned
-// integer, sets z to that value, and returns z.
-func (z *Int) SetBytes(buf []byte) *Int {
-	z.abs = z.abs.setBytes(buf)
+// SetBytes interprets b as the bytes of a big-endian, unsigned integer and
+// sets z to that value.
+func (z *Int) SetBytes(b []byte) *Int {
+	const s = _S
+	z.abs = z.abs.make((len(b) + s - 1) / s)
+
+	j := 0
+	for len(b) >= s {
+		var w Word
+
+		for i := s; i > 0; i-- {
+			w <<= 8
+			w |= Word(b[len(b)-i])
+		}
+
+		z.abs[j] = w
+		j++
+		b = b[0 : len(b)-s]
+	}
+
+	if len(b) > 0 {
+		var w Word
+
+		for i := len(b); i > 0; i-- {
+			w <<= 8
+			w |= Word(b[len(b)-i])
+		}
+
+		z.abs[j] = w
+	}
+
+	z.abs = z.abs.norm()
 	z.neg = false
 	return z
 }
 
 
-// Bytes returns the absolute value of z as a big-endian byte slice.
+// Bytes returns the absolute value of x as a big-endian byte array.
 func (z *Int) Bytes() []byte {
-	buf := make([]byte, len(z.abs)*_S)
-	return buf[z.abs.bytes(buf):]
+	const s = _S
+	b := make([]byte, len(z.abs)*s)
+
+	for i, w := range z.abs {
+		wordBytes := b[(len(z.abs)-i-1)*s : (len(z.abs)-i)*s]
+		for j := s - 1; j >= 0; j-- {
+			wordBytes[j] = byte(w)
+			w >>= 8
+		}
+	}
+
+	i := 0
+	for i < len(b) && b[i] == 0 {
+		i++
+	}
+
+	return b[i:]
 }
 
 
@@ -636,42 +598,6 @@ func (z *Int) Rsh(x *Int, n uint) *Int {
 }
 
 
-// Bit returns the value of the i'th bit of z. That is, it
-// returns (z>>i)&1. The bit index i must be >= 0.
-func (z *Int) Bit(i int) uint {
-	if i < 0 {
-		panic("negative bit index")
-	}
-	if z.neg {
-		t := nat{}.sub(z.abs, natOne)
-		return t.bit(uint(i)) ^ 1
-	}
-
-	return z.abs.bit(uint(i))
-}
-
-
-// SetBit sets the i'th bit of z to bit and returns z.
-// That is, if bit is 1 SetBit sets z = x | (1 << i);
-// if bit is 0 it sets z = x &^ (1 << i). If bit is not 0 or 1,
-// SetBit will panic.
-func (z *Int) SetBit(x *Int, i int, b uint) *Int {
-	if i < 0 {
-		panic("negative bit index")
-	}
-	if x.neg {
-		t := z.abs.sub(x.abs, natOne)
-		t = t.setBit(t, uint(i), b^1)
-		z.abs = t.add(t, natOne)
-		z.neg = len(z.abs) > 0
-		return z
-	}
-	z.abs = z.abs.setBit(x.abs, uint(i), b)
-	z.neg = false
-	return z
-}
-
-
 // And sets z = x & y and returns z.
 func (z *Int) And(x, y *Int) *Int {
 	if x.neg == y.neg {
@@ -812,35 +738,4 @@ func (z *Int) Not(x *Int) *Int {
 	z.abs = z.abs.add(x.abs, natOne)
 	z.neg = true // z cannot be zero if x is positive
 	return z
-}
-
-
-// Gob codec version. Permits backward-compatible changes to the encoding.
-const intGobVersion byte = 1
-
-// GobEncode implements the gob.GobEncoder interface.
-func (z *Int) GobEncode() ([]byte, os.Error) {
-	buf := make([]byte, 1+len(z.abs)*_S) // extra byte for version and sign bit
-	i := z.abs.bytes(buf) - 1            // i >= 0
-	b := intGobVersion << 1              // make space for sign bit
-	if z.neg {
-		b |= 1
-	}
-	buf[i] = b
-	return buf[i:], nil
-}
-
-
-// GobDecode implements the gob.GobDecoder interface.
-func (z *Int) GobDecode(buf []byte) os.Error {
-	if len(buf) == 0 {
-		return os.NewError("Int.GobDecode: no data")
-	}
-	b := buf[0]
-	if b>>1 != intGobVersion {
-		return os.NewError(fmt.Sprintf("Int.GobDecode: encoding version %d not supported", b>>1))
-	}
-	z.neg = b&1 != 0
-	z.abs = z.abs.setBytes(buf[1:])
-	return nil
 }

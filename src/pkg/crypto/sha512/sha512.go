@@ -2,20 +2,13 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package sha512 implements the SHA384 and SHA512 hash algorithms as defined
-// in FIPS 180-2.
+// This package implements the SHA384 and SHA512 hash algorithms as defined in FIPS 180-2.
 package sha512
 
 import (
-	"crypto"
 	"hash"
 	"os"
 )
-
-func init() {
-	crypto.RegisterHash(crypto.SHA384, New384)
-	crypto.RegisterHash(crypto.SHA512, New)
-}
 
 // The size of a SHA512 checksum in bytes.
 const Size = 64

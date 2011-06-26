@@ -83,7 +83,7 @@ func (server debugHTTP) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	server.Unlock()
 	sort.Sort(services)
-	err := debug.Execute(w, services)
+	err := debug.Execute(services, w)
 	if err != nil {
 		fmt.Fprintln(w, "rpc: error executing template:", err.String())
 	}

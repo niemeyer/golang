@@ -21,9 +21,6 @@ panic: runtime error: hash of unhashable type []int
 printing: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20
 42 true false true +1.500000e+000 world 0x0 [0/0]0x0 0x0 0x0 255
 
-=========== ./goprint.go
-42 true false true +1.500000e+000 world 0x0 [0/0]0x0 0x0 0x0 255
-
 =========== ./helloworld.go
 hello, world
 
@@ -126,6 +123,9 @@ panic: interface conversion: *main.S is not main.I2: missing method Name
 
 == fixedbugs/
 
+=========== fixedbugs/bug016.go
+fixedbugs/bug016.go:11: constant -3 overflows uint
+
 =========== fixedbugs/bug027.go
 hi
 0 44444
@@ -148,6 +148,9 @@ inner loop top i 0
 do break
 broke
 
+=========== fixedbugs/bug081.go
+fixedbugs/bug081.go:9: typechecking loop
+
 =========== fixedbugs/bug093.go
 M
 
@@ -159,8 +162,5 @@ panic: interface conversion: interface is int, not int32
 2 3
 panic: interface conversion: interface is main.T, not main.T
 
-
-=========== fixedbugs/bug328.go
-0x0
 
 == bugs/

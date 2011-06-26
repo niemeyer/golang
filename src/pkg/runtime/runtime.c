@@ -3,13 +3,12 @@
 // license that can be found in the LICENSE file.
 
 #include "runtime.h"
-#include "stack.h"
 
 enum {
 	maxround = sizeof(uintptr),
 };
 
-uint32	runtime·panicking;
+int32	runtime·panicking	= 0;
 
 int32
 runtime·gotraceback(void)
@@ -22,48 +21,26 @@ runtime·gotraceback(void)
 	return runtime·atoi(p);
 }
 
-static Lock paniclk;
-
-void
-runtime·startpanic(void)
-{
-	if(m->dying) {
-		runtime·printf("panic during panic\n");
-		runtime·exit(3);
-	}
-	m->dying = 1;
-	runtime·xadd(&runtime·panicking, 1);
-	runtime·lock(&paniclk);
-}
-
 void
 runtime·dopanic(int32 unused)
 {
-	static bool didothers;
+	if(runtime·panicking) {
+		runtime·printf("double panic\n");
+		runtime·exit(3);
+	}
+	runtime·panicking++;
 
 	if(g->sig != 0)
-		runtime·printf("\n[signal %x code=%p addr=%p pc=%p]\n",
+		runtime·printf("\n[signal %d code=%p addr=%p pc=%p]\n",
 			g->sig, g->sigcode0, g->sigcode1, g->sigpc);
 
 	runtime·printf("\n");
 	if(runtime·gotraceback()){
 		runtime·traceback(runtime·getcallerpc(&unused), runtime·getcallersp(&unused), 0, g);
-		if(!didothers) {
-			didothers = true;
-			runtime·tracebackothers(g);
-		}
+		runtime·tracebackothers(g);
 	}
-	runtime·unlock(&paniclk);
-	if(runtime·xadd(&runtime·panicking, -1) != 0) {
-		// Some other m is panicking too.
-		// Let it print what it needs to print.
-		// Wait forever without chewing up cpu.
-		// It will exit when it's done.
-		static Lock deadlock;
-		runtime·lock(&deadlock);
-		runtime·lock(&deadlock);
-	}
-
+	
+	runtime·breakpoint();  // so we can grab it in a debugger
 	runtime·exit(2);
 }
 
@@ -96,7 +73,6 @@ runtime·throwinit(void)
 void
 runtime·throw(int8 *s)
 {
-	runtime·startpanic();
 	runtime·printf("throw: %s\n", s);
 	runtime·dopanic(0);
 	*(int32*)0 = 0;	// not reached
@@ -552,22 +528,14 @@ void
 runtime·Caller(int32 skip, uintptr retpc, String retfile, int32 retline, bool retbool)
 {
 	Func *f;
-	uintptr pc;
 
-	if(runtime·callers(1+skip, &retpc, 1) == 0) {
+	if(runtime·callers(1+skip, &retpc, 1) == 0 || (f = runtime·findfunc(retpc-1)) == nil) {
 		retfile = runtime·emptystring;
 		retline = 0;
 		retbool = false;
-	} else if((f = runtime·findfunc(retpc)) == nil) {
-		retfile = runtime·emptystring;
-		retline = 0;
-		retbool = true;  // have retpc at least
 	} else {
 		retfile = f->src;
-		pc = retpc;
-		if(pc > f->entry)
-			pc--;
-		retline = runtime·funcline(f, pc);
+		retline = runtime·funcline(f, retpc-1);
 		retbool = true;
 	}
 	FLUSH(&retfile);

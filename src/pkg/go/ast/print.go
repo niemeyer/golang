@@ -21,29 +21,24 @@ type FieldFilter func(name string, value reflect.Value) bool
 
 // NotNilFilter returns true for field values that are not nil;
 // it returns false otherwise.
-func NotNilFilter(_ string, v reflect.Value) bool {
-	switch v.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice:
-		return !v.IsNil()
-	}
-	return true
+func NotNilFilter(_ string, value reflect.Value) bool {
+	v, ok := value.(interface {
+		IsNil() bool
+	})
+	return !ok || !v.IsNil()
 }
 
 
 // Fprint prints the (sub-)tree starting at AST node x to w.
-// If fset != nil, position information is interpreted relative
-// to that file set. Otherwise positions are printed as integer
-// values (file set specific offsets).
 //
 // A non-nil FieldFilter f may be provided to control the output:
 // struct fields for which f(fieldname, fieldvalue) is true are
 // are printed; all others are filtered from the output.
 //
-func Fprint(w io.Writer, fset *token.FileSet, x interface{}, f FieldFilter) (n int, err os.Error) {
+func Fprint(w io.Writer, x interface{}, f FieldFilter) (n int, err os.Error) {
 	// setup printer
 	p := printer{
 		output: w,
-		fset:   fset,
 		filter: f,
 		ptrmap: make(map[interface{}]int),
 		last:   '\n', // force printing of line number on first line
@@ -62,7 +57,7 @@ func Fprint(w io.Writer, fset *token.FileSet, x interface{}, f FieldFilter) (n i
 		p.printf("nil\n")
 		return
 	}
-	p.print(reflect.ValueOf(x))
+	p.print(reflect.NewValue(x))
 	p.printf("\n")
 
 	return
@@ -70,17 +65,16 @@ func Fprint(w io.Writer, fset *token.FileSet, x interface{}, f FieldFilter) (n i
 
 
 // Print prints x to standard output, skipping nil fields.
-// Print(fset, x) is the same as Fprint(os.Stdout, fset, x, NotNilFilter).
-func Print(fset *token.FileSet, x interface{}) (int, os.Error) {
-	return Fprint(os.Stdout, fset, x, NotNilFilter)
+// Print(x) is the same as Fprint(os.Stdout, x, NotNilFilter).
+func Print(x interface{}) (int, os.Error) {
+	return Fprint(os.Stdout, x, NotNilFilter)
 }
 
 
 type printer struct {
 	output  io.Writer
-	fset    *token.FileSet
 	filter  FieldFilter
-	ptrmap  map[interface{}]int // *T -> line number
+	ptrmap  map[interface{}]int // *reflect.PtrValue -> line number
 	written int                 // number of bytes written to output
 	indent  int                 // current indentation level
 	last    byte                // the last byte processed by Write
@@ -141,69 +135,73 @@ func (p *printer) printf(format string, args ...interface{}) {
 // Implementation note: Print is written for AST nodes but could be
 // used to print arbitrary data structures; such a version should
 // probably be in a different package.
-//
-// Note: This code detects (some) cycles created via pointers but
-// not cycles that are created via slices or maps containing the
-// same slice or map. Code for general data structures probably
-// should catch those as well.
 
 func (p *printer) print(x reflect.Value) {
+	// Note: This test is only needed because AST nodes
+	//       embed a token.Position, and thus all of them
+	//       understand the String() method (but it only
+	//       applies to the Position field).
+	// TODO: Should reconsider this AST design decision.
+	if pos, ok := x.Interface().(token.Position); ok {
+		p.printf("%s", pos)
+		return
+	}
+
 	if !NotNilFilter("", x) {
 		p.printf("nil")
 		return
 	}
 
-	switch x.Kind() {
-	case reflect.Interface:
-		p.print(x.Elem())
+	switch v := x.(type) {
+	case *reflect.InterfaceValue:
+		p.print(v.Elem())
 
-	case reflect.Map:
-		p.printf("%s (len = %d) {\n", x.Type().String(), x.Len())
+	case *reflect.MapValue:
+		p.printf("%s (len = %d) {\n", x.Type().String(), v.Len())
 		p.indent++
-		for _, key := range x.MapKeys() {
+		for _, key := range v.Keys() {
 			p.print(key)
 			p.printf(": ")
-			p.print(x.MapIndex(key))
-			p.printf("\n")
+			p.print(v.Elem(key))
 		}
 		p.indent--
 		p.printf("}")
 
-	case reflect.Ptr:
+	case *reflect.PtrValue:
 		p.printf("*")
 		// type-checked ASTs may contain cycles - use ptrmap
 		// to keep track of objects that have been printed
 		// already and print the respective line number instead
-		ptr := x.Interface()
+		ptr := v.Interface()
 		if line, exists := p.ptrmap[ptr]; exists {
 			p.printf("(obj @ %d)", line)
 		} else {
 			p.ptrmap[ptr] = p.line
-			p.print(x.Elem())
+			p.print(v.Elem())
 		}
 
-	case reflect.Slice:
-		if s, ok := x.Interface().([]byte); ok {
+	case *reflect.SliceValue:
+		if s, ok := v.Interface().([]byte); ok {
 			p.printf("%#q", s)
 			return
 		}
-		p.printf("%s (len = %d) {\n", x.Type().String(), x.Len())
+		p.printf("%s (len = %d) {\n", x.Type().String(), v.Len())
 		p.indent++
-		for i, n := 0, x.Len(); i < n; i++ {
+		for i, n := 0, v.Len(); i < n; i++ {
 			p.printf("%d: ", i)
-			p.print(x.Index(i))
+			p.print(v.Elem(i))
 			p.printf("\n")
 		}
 		p.indent--
 		p.printf("}")
 
-	case reflect.Struct:
+	case *reflect.StructValue:
 		p.printf("%s {\n", x.Type().String())
 		p.indent++
-		t := x.Type()
+		t := v.Type().(*reflect.StructType)
 		for i, n := 0, t.NumField(); i < n; i++ {
 			name := t.Field(i).Name
-			value := x.Field(i)
+			value := v.Field(i)
 			if p.filter == nil || p.filter(name, value) {
 				p.printf("%s: ", name)
 				p.print(value)
@@ -214,20 +212,6 @@ func (p *printer) print(x reflect.Value) {
 		p.printf("}")
 
 	default:
-		v := x.Interface()
-		switch v := v.(type) {
-		case string:
-			// print strings in quotes
-			p.printf("%q", v)
-			return
-		case token.Pos:
-			// position values can be printed nicely if we have a file set
-			if p.fset != nil {
-				p.printf("%s", p.fset.Position(v))
-				return
-			}
-		}
-		// default
-		p.printf("%v", v)
+		p.printf("%v", x.Interface())
 	}
 }

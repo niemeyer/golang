@@ -5,13 +5,11 @@
 package netchan
 
 import (
-	"io"
 	"log"
 	"net"
 	"os"
 	"reflect"
 	"sync"
-	"time"
 )
 
 // Import
@@ -27,37 +25,31 @@ func impLog(args ...interface{}) {
 // importers, even from the same machine/network port.
 type Importer struct {
 	*encDec
+	conn     net.Conn
 	chanLock sync.Mutex // protects access to channel map
 	names    map[string]*netChan
 	chans    map[int]*netChan
 	errors   chan os.Error
 	maxId    int
-	mu       sync.Mutex // protects remaining fields
-	unacked  int64      // number of unacknowledged sends.
-	seqLock  sync.Mutex // guarantees messages are in sequence, only locked under mu
 }
 
-// NewImporter creates a new Importer object to import a set of channels
-// from the given connection. The Exporter must be available and serving when
-// the Importer is created.
-func NewImporter(conn io.ReadWriter) *Importer {
-	imp := new(Importer)
-	imp.encDec = newEncDec(conn)
-	imp.chans = make(map[int]*netChan)
-	imp.names = make(map[string]*netChan)
-	imp.errors = make(chan os.Error, 10)
-	imp.unacked = 0
-	go imp.run()
-	return imp
-}
-
-// Import imports a set of channels from the given network and address.
-func Import(network, remoteaddr string) (*Importer, os.Error) {
-	conn, err := net.Dial(network, remoteaddr)
+// NewImporter creates a new Importer object to import channels
+// from an Exporter at the network and remote address as defined in net.Dial.
+// The Exporter must be available and serving when the Importer is
+// created.
+func NewImporter(network, remoteaddr string) (*Importer, os.Error) {
+	conn, err := net.Dial(network, "", remoteaddr)
 	if err != nil {
 		return nil, err
 	}
-	return NewImporter(conn), nil
+	imp := new(Importer)
+	imp.encDec = newEncDec(conn)
+	imp.conn = conn
+	imp.chans = make(map[int]*netChan)
+	imp.names = make(map[string]*netChan)
+	imp.errors = make(chan os.Error, 10)
+	go imp.run()
+	return imp, nil
 }
 
 // shutdown closes all channels for which we are receiving data from the remote side.
@@ -78,17 +70,15 @@ func (imp *Importer) shutdown() {
 func (imp *Importer) run() {
 	// Loop on responses; requests are sent by ImportNValues()
 	hdr := new(header)
-	hdrValue := reflect.ValueOf(hdr)
+	hdrValue := reflect.NewValue(hdr)
 	ackHdr := new(header)
 	err := new(error)
-	errValue := reflect.ValueOf(err)
+	errValue := reflect.NewValue(err)
 	for {
 		*hdr = header{}
 		if e := imp.decode(hdrValue); e != nil {
-			if e != os.EOF {
-				impLog("header:", e)
-				imp.shutdown()
-			}
+			impLog("header:", e)
+			imp.shutdown()
 			return
 		}
 		switch hdr.PayloadType {
@@ -101,13 +91,11 @@ func (imp *Importer) run() {
 			}
 			if err.Error != "" {
 				impLog("response error:", err.Error)
-				select {
-				case imp.errors <- os.NewError(err.Error):
-					continue // errors are not acknowledged
-				default:
+				if sent := imp.errors <- os.ErrorString(err.Error); !sent {
 					imp.shutdown()
 					return
 				}
+				continue // errors are not acknowledged.
 			}
 		case payClosed:
 			nch := imp.getChan(hdr.Id, false)
@@ -121,9 +109,6 @@ func (imp *Importer) run() {
 			nch := imp.getChan(hdr.Id, true)
 			if nch != nil {
 				nch.acked()
-				imp.mu.Lock()
-				imp.unacked--
-				imp.mu.Unlock()
 			}
 			continue
 		default:
@@ -143,7 +128,7 @@ func (imp *Importer) run() {
 		ackHdr.SeqNum = hdr.SeqNum
 		imp.encode(ackHdr, payAck, nil)
 		// Create a new value for each received item.
-		value := reflect.New(nch.ch.Type().Elem()).Elem()
+		value := reflect.MakeZero(nch.ch.Type().(*reflect.ChanType).Elem())
 		if e := imp.decode(value); e != nil {
 			impLog("importer value decode:", e)
 			return
@@ -189,10 +174,10 @@ func (imp *Importer) Import(name string, chT interface{}, dir Dir, size int) os.
 //	ImportNValues(name string, chT chan T, dir Dir, size, n int) os.Error
 // Example usage:
 //	imp, err := NewImporter("tcp", "netchanserver.mydomain.com:1234")
-//	if err != nil { log.Fatal(err) }
+//	if err != nil { log.Exit(err) }
 //	ch := make(chan myType)
 //	err = imp.ImportNValues("name", ch, Recv, 1, 1)
-//	if err != nil { log.Fatal(err) }
+//	if err != nil { log.Exit(err) }
 //	fmt.Printf("%+v\n", <-ch)
 func (imp *Importer) ImportNValues(name string, chT interface{}, dir Dir, size, n int) os.Error {
 	ch, err := checkChan(chT, dir)
@@ -203,7 +188,7 @@ func (imp *Importer) ImportNValues(name string, chT interface{}, dir Dir, size, 
 	defer imp.chanLock.Unlock()
 	_, present := imp.names[name]
 	if present {
-		return os.NewError("channel name already being imported:" + name)
+		return os.ErrorString("channel name already being imported:" + name)
 	}
 	if size < 1 {
 		size = 1
@@ -223,24 +208,17 @@ func (imp *Importer) ImportNValues(name string, chT interface{}, dir Dir, size, 
 	if dir == Send {
 		go func() {
 			for i := 0; n == -1 || i < n; i++ {
-				val, ok := nch.recv()
-				if !ok {
+				val, closed := nch.recv()
+				if closed {
 					if err = imp.encode(hdr, payClosed, nil); err != nil {
 						impLog("error encoding client closed message:", err)
 					}
 					return
 				}
-				// We hold the lock during transmission to guarantee messages are
-				// sent in order.
-				imp.mu.Lock()
-				imp.unacked++
-				imp.seqLock.Lock()
-				imp.mu.Unlock()
 				if err = imp.encode(hdr, payData, val.Interface()); err != nil {
 					impLog("error encoding client send:", err)
 					return
 				}
-				imp.seqLock.Unlock()
 			}
 		}()
 	}
@@ -251,37 +229,15 @@ func (imp *Importer) ImportNValues(name string, chT interface{}, dir Dir, size, 
 // the channel.  Messages in flight for the channel may be dropped.
 func (imp *Importer) Hangup(name string) os.Error {
 	imp.chanLock.Lock()
-	defer imp.chanLock.Unlock()
-	nc := imp.names[name]
-	if nc == nil {
-		return os.NewError("netchan import: hangup: no such channel: " + name)
+	nc, ok := imp.names[name]
+	if ok {
+		imp.names[name] = nil, false
+		imp.chans[nc.id] = nil, false
 	}
-	imp.names[name] = nil, false
-	imp.chans[nc.id] = nil, false
+	imp.chanLock.Unlock()
+	if !ok {
+		return os.ErrorString("netchan import: hangup: no such channel: " + name)
+	}
 	nc.close()
-	return nil
-}
-
-func (imp *Importer) unackedCount() int64 {
-	imp.mu.Lock()
-	n := imp.unacked
-	imp.mu.Unlock()
-	return n
-}
-
-// Drain waits until all messages sent from this exporter/importer, including
-// those not yet sent to any server and possibly including those sent while
-// Drain was executing, have been received by the exporter.  In short, it
-// waits until all the importer's messages have been received.
-// If the timeout (measured in nanoseconds) is positive and Drain takes
-// longer than that to complete, an error is returned.
-func (imp *Importer) Drain(timeout int64) os.Error {
-	startTime := time.Nanoseconds()
-	for imp.unackedCount() > 0 {
-		if timeout > 0 && time.Nanoseconds()-startTime >= timeout {
-			return os.NewError("timeout")
-		}
-		time.Sleep(100 * 1e6)
-	}
 	return nil
 }

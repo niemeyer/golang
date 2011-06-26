@@ -4,7 +4,7 @@
 # license that can be found in the LICENSE file.
 
 # The master for this file is $GOROOT/src/quietgcc.bash
-# Changes made to $GOBIN/quietgcc will be overwritten.
+# Changes made to $GOBIN/quietgcc will be overridden.
 
 # Gcc output that we don't care to see.
 ignore=': error: .Each undeclared identifier'
@@ -32,13 +32,18 @@ case "$(uname -m -p)-$GOHOSTARCH" in
 esac
 
 # Run gcc, save error status, redisplay output without noise, exit with gcc status.
-tmp=${TMPDIR:-/tmp}/quietgcc.$$.$USER.out
+tmp=/tmp/qcc.$$.$USER.out
 $gcc -Wall -Wno-sign-compare -Wno-missing-braces \
 	-Wno-parentheses -Wno-unknown-pragmas -Wno-switch -Wno-comment \
-	-Werror \
 	"$@" >$tmp 2>&1
 status=$?
 egrep -v "$ignore" $tmp | uniq | tee $tmp.1
 
+# Make incompatible pointer type "warnings" stop the build.
+# Not quite perfect--we should remove the object file--but
+# a step in the right direction.
+if egrep 'incompatible pointer type' $tmp.1 >/dev/null; then
+	status=1
+fi
 rm -f $tmp $tmp.1
 exit $status

@@ -34,49 +34,54 @@ func TypeFromNative(t reflect.Type) Type {
 	}
 
 	var et Type
-	switch t.Kind() {
-	case reflect.Bool:
+	switch t := t.(type) {
+	case *reflect.BoolType:
 		et = BoolType
-
-	case reflect.Float32:
-		et = Float32Type
-	case reflect.Float64:
-		et = Float64Type
-
-	case reflect.Int16:
-		et = Int16Type
-	case reflect.Int32:
-		et = Int32Type
-	case reflect.Int64:
-		et = Int64Type
-	case reflect.Int8:
-		et = Int8Type
-	case reflect.Int:
-		et = IntType
-
-	case reflect.Uint16:
-		et = Uint16Type
-	case reflect.Uint32:
-		et = Uint32Type
-	case reflect.Uint64:
-		et = Uint64Type
-	case reflect.Uint8:
-		et = Uint8Type
-	case reflect.Uint:
-		et = UintType
-	case reflect.Uintptr:
-		et = UintptrType
-
-	case reflect.String:
+	case *reflect.FloatType:
+		switch t.Kind() {
+		case reflect.Float32:
+			et = Float32Type
+		case reflect.Float64:
+			et = Float64Type
+		}
+	case *reflect.IntType:
+		switch t.Kind() {
+		case reflect.Int16:
+			et = Int16Type
+		case reflect.Int32:
+			et = Int32Type
+		case reflect.Int64:
+			et = Int64Type
+		case reflect.Int8:
+			et = Int8Type
+		case reflect.Int:
+			et = IntType
+		}
+	case *reflect.UintType:
+		switch t.Kind() {
+		case reflect.Uint16:
+			et = Uint16Type
+		case reflect.Uint32:
+			et = Uint32Type
+		case reflect.Uint64:
+			et = Uint64Type
+		case reflect.Uint8:
+			et = Uint8Type
+		case reflect.Uint:
+			et = UintType
+		case reflect.Uintptr:
+			et = UintptrType
+		}
+	case *reflect.StringType:
 		et = StringType
-	case reflect.Array:
+	case *reflect.ArrayType:
 		et = NewArrayType(int64(t.Len()), TypeFromNative(t.Elem()))
-	case reflect.Chan:
+	case *reflect.ChanType:
 		log.Panicf("%T not implemented", t)
-	case reflect.Func:
+	case *reflect.FuncType:
 		nin := t.NumIn()
 		// Variadic functions have DotDotDotType at the end
-		variadic := t.IsVariadic()
+		variadic := t.DotDotDot()
 		if variadic {
 			nin--
 		}
@@ -89,15 +94,15 @@ func TypeFromNative(t reflect.Type) Type {
 			out[i] = TypeFromNative(t.Out(i))
 		}
 		et = NewFuncType(in, variadic, out)
-	case reflect.Interface:
+	case *reflect.InterfaceType:
 		log.Panicf("%T not implemented", t)
-	case reflect.Map:
+	case *reflect.MapType:
 		log.Panicf("%T not implemented", t)
-	case reflect.Ptr:
+	case *reflect.PtrType:
 		et = NewPtrType(TypeFromNative(t.Elem()))
-	case reflect.Slice:
+	case *reflect.SliceType:
 		et = NewSliceType(TypeFromNative(t.Elem()))
-	case reflect.Struct:
+	case *reflect.StructType:
 		n := t.NumField()
 		fields := make([]StructField, n)
 		for i := 0; i < n; i++ {
@@ -108,7 +113,7 @@ func TypeFromNative(t reflect.Type) Type {
 			fields[i].Anonymous = sf.Anonymous
 		}
 		et = NewStructType(fields)
-	case reflect.UnsafePointer:
+	case *reflect.UnsafePointerType:
 		log.Panicf("%T not implemented", t)
 	default:
 		log.Panicf("unexpected reflect.Type: %T", t)
@@ -128,7 +133,7 @@ func TypeFromNative(t reflect.Type) Type {
 }
 
 // TypeOfNative returns the interpreter Type of a regular Go value.
-func TypeOfNative(v interface{}) Type { return TypeFromNative(reflect.TypeOf(v)) }
+func TypeOfNative(v interface{}) Type { return TypeFromNative(reflect.Typeof(v)) }
 
 /*
  * Function bridging

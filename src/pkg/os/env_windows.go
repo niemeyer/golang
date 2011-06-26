@@ -50,8 +50,8 @@ func Setenv(key, value string) Error {
 	if len(value) > 0 {
 		v = syscall.StringToUTF16Ptr(value)
 	}
-	e := syscall.SetEnvironmentVariable(syscall.StringToUTF16Ptr(key), v)
-	if e != 0 {
+	ok, e := syscall.SetEnvironmentVariable(syscall.StringToUTF16Ptr(key), v)
+	if !ok {
 		return NewSyscallError("SetEnvironmentVariable", e)
 	}
 	return nil

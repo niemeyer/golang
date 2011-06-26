@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package bufio implements buffered I/O.  It wraps an io.Reader or io.Writer
+// This package implements buffered I/O.  It wraps an io.Reader or io.Writer
 // object, creating another object (Reader or Writer) that also implements
 // the interface but provides buffering and some help for textual I/O.
 package bufio
@@ -22,10 +22,8 @@ const (
 
 // Errors introduced by this package.
 type Error struct {
-	ErrorString string
+	os.ErrorString
 }
-
-func (err *Error) String() string { return err.ErrorString }
 
 var (
 	ErrInvalidUnreadByte os.Error = &Error{"bufio: invalid use of UnreadByte"}
@@ -284,39 +282,11 @@ func (b *Reader) ReadSlice(delim byte) (line []byte, err os.Error) {
 	panic("not reached")
 }
 
-// ReadLine tries to return a single line, not including the end-of-line bytes.
-// If the line was too long for the buffer then isPrefix is set and the
-// beginning of the line is returned. The rest of the line will be returned
-// from future calls. isPrefix will be false when returning the last fragment
-// of the line. The returned buffer is only valid until the next call to
-// ReadLine. ReadLine either returns a non-nil line or it returns an error,
-// never both.
-func (b *Reader) ReadLine() (line []byte, isPrefix bool, err os.Error) {
-	line, err = b.ReadSlice('\n')
-	if err == ErrBufferFull {
-		return line, true, nil
-	}
-
-	if len(line) == 0 {
-		return
-	}
-	err = nil
-
-	if line[len(line)-1] == '\n' {
-		line = line[:len(line)-1]
-	}
-	if len(line) > 0 && line[len(line)-1] == '\r' {
-		line = line[:len(line)-1]
-	}
-	return
-}
-
 // ReadBytes reads until the first occurrence of delim in the input,
 // returning a slice containing the data up to and including the delimiter.
 // If ReadBytes encounters an error before finding a delimiter,
 // it returns the data read before the error and the error itself (often os.EOF).
-// ReadBytes returns err != nil if and only if the returned data does not end in
-// delim.
+// ReadBytes returns err != nil if and only if line does not end in delim.
 func (b *Reader) ReadBytes(delim byte) (line []byte, err os.Error) {
 	// Use ReadSlice to look for array,
 	// accumulating full buffers.
@@ -362,8 +332,7 @@ func (b *Reader) ReadBytes(delim byte) (line []byte, err os.Error) {
 // returning a string containing the data up to and including the delimiter.
 // If ReadString encounters an error before finding a delimiter,
 // it returns the data read before the error and the error itself (often os.EOF).
-// ReadString returns err != nil if and only if the returned data does not end in
-// delim.
+// ReadString returns err != nil if and only if line does not end in delim.
 func (b *Reader) ReadString(delim byte) (line string, err os.Error) {
 	bytes, e := b.ReadBytes(delim)
 	return string(bytes), e
@@ -414,9 +383,6 @@ func (b *Writer) Flush() os.Error {
 	if b.err != nil {
 		return b.err
 	}
-	if b.n == 0 {
-		return nil
-	}
 	n, e := b.wr.Write(b.buf[0:b.n])
 	if n < b.n && e == nil {
 		e = io.ErrShortWrite
@@ -444,27 +410,38 @@ func (b *Writer) Buffered() int { return b.n }
 // If nn < len(p), it also returns an error explaining
 // why the write is short.
 func (b *Writer) Write(p []byte) (nn int, err os.Error) {
-	for len(p) > b.Available() && b.err == nil {
-		var n int
-		if b.Buffered() == 0 {
+	if b.err != nil {
+		return 0, b.err
+	}
+	nn = 0
+	for len(p) > 0 {
+		n := b.Available()
+		if n <= 0 {
+			if b.Flush(); b.err != nil {
+				break
+			}
+			n = b.Available()
+		}
+		if b.Buffered() == 0 && len(p) >= len(b.buf) {
 			// Large write, empty buffer.
 			// Write directly from p to avoid copy.
 			n, b.err = b.wr.Write(p)
-		} else {
-			n = copy(b.buf[b.n:], p)
-			b.n += n
-			b.Flush()
+			nn += n
+			p = p[n:]
+			if b.err != nil {
+				break
+			}
+			continue
 		}
+		if n > len(p) {
+			n = len(p)
+		}
+		copy(b.buf[b.n:b.n+n], p[0:n])
+		b.n += n
 		nn += n
 		p = p[n:]
 	}
-	if b.err != nil {
-		return nn, b.err
-	}
-	n := copy(b.buf[b.n:], p)
-	b.n += n
-	nn += n
-	return nn, nil
+	return nn, b.err
 }
 
 // WriteByte writes a single byte.
@@ -514,21 +491,24 @@ func (b *Writer) WriteRune(rune int) (size int, err os.Error) {
 // If the count is less than len(s), it also returns an error explaining
 // why the write is short.
 func (b *Writer) WriteString(s string) (int, os.Error) {
-	nn := 0
-	for len(s) > b.Available() && b.err == nil {
-		n := copy(b.buf[b.n:], s)
-		b.n += n
-		nn += n
-		s = s[n:]
-		b.Flush()
-	}
 	if b.err != nil {
-		return nn, b.err
+		return 0, b.err
 	}
-	n := copy(b.buf[b.n:], s)
-	b.n += n
-	nn += n
-	return nn, nil
+	// Common case, worth making fast.
+	if b.Available() >= len(s) || len(b.buf) >= len(s) && b.Flush() == nil {
+		for i := 0; i < len(s); i++ { // loop over bytes, not runes.
+			b.buf[b.n] = s[i]
+			b.n++
+		}
+		return len(s), nil
+	}
+	for i := 0; i < len(s); i++ { // loop over bytes, not runes.
+		b.WriteByte(s[i])
+		if b.err != nil {
+			return i, b.err
+		}
+	}
+	return len(s), nil
 }
 
 // buffered input and output

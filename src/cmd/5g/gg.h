@@ -23,12 +23,10 @@ struct	Addr
 	char	sval[NSNAME];
 
 	Sym*	sym;
-	Node*	node;
 	int	width;
 	uchar	type;
 	char	name;
-	uchar	reg;
-	char pun;
+	char	reg;
 	uchar	etype;
 };
 #define	A	((Addr*)0)
@@ -42,7 +40,7 @@ struct	Prog
 	Addr	to;		// dst address
 	Prog*	link;		// next instruction in this func
 	void*	regp;		// points to enclosing Reg struct
-	uchar	reg;		// doubles as width in DATA op
+	char	reg;		// doubles as width in DATA op
 	uchar	scond;
 };
 
@@ -53,7 +51,7 @@ struct	Prog
 
 EXTERN	Biobuf*	bout;
 EXTERN	int32	dynloc;
-EXTERN	uchar	reg[REGALLOC_FMAX+1];
+EXTERN	uchar	reg[REGALLOC_FMAX];
 EXTERN	int32	pcloc;		// instruction counter
 EXTERN	Strlit	emptystring;
 extern	char*	anames[];

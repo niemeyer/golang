@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package vector implements containers for managing sequences of elements.
-// Vectors grow and shrink dynamically as necessary.
+// The vector package implements containers for managing sequences
+// of elements. Vectors grow and shrink dynamically as necessary.
 package vector
 
 

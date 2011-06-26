@@ -33,16 +33,6 @@ TEXT runtime·write(SB),7,$0
 	INT	$0x80
 	RET
 
-TEXT runtime·raisesigpipe(SB),7,$8
-	get_tls(CX)
-	MOVL	m(CX), DX
-	MOVL	m_procid(DX), DX
-	MOVL	DX, 0(SP)	// thread_port
-	MOVL	$13, 4(SP)	// signal: SIGPIPE
-	MOVL	$328, AX	// __pthread_kill
-	INT	$0x80
-	RET
-
 TEXT runtime·mmap(SB),7,$0
 	MOVL	$197, AX
 	INT	$0x80
@@ -53,11 +43,6 @@ TEXT runtime·munmap(SB),7,$0
 	INT	$0x80
 	JAE	2(PC)
 	CALL	runtime·notok(SB)
-	RET
-
-TEXT runtime·setitimer(SB),7,$0
-	MOVL	$83, AX
-	INT	$0x80
 	RET
 
 // void gettime(int64 *sec, int32 *usec)
@@ -95,34 +80,33 @@ TEXT runtime·sigtramp(SB),7,$40
 	get_tls(CX)
 
 	// save g
-	MOVL	g(CX), DI
-	MOVL	DI, 20(SP)
+	MOVL	g(CX), BP
+	MOVL	BP, 20(SP)
 	
 	// g = m->gsignal
 	MOVL	m(CX), BP
 	MOVL	m_gsignal(BP), BP
 	MOVL	BP, g(CX)
 
-	// copy arguments to sighandler
-	MOVL	sig+8(FP), BX
-	MOVL	BX, 0(SP)
-	MOVL	info+12(FP), BX
+	MOVL	handler+0(FP), DI
+	// 4(FP) is sigstyle
+	MOVL	signo+8(FP), AX
+	MOVL	siginfo+12(FP), BX
+	MOVL	context+16(FP), CX
+
+	MOVL	AX, 0(SP)
 	MOVL	BX, 4(SP)
-	MOVL	context+16(FP), BX
-	MOVL	BX, 8(SP)
-	MOVL	DI, 12(SP)
-	
-	MOVL	handler+0(FP), BX
-	CALL	BX
+	MOVL	CX, 8(SP)
+	CALL	DI
 
 	// restore g
 	get_tls(CX)
-	MOVL	20(SP), DI
-	MOVL	DI, g(CX)
+	MOVL	20(SP), BP
+	MOVL	BP, g(CX)
 
-	// call sigreturn
 	MOVL	context+16(FP), CX
 	MOVL	style+4(FP), BX
+
 	MOVL	$0, 0(SP)	// "caller PC" - ignored
 	MOVL	CX, 4(SP)
 	MOVL	BX, 8(SP)
@@ -154,7 +138,7 @@ TEXT runtime·bsdthread_create(SB),7,$32
 	MOVL	$0x1000000, 20(SP)	// flags = PTHREAD_START_CUSTOM
 	INT	$0x80
 	JAE	3(PC)
-	NEGL	AX
+	MOVL	$-1, AX
 	RET
 	MOVL	$0, AX
 	RET

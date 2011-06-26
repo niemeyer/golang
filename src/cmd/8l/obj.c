@@ -44,38 +44,27 @@
 #endif
 
 char	*noname		= "<none>";
+char	thechar		= '8';
 char	*thestring 	= "386";
 
-Header headers[] = {
-   "garbunix", Hgarbunix,
-   "unixcoff", Hunixcoff,
-   "plan9", Hplan9x32,
-   "msdoscom", Hmsdoscom,
-   "msdosexe", Hmsdosexe,
-   "darwin", Hdarwin,
-   "linux", Hlinux,
-   "freebsd", Hfreebsd,
-   "windows", Hwindows,
-   "windowsgui", Hwindows,
-   0, 0
-};
-
 /*
- *	-Hgarbunix -T0x40004C -D0x10000000	is garbage unix
- *	-Hunixcoff -T0xd0 -R4			is unix coff
- *	-Hplan9 -T4128 -R4096			is plan9 format
- *	-Hmsdoscom -Tx -Rx			is MS-DOS .COM
- *	-Hmsdosexe -Tx -Rx			is fake MS-DOS .EXE
- *	-Hdarwin -Tx -Rx			is Apple Mach-O
- *	-Hlinux -Tx -Rx				is Linux ELF32
- *	-Hfreebsd -Tx -Rx			is FreeBSD ELF32
- *	-Hwindows -Tx -Rx			is MS Windows PE32
+ *	-H0 -T0x40004C -D0x10000000	is garbage unix
+ *	-H1 -T0xd0 -R4			is unix coff
+ *	-H2 -T4128 -R4096		is plan9 format
+ *	-H3 -Tx -Rx			is MS-DOS .COM
+ *	-H4 -Tx -Rx			is fake MS-DOS .EXE
+ *	-H6 -Tx -Rx			is Apple Mach-O
+ *	-H7 -Tx -Rx			is Linux ELF32
+ *	-H8 -Tx -Rx			was Google Native Client
+ *	-H9 -Tx -Rx			is FreeBSD ELF32
+ *	-H10 -Tx -Rx			is MS Windows PE
+ *	-H11 -Tx -Rx			is tiny (os image)
  */
 
 void
 usage(void)
 {
-	fprint(2, "usage: 8l [-options] [-E entry] [-H head] [-I interpreter] [-L dir] [-T text] [-R rnd] [-r path] [-o out] main.8\n");
+	fprint(2, "usage: 8l [-options] [-E entry] [-H head] [-L dir] [-T text] [-R rnd] [-r path] [-o out] main.8\n");
 	exits("usage");
 }
 
@@ -111,10 +100,7 @@ main(int argc, char *argv[])
 		INITENTRY = EARGF(usage());
 		break;
 	case 'H':
-		HEADTYPE = headtype(EARGF(usage()));
-		break;
-	case 'I':
-		interpreter = EARGF(usage());
+		HEADTYPE = atolwhex(EARGF(usage()));
 		break;
 	case 'L':
 		Lflag(EARGF(usage()));
@@ -141,24 +127,46 @@ main(int argc, char *argv[])
 
 	mywhatsys();	// get goos
 
-	if(HEADTYPE == -1)
-		HEADTYPE = headtype(goos);
+	if(HEADTYPE == -1) {
+		HEADTYPE = 2;
+		if(strcmp(goos, "linux") == 0)
+			HEADTYPE = 7;
+		else
+		if(strcmp(goos, "darwin") == 0)
+			HEADTYPE = 6;
+		else
+		if(strcmp(goos, "freebsd") == 0)
+			HEADTYPE = 9;
+		else
+		if(strcmp(goos, "windows") == 0)
+			HEADTYPE = 10;
+		else
+		if(strcmp(goos, "tiny") == 0)
+			HEADTYPE = 11;
+		else
+		if(strcmp(goos, "plan9") == 0)
+			HEADTYPE = 2;
+		else
+			print("goos is not known: %s\n", goos);
+	}
 
 	if(outfile == nil) {
-		if(HEADTYPE == Hwindows)
+		if(HEADTYPE == 10)
 			outfile = "8.out.exe";
 		else
 			outfile = "8.out";
 	}
 
 	libinit();
+	if(rpath == nil)
+		rpath = smprint("%s/pkg/%s_%s", goroot, goos, goarch);
 
 	switch(HEADTYPE) {
 	default:
 		diag("unknown -H option");
 		errorexit();
 
-	case Hgarbunix:	/* this is garbage */
+	case 0:	/* this is garbage */
 		HEADR = 20L+56L;
 		if(INITTEXT == -1)
 			INITTEXT = 0x40004CL;
@@ -167,7 +175,7 @@ main(int argc, char *argv[])
 		if(INITRND == -1)
 			INITRND = 0;
 		break;
-	case Hunixcoff:	/* is unix coff */
+	case 1:	/* is unix coff */
 		HEADR = 0xd0L;
 		if(INITTEXT == -1)
 			INITTEXT = 0xd0;
@@ -176,17 +184,16 @@ main(int argc, char *argv[])
 		if(INITRND == -1)
 			INITRND = 0;
 		break;
-	case Hplan9x32:	/* plan 9 */
-		tlsoffset = -8;
+	case 2:	/* plan 9 */
 		HEADR = 32L;
 		if(INITTEXT == -1)
 			INITTEXT = 4096+32;
 		if(INITDAT == -1)
 			INITDAT = 0;
 		if(INITRND == -1)
-			INITRND = 4096;
+			INITRND = 1;
 		break;
-	case Hmsdoscom:	/* MS-DOS .COM */
+	case 3:	/* MS-DOS .COM */
 		HEADR = 0;
 		if(INITTEXT == -1)
 			INITTEXT = 0x0100;
@@ -195,7 +202,7 @@ main(int argc, char *argv[])
 		if(INITRND == -1)
 			INITRND = 4;
 		break;
-	case Hmsdosexe:	/* fake MS-DOS .EXE */
+	case 4:	/* fake MS-DOS .EXE */
 		HEADR = 0x200;
 		if(INITTEXT == -1)
 			INITTEXT = 0x0100;
@@ -207,14 +214,14 @@ main(int argc, char *argv[])
 		if(debug['v'])
 			Bprint(&bso, "HEADR = 0x%d\n", HEADR);
 		break;
-	case Hdarwin:	/* apple MACH */
+	case 6:	/* apple MACH */
 		/*
 		 * OS X system constant - offset from %gs to our TLS.
 		 * Explained in ../../libcgo/darwin_386.c.
 		 */
 		tlsoffset = 0x468;
 		machoinit();
-		HEADR = INITIAL_MACHO_HEADR;
+		HEADR = MACHORESERVE;
 		if(INITTEXT == -1)
 			INITTEXT = 4096+HEADR;
 		if(INITDAT == -1)
@@ -222,8 +229,8 @@ main(int argc, char *argv[])
 		if(INITRND == -1)
 			INITRND = 4096;
 		break;
-	case Hlinux:	/* elf32 executable */
-	case Hfreebsd:
+	case 7:	/* elf32 executable */
+	case 9:
 		/*
 		 * ELF uses TLS offsets negative from %gs.
 		 * Translate 0(GS) and 4(GS) into -8(GS) and -4(GS).
@@ -240,7 +247,7 @@ main(int argc, char *argv[])
 		if(INITRND == -1)
 			INITRND = 4096;
 		break;
-	case Hwindows: /* PE executable */
+	case 10: /* PE executable */
 		peinit();
 		HEADR = PEFILEHEADR;
 		if(INITTEXT == -1)
@@ -249,6 +256,17 @@ main(int argc, char *argv[])
 			INITDAT = 0;
 		if(INITRND == -1)
 			INITRND = PESECTALIGN;
+		break;
+	case 11:
+		tlsoffset = 0;
+		elfinit();
+		HEADR = ELFRESERVE;
+		if(INITTEXT == -1)
+			INITTEXT = 0x100000+HEADR;
+		if(INITDAT == -1)
+			INITDAT = 0;
+		if(INITRND == -1)
+			INITRND = 4096;
 		break;
 	}
 	if(INITDAT != 0 && INITRND != 0)
@@ -284,9 +302,9 @@ main(int argc, char *argv[])
 	patch();
 	follow();
 	doelf();
-	if(HEADTYPE == Hdarwin)
+	if(HEADTYPE == 6)
 		domacho();
-	if(HEADTYPE == Hwindows)
+	if(HEADTYPE == 10)
 		dope();
 	dostkoff();
 	if(debug['p'])
@@ -301,7 +319,6 @@ main(int argc, char *argv[])
 	symtab();
 	dodata();
 	address();
-	doweak();
 	reloc();
 	asmb();
 	undef();
@@ -416,7 +433,7 @@ ldobj1(Biobuf *f, char *pkg, int64 len, char *pn)
 	int32 ipc;
 	Prog *p;
 	int v, o, r, skip;
-	Sym *h[NSYM], *s;
+	Sym *h[NSYM], *s, *di;
 	uint32 sig;
 	int ntext;
 	int32 eof;
@@ -427,6 +444,7 @@ ldobj1(Biobuf *f, char *pkg, int64 len, char *pn)
 	lastp = nil;
 	ntext = 0;
 	eof = Boffset(f) + len;
+	di = S;
 	src[0] = 0;
 
 
@@ -473,6 +491,7 @@ loop:
 		s = lookup(x, r);
 		if(x != name)
 			free(x);
+		name = nil;
 
 		if(debug['S'] && r == 0)
 			sig = 1729;
@@ -583,7 +602,7 @@ loop:
 			diag("multiple initialization for %s: in both %s and %s", s->name, s->file, pn);
 			errorexit();
 		}
-		savedata(s, p, pn);
+		savedata(s, p);
 		unmal(p, sizeof *p);
 		goto loop;
 
@@ -702,6 +721,7 @@ loop:
 		lastp = p;
 		goto loop;
 	}
+	goto loop;
 
 eof:
 	diag("truncated object file: %s", pn);

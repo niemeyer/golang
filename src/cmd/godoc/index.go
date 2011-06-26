@@ -45,8 +45,9 @@ import (
 	"go/token"
 	"go/scanner"
 	"index/suffixarray"
+	"io/ioutil"
 	"os"
-	"path/filepath"
+	pathutil "path"
 	"regexp"
 	"sort"
 	"strings"
@@ -429,8 +430,8 @@ func (a *AltWords) filter(s string) *AltWords {
 // Indexer
 
 // Adjust these flags as seems best.
-const includeMainPackages = true
-const includeTestFiles = true
+const excludeMainPackages = false
+const excludeTestFiles = false
 
 
 type IndexResult struct {
@@ -618,14 +619,11 @@ func pkgName(filename string) string {
 }
 
 
-// addFile adds a file to the index if possible and returns the file set file
-// and the file's AST if it was successfully parsed as a Go file. If addFile
-// failed (that is, if the file was not added), it returns file == nil.
-func (x *Indexer) addFile(filename string, goFile bool) (file *token.File, ast *ast.File) {
+func (x *Indexer) addFile(filename string) *ast.File {
 	// open file
-	f, err := fs.Open(filename)
+	f, err := os.Open(filename, os.O_RDONLY, 0)
 	if err != nil {
-		return
+		return nil
 	}
 	defer f.Close()
 
@@ -645,127 +643,59 @@ func (x *Indexer) addFile(filename string, goFile bool) (file *token.File, ast *
 		panic("internal error - file base incorrect")
 	}
 
-	// append file contents (src) to x.sources
-	if _, err := x.sources.ReadFrom(f); err == nil {
-		src := x.sources.Bytes()[base:]
-
-		if goFile {
-			// parse the file and in the process add it to the file set
-			if ast, err = parser.ParseFile(x.fset, filename, src, parser.ParseComments); err == nil {
-				file = x.fset.File(ast.Pos()) // ast.Pos() is inside the file
-				return
-			}
-			// file has parse errors, and the AST may be incorrect -
-			// set lines information explicitly and index as ordinary
-			// text file (cannot fall through to the text case below
-			// because the file has already been added to the file set
-			// by the parser)
-			file = x.fset.File(token.Pos(base)) // token.Pos(base) is inside the file
-			file.SetLinesForContent(src)
-			ast = nil
-			return
-		}
-
-		if isText(src) {
-			// only add the file to the file set (for the full text index)
-			file = x.fset.AddFile(filename, x.fset.Base(), len(src))
-			file.SetLinesForContent(src)
-			return
-		}
+	// append file contents to x.sources
+	if _, err := x.sources.ReadFrom(f); err != nil {
+		x.sources.Truncate(base) // discard possibly added data
+		return nil               // ignore files with I/O errors
 	}
 
-	// discard possibly added data
-	x.sources.Truncate(base - 1) // -1 to remove added byte 0 since no file was added
-	return
-}
-
-
-// Design note: Using an explicit white list of permitted files for indexing
-// makes sure that the important files are included and massively reduces the
-// number of files to index. The advantage over a blacklist is that unexpected
-// (non-blacklisted) files won't suddenly explode the index.
-//
-// TODO(gri): We may want to make this list customizable, perhaps via a flag.
-
-// Files are whitelisted if they have a file name or extension
-// present as key in whitelisted.
-var whitelisted = map[string]bool{
-	".bash":        true,
-	".c":           true,
-	".css":         true,
-	".go":          true,
-	".goc":         true,
-	".h":           true,
-	".html":        true,
-	".js":          true,
-	".out":         true,
-	".py":          true,
-	".s":           true,
-	".sh":          true,
-	".txt":         true,
-	".xml":         true,
-	"AUTHORS":      true,
-	"CONTRIBUTORS": true,
-	"LICENSE":      true,
-	"Makefile":     true,
-	"PATENTS":      true,
-	"README":       true,
-}
-
-
-// isWhitelisted returns true if a file is on the list
-// of "permitted" files for indexing. The filename must
-// be the directory-local name of the file.
-func isWhitelisted(filename string) bool {
-	key := filepath.Ext(filename)
-	if key == "" {
-		// file has no extension - use entire filename
-		key = filename
+	// parse the file and in the process add it to the file set
+	src := x.sources.Bytes()[base:] // no need to reread the file
+	file, err := parser.ParseFile(x.fset, filename, src, parser.ParseComments)
+	if err != nil {
+		// do not discard the added source code in this case
+		// because the file has been added to the file set and
+		// the source size must match the file set base
+		// TODO(gri): given a FileSet.RemoveFile() one might be
+		//            able to discard the data here (worthwhile?)
+		return nil // ignore files with (parse) errors
 	}
-	return whitelisted[key]
+
+	return file
 }
 
 
-func (x *Indexer) visitFile(dirname string, f FileInfo, fulltextIndex bool) {
-	if !f.IsRegular() {
+func (x *Indexer) visitFile(dirname string, f *os.FileInfo) {
+	if !isGoFile(f) {
 		return
 	}
 
-	filename := filepath.Join(dirname, f.Name())
-	goFile := false
-
-	switch {
-	case isGoFile(f):
-		if !includeTestFiles && (!isPkgFile(f) || strings.HasPrefix(filename, "test/")) {
-			return
-		}
-		if !includeMainPackages && pkgName(filename) == "main" {
-			return
-		}
-		goFile = true
-
-	case !fulltextIndex || !isWhitelisted(f.Name()):
+	path := pathutil.Join(dirname, f.Name)
+	if excludeTestFiles && (!isPkgFile(f) || strings.HasPrefix(path, "test/")) {
 		return
 	}
 
-	file, fast := x.addFile(filename, goFile)
+	if excludeMainPackages && pkgName(path) == "main" {
+		return
+	}
+
+	file := x.addFile(path)
 	if file == nil {
-		return // addFile failed
+		return
 	}
 
-	if fast != nil {
-		// we've got a Go file to index
-		x.current = file
-		dir, _ := filepath.Split(filename)
-		pak := Pak{dir, fast.Name.Name}
-		x.file = &File{filename, pak}
-		ast.Walk(x, fast)
-	}
+	// we've got a file to index
+	x.current = x.fset.File(file.Pos()) // file.Pos is in the current file
+	dir, _ := pathutil.Split(path)
+	pak := Pak{dir, file.Name.Name}
+	x.file = &File{path, pak}
+	ast.Walk(x, file)
 
 	// update statistics
-	x.stats.Bytes += file.Size()
+	// (count real file size as opposed to using the padded x.sources.Len())
+	x.stats.Bytes += x.current.Size()
 	x.stats.Files++
-	x.stats.Lines += file.LineCount()
+	x.stats.Lines += x.current.LineCount()
 }
 
 
@@ -803,13 +733,13 @@ func NewIndex(dirnames <-chan string, fulltextIndex bool) *Index {
 
 	// index all files in the directories given by dirnames
 	for dirname := range dirnames {
-		list, err := fs.ReadDir(dirname)
+		list, err := ioutil.ReadDir(dirname)
 		if err != nil {
 			continue // ignore this directory
 		}
 		for _, f := range list {
 			if !f.IsDirectory() {
-				x.visitFile(dirname, f, fulltextIndex)
+				x.visitFile(dirname, f)
 			}
 		}
 	}

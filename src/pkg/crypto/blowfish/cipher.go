@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package blowfish implements Bruce Schneier's Blowfish encryption algorithm.
+// This package implements Bruce Schneier's Blowfish encryption algorithm.
 package blowfish
 
 // The code is a port of Bruce Schneier's C implementation.

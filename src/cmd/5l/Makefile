@@ -22,6 +22,7 @@ OFILES=\
 	optab.$O\
 	pass.$O\
 	prof.$O\
+	thumb.$O\
 	softfloat.$O\
 	span.$O\
 	symtab.$O\

@@ -13,6 +13,9 @@ TARG=6prof
 OFILES=\
 	main.$O\
 
+LIB=\
+	../../../lib/libmach.a\
+
 NOINSTALL=1
 include ../../Make.ccmd
 

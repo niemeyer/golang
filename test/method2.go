@@ -12,14 +12,8 @@ type T struct {
 type P *T
 type P1 *T
 
-func (p P) val() int   { return 1 } // ERROR "receiver.* pointer"
-func (p *P1) val() int { return 1 } // ERROR "receiver.* pointer"
-
-type I interface{}
-type I1 interface{}
-
-func (p I) val() int { return 1 } // ERROR "receiver.*interface"
-func (p *I1) val() int { return 1 } // ERROR "receiver.*interface"
+func (p P) val() int   { return 1 } // ERROR "receiver"
+func (p *P1) val() int { return 1 } // ERROR "receiver"
 
 type Val interface {
 	val() int

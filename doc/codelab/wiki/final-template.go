@@ -53,7 +53,7 @@ func saveHandler(w http.ResponseWriter, r *http.Request) {
 
 func renderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
 	t, _ := template.ParseFile(tmpl+".html", nil)
-	t.Execute(w, p)
+	t.Execute(p, w)
 }
 
 func main() {

@@ -5,7 +5,7 @@
 #include "386/asm.h"
 
 // void *stdcall_raw(void *fn, int32 count, uintptr *args)
-TEXT runtime·stdcall_raw(SB),7,$0
+TEXT runtime·stdcall_raw(SB),7,$4
 	// Copy arguments from stack.
 	MOVL	fn+0(FP), AX
 	MOVL	count+4(FP), CX		// words
@@ -14,18 +14,17 @@ TEXT runtime·stdcall_raw(SB),7,$0
 	// Switch to m->g0 if needed.
 	get_tls(DI)
 	MOVL	m(DI), DX
-	MOVL	0(FS), SI
-	MOVL	SI, m_sehframe(DX)
+	MOVL	g(DI), SI
+	MOVL	SI, 0(SP)		// save g
+	MOVL	SP, m_gostack(DX)	// save SP
 	MOVL	m_g0(DX), SI
 	CMPL	g(DI), SI
-	MOVL	SP, BX
-	JEQ	2(PC)
-	MOVL	(g_sched+gobuf_sp)(SI), SP
-	PUSHL	BX
-	PUSHL	g(DI)
+	JEQ 3(PC)
+	MOVL	(m_sched+gobuf_sp)(DX), SP
 	MOVL	SI, g(DI)
 
 	// Copy args to new stack.
+	SUBL	$(10*4), SP		// padding
 	MOVL	CX, BX
 	SALL	$2, BX
 	SUBL	BX, SP			// room for args
@@ -39,41 +38,27 @@ TEXT runtime·stdcall_raw(SB),7,$0
 
 	// Restore original SP, g.
 	get_tls(DI)
-	POPL	g(DI)
-	POPL	SP
+	MOVL	m(DI), DX
+	MOVL	m_gostack(DX), SP	// restore SP
+	MOVL	0(SP), SI		// restore g
+	MOVL	SI, g(DI)
 
 	// Someday the convention will be D is always cleared.
 	CLD
 
 	RET
 
-// faster get/set last error
-TEXT runtime·getlasterror(SB),7,$0
-	MOVL	0x34(FS), AX
-	RET
-
-TEXT runtime·setlasterror(SB),7,$0
-	MOVL	err+0(FP), AX
-	MOVL	AX, 0x34(FS)
-	RET
-
 TEXT runtime·sigtramp(SB),7,$0
 	PUSHL	BP			// cdecl
-	PUSHL	BX
-	PUSHL	SI
-	PUSHL	DI
 	PUSHL	0(FS)
 	CALL	runtime·sigtramp1(SB)
 	POPL	0(FS)
-	POPL	DI
-	POPL	SI
-	POPL	BX
 	POPL	BP
 	RET
 
-TEXT runtime·sigtramp1(SB),0,$16-40
+TEXT runtime·sigtramp1(SB),0,$16-28
 	// unwinding?
-	MOVL	info+24(FP), BX
+	MOVL	info+12(FP), BX
 	MOVL	4(BX), CX		// exception flags
 	ANDL	$6, CX
 	MOVL	$1, AX
@@ -81,15 +66,15 @@ TEXT runtime·sigtramp1(SB),0,$16-40
 
 	// place ourselves at the top of the SEH chain to
 	// ensure SEH frames lie within thread stack bounds
-	MOVL	frame+28(FP), CX	// our SEH frame
+	MOVL	frame+16(FP), CX	// our SEH frame
 	MOVL	CX, 0(FS)
 
 	// copy arguments for call to sighandler
 	MOVL	BX, 0(SP)
 	MOVL	CX, 4(SP)
-	MOVL	context+32(FP), BX
+	MOVL	context+20(FP), BX
 	MOVL	BX, 8(SP)
-	MOVL	dispatcher+36(FP), BX
+	MOVL	dispatcher+24(FP), BX
 	MOVL	BX, 12(SP)
 
 	CALL	runtime·sighandler(SB)
@@ -105,92 +90,47 @@ TEXT runtime·sigtramp1(SB),0,$16-40
 sigdone:
 	RET
 
-// Windows runs the ctrl handler in a new thread.
-TEXT runtime·ctrlhandler(SB),7,$0
-	PUSHL	BP
-	MOVL	SP, BP
-	PUSHL	BX
-	PUSHL	SI
-	PUSHL	DI
-	PUSHL	0x2c(FS)
-	MOVL	SP, BX
-
-	// setup dummy m, g
-	SUBL	$(m_sehframe+4), SP	// at least space for m_sehframe
-	LEAL	m_tls(SP), CX
-	MOVL	CX, 0x2c(FS)
-	MOVL	SP, m(CX)
-	MOVL	SP, DX
-	SUBL	$8, SP			// space for g_stack{guard,base}
-	MOVL	SP, g(CX)
-	MOVL	SP, m_g0(DX)
-	LEAL	-4096(SP), CX
-	MOVL	CX, g_stackguard(SP)
-	MOVL	BX, g_stackbase(SP)
-
-	PUSHL	8(BP)
-	CALL	runtime·ctrlhandler1(SB)
-	POPL	CX
-
-	get_tls(CX)
-	MOVL	g(CX), CX
-	MOVL	g_stackbase(CX), SP
-	POPL	0x2c(FS)
-	POPL	DI
-	POPL	SI
-	POPL	BX
-	POPL	BP
-	MOVL	0(SP), CX
-	ADDL	$8, SP
-	JMP	CX
-
 // Called from dynamic function created by ../thread.c compilecallback,
 // running on Windows stack (not Go stack).
-// BX, BP, SI, DI registers and DF flag are preserved
+// Returns straight to DLL.
+// EBX, EBP, ESI, EDI registers and DF flag are preserved
 // as required by windows callback convention.
-// AX = address of go func we need to call
-// DX = total size of arguments
+// On entry to the function the stack looks like:
+//
+// 0(SP)  - return address to callback
+// 4(SP)  - address of go func we need to call
+// 8(SP)  - total size of arguments
+// 12(SP) - room to save BX register
+// 16(SP) - room to save BP
+// 20(SP) - room to save SI
+// 24(SP) - room to save DI
+// 28(SP) - return address to DLL
+// 32(SP) - beginning of arguments
 //
 TEXT runtime·callbackasm+0(SB),7,$0
-	// preserve whatever's at the memory location that
-	// the callback will use to store the return value
-	LEAL	8(SP), CX
-	PUSHL	0(CX)(DX*1)
-	ADDL	$4, DX			// extend argsize by size of return value
+	MOVL	BX, 12(SP)		// save registers as required for windows callback
+	MOVL	BP, 16(SP)
+	MOVL	SI, 20(SP)
+	MOVL	DI, 24(SP)
 
-	// save registers as required for windows callback
-	PUSHL	0(FS)
-	PUSHL	DI
-	PUSHL	SI
-	PUSHL	BP
-	PUSHL	BX
-	PUSHL	DX
-	PUSHL	CX
-	PUSHL	AX
+	LEAL	args+32(SP), AX
+	MOVL	AX, 0(SP)
 
-	// reinstall our SEH handler
-	get_tls(CX)
-	MOVL	m(CX), CX
-	MOVL	m_sehframe(CX), CX
-	MOVL	CX, 0(FS)
 	CLD
 
-	CALL	runtime·cgocallback(SB)
+	CALL	runtime·callback(SB)
 
-	// restore registers as required for windows callback
-	POPL	AX
-	POPL	CX
-	POPL	DX
-	POPL	BX
-	POPL	BP
-	POPL	SI
-	POPL	DI
-	POPL	0(FS)
+	MOVL	12(SP), BX		// restore registers as required for windows callback
+	MOVL	16(SP), BP
+	MOVL	20(SP), SI
+	MOVL	24(SP), DI
 	CLD
 
-	MOVL	-4(CX)(DX*1), AX
-	POPL	-4(CX)(DX*1)
-	RET
+	MOVL	ret+28(SP), CX
+	MOVL	size+8(SP), DX
+	ADDL	$32, DX
+	ADDL	DX, SP
+	JMP	CX
 
 // void tstart(M *newm);
 TEXT runtime·tstart(SB),7,$0
@@ -204,6 +144,7 @@ TEXT runtime·tstart(SB),7,$0
 
 	// Layout new m scheduler stack on os stack.
 	MOVL	SP, AX
+	SUBL	$256, AX		// just some space for ourselves
 	MOVL	AX, g_stackbase(DX)
 	SUBL	$(64*1024), AX		// stack size
 	MOVL	AX, g_stackguard(DX)
@@ -213,6 +154,9 @@ TEXT runtime·tstart(SB),7,$0
 	MOVL	SI, 0x2c(FS)
 	MOVL	CX, m(SI)
 	MOVL	DX, g(SI)
+
+	// Use scheduler stack now.
+	MOVL	g_stackbase(DX), SP
 
 	// Someday the convention will be D is always cleared.
 	CLD
@@ -249,4 +193,13 @@ TEXT runtime·tstart_stdcall(SB),7,$0
 TEXT runtime·setldt(SB),7,$0
 	MOVL	address+4(FP), CX
 	MOVL	CX, 0x2c(FS)
+	RET
+
+// for now, return 0,0.  only used for internal performance monitoring.
+TEXT runtime·gettime(SB),7,$0
+	MOVL	sec+0(FP), DI
+	MOVL	$0, (DI)
+	MOVL	$0, 4(DI)		// zero extend 32 -> 64 bits
+	MOVL	usec+4(FP), DI
+	MOVL	$0, (DI)
 	RET

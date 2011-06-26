@@ -42,33 +42,6 @@ func TestParseInt64(t *testing.T) {
 	}
 }
 
-var bigIntTests = []struct {
-	in     []byte
-	base10 string
-}{
-	{[]byte{0xff}, "-1"},
-	{[]byte{0x00}, "0"},
-	{[]byte{0x01}, "1"},
-	{[]byte{0x00, 0xff}, "255"},
-	{[]byte{0xff, 0x00}, "-256"},
-	{[]byte{0x01, 0x00}, "256"},
-}
-
-func TestParseBigInt(t *testing.T) {
-	for i, test := range bigIntTests {
-		ret := parseBigInt(test.in)
-		if ret.String() != test.base10 {
-			t.Errorf("#%d: bad result from %x, got %s want %s", i, test.in, ret.String(), test.base10)
-		}
-		fw := newForkableWriter()
-		marshalBigInt(fw, ret)
-		result := fw.Bytes()
-		if !bytes.Equal(result, test.in) {
-			t.Errorf("#%d: got %x from marshaling %s, want %x", i, result, ret, test.in)
-		}
-	}
-}
-
 type bitStringTest struct {
 	in        []byte
 	ok        bool
@@ -276,12 +249,11 @@ var parseFieldParametersTestData []parseFieldParametersTest = []parseFieldParame
 	{"printable", fieldParameters{stringType: tagPrintableString}},
 	{"optional", fieldParameters{optional: true}},
 	{"explicit", fieldParameters{explicit: true, tag: new(int)}},
-	{"application", fieldParameters{application: true, tag: new(int)}},
 	{"optional,explicit", fieldParameters{optional: true, explicit: true, tag: new(int)}},
 	{"default:42", fieldParameters{defaultValue: newInt64(42)}},
 	{"tag:17", fieldParameters{tag: newInt(17)}},
 	{"optional,explicit,default:42,tag:17", fieldParameters{optional: true, explicit: true, defaultValue: newInt64(42), tag: newInt(17)}},
-	{"optional,explicit,default:42,tag:17,rubbish1", fieldParameters{true, true, false, newInt64(42), newInt(17), 0, false}},
+	{"optional,explicit,default:42,tag:17,rubbish1", fieldParameters{true, true, newInt64(42), newInt(17), 0, false}},
 	{"set", fieldParameters{set: true}},
 }
 
@@ -292,6 +264,11 @@ func TestParseFieldParameters(t *testing.T) {
 			t.Errorf("#%d: Bad result: %v (expected %v)", i, f, test.out)
 		}
 	}
+}
+
+type unmarshalTest struct {
+	in  []byte
+	out interface{}
 }
 
 type TestObjectIdentifierStruct struct {
@@ -312,10 +289,7 @@ type TestElementsAfterString struct {
 	A, B int
 }
 
-var unmarshalTestData = []struct {
-	in  []byte
-	out interface{}
-}{
+var unmarshalTestData []unmarshalTest = []unmarshalTest{
 	{[]byte{0x02, 0x01, 0x42}, newInt(0x42)},
 	{[]byte{0x30, 0x08, 0x06, 0x06, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d}, &TestObjectIdentifierStruct{[]int{1, 2, 840, 113549}}},
 	{[]byte{0x03, 0x04, 0x06, 0x6e, 0x5d, 0xc0}, &BitString{[]byte{110, 93, 192}, 18}},
@@ -334,7 +308,9 @@ var unmarshalTestData = []struct {
 
 func TestUnmarshal(t *testing.T) {
 	for i, test := range unmarshalTestData {
-		pv := reflect.New(reflect.TypeOf(test.out).Elem())
+		pv := reflect.MakeZero(reflect.NewValue(test.out).Type())
+		zv := reflect.MakeZero(pv.Type().(*reflect.PtrType).Elem())
+		pv.(*reflect.PtrValue).PointTo(zv)
 		val := pv.Interface()
 		_, err := Unmarshal(test.in, val)
 		if err != nil {

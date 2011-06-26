@@ -7,8 +7,6 @@ package scanner
 import (
 	"go/token"
 	"os"
-	"path/filepath"
-	"runtime"
 	"testing"
 )
 
@@ -89,7 +87,7 @@ var tokens = [...]elt{
 		literal,
 	},
 
-	// Operators and delimiters
+	// Operators and delimitors
 	{token.ADD, "+", operator},
 	{token.SUB, "-", operator},
 	{token.MUL, "*", operator},
@@ -225,7 +223,7 @@ func TestScan(t *testing.T) {
 	for _, e := range tokens {
 		src += e.lit + whitespace
 	}
-	src_linecount := newlineCount(src)
+	src_linecount := newlineCount(src) + 1
 	whitespace_linecount := newlineCount(whitespace)
 
 	// verify scan
@@ -234,15 +232,16 @@ func TestScan(t *testing.T) {
 	index := 0
 	epos := token.Position{"", 0, 1, 1} // expected position
 	for {
-		pos, tok, lit := s.Scan()
+		pos, tok, litb := s.Scan()
 		e := elt{token.EOF, "", special}
 		if index < len(tokens) {
 			e = tokens[index]
 		}
+		lit := string(litb)
 		if tok == token.EOF {
 			lit = "<EOF>"
 			epos.Line = src_linecount
-			epos.Column = 2
+			epos.Column = 1
 		}
 		checkPos(t, lit, pos, epos)
 		if tok != e.tok {
@@ -256,7 +255,7 @@ func TestScan(t *testing.T) {
 		}
 		epos.Offset += len(lit) + len(whitespace)
 		epos.Line += newlineCount(lit) + whitespace_linecount
-		if tok == token.COMMENT && lit[1] == '/' {
+		if tok == token.COMMENT && litb[1] == '/' {
 			// correct for unaccounted '/n' in //-style comment
 			epos.Offset++
 			epos.Line++
@@ -291,7 +290,7 @@ func checkSemi(t *testing.T, line string, mode uint) {
 			semiPos.Column++
 			pos, tok, lit = S.Scan()
 			if tok == token.SEMICOLON {
-				if lit != semiLit {
+				if string(lit) != semiLit {
 					t.Errorf(`bad literal for %q: got %q, expected %q`, line, lit, semiLit)
 				}
 				checkPos(t, line, pos, semiPos)
@@ -444,41 +443,32 @@ func TestSemis(t *testing.T) {
 	}
 }
 
-type segment struct {
+
+var segments = []struct {
 	srcline  string // a line of source text
 	filename string // filename for current token
 	line     int    // line number for current token
-}
-
-var segments = []segment{
+}{
 	// exactly one token per line since the test consumes one token per segment
-	{"  line1", filepath.Join("dir", "TestLineComments"), 1},
-	{"\nline2", filepath.Join("dir", "TestLineComments"), 2},
-	{"\nline3  //line File1.go:100", filepath.Join("dir", "TestLineComments"), 3}, // bad line comment, ignored
-	{"\nline4", filepath.Join("dir", "TestLineComments"), 4},
-	{"\n//line File1.go:100\n  line100", filepath.Join("dir", "File1.go"), 100},
-	{"\n//line File2.go:200\n  line200", filepath.Join("dir", "File2.go"), 200},
+	{"  line1", "dir/TestLineComments", 1},
+	{"\nline2", "dir/TestLineComments", 2},
+	{"\nline3  //line File1.go:100", "dir/TestLineComments", 3}, // bad line comment, ignored
+	{"\nline4", "dir/TestLineComments", 4},
+	{"\n//line File1.go:100\n  line100", "dir/File1.go", 100},
+	{"\n//line File2.go:200\n  line200", "dir/File2.go", 200},
 	{"\n//line :1\n  line1", "dir", 1},
-	{"\n//line foo:42\n  line42", filepath.Join("dir", "foo"), 42},
-	{"\n //line foo:42\n  line44", filepath.Join("dir", "foo"), 44},           // bad line comment, ignored
-	{"\n//line foo 42\n  line46", filepath.Join("dir", "foo"), 46},            // bad line comment, ignored
-	{"\n//line foo:42 extra text\n  line48", filepath.Join("dir", "foo"), 48}, // bad line comment, ignored
-	{"\n//line /bar:42\n  line42", string(filepath.Separator) + "bar", 42},
-	{"\n//line ./foo:42\n  line42", filepath.Join("dir", "foo"), 42},
-	{"\n//line a/b/c/File1.go:100\n  line100", filepath.Join("dir", "a", "b", "c", "File1.go"), 100},
-}
-
-var winsegments = []segment{
-	{"\n//line c:\\dir\\File1.go:100\n  line100", "c:\\dir\\File1.go", 100},
+	{"\n//line foo:42\n  line42", "dir/foo", 42},
+	{"\n //line foo:42\n  line44", "dir/foo", 44},           // bad line comment, ignored
+	{"\n//line foo 42\n  line46", "dir/foo", 46},            // bad line comment, ignored
+	{"\n//line foo:42 extra text\n  line48", "dir/foo", 48}, // bad line comment, ignored
+	{"\n//line /bar:42\n  line42", "/bar", 42},
+	{"\n//line ./foo:42\n  line42", "dir/foo", 42},
+	{"\n//line a/b/c/File1.go:100\n  line100", "dir/a/b/c/File1.go", 100},
 }
 
 
 // Verify that comments of the form "//line filename:line" are interpreted correctly.
 func TestLineComments(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		segments = append(segments, winsegments...)
-	}
-
 	// make source
 	var src string
 	for _, e := range segments {
@@ -487,12 +477,12 @@ func TestLineComments(t *testing.T) {
 
 	// verify scan
 	var S Scanner
-	file := fset.AddFile(filepath.Join("dir", "TestLineComments"), fset.Base(), len(src))
+	file := fset.AddFile("dir/TestLineComments", fset.Base(), len(src))
 	S.Init(file, []byte(src), nil, 0)
 	for _, s := range segments {
 		p, _, lit := S.Scan()
 		pos := file.Position(p)
-		checkPos(t, lit, p, token.Position{s.filename, pos.Offset, s.line, pos.Column})
+		checkPos(t, string(lit), p, token.Position{s.filename, pos.Offset, s.line, pos.Column})
 	}
 
 	if S.ErrorCount != 0 {
@@ -546,10 +536,10 @@ func TestIllegalChars(t *testing.T) {
 	for offs, ch := range src {
 		pos, tok, lit := s.Scan()
 		if poffs := file.Offset(pos); poffs != offs {
-			t.Errorf("bad position for %s: got %d, expected %d", lit, poffs, offs)
+			t.Errorf("bad position for %s: got %d, expected %d", string(lit), poffs, offs)
 		}
-		if tok == token.ILLEGAL && lit != string(ch) {
-			t.Errorf("bad token: got %s, expected %s", lit, string(ch))
+		if tok == token.ILLEGAL && string(lit) != string(ch) {
+			t.Errorf("bad token: got %s, expected %s", string(lit), string(ch))
 		}
 	}
 
@@ -650,9 +640,7 @@ var errors = []struct {
 	pos int
 	err string
 }{
-	{"\a", token.ILLEGAL, 0, "illegal character U+0007"},
-	{`#`, token.ILLEGAL, 0, "illegal character U+0023 '#'"},
-	{`…`, token.ILLEGAL, 0, "illegal character U+2026 '…'"},
+	{`#`, token.ILLEGAL, 0, "illegal character '#' (U+23)"},
 	{`' '`, token.CHAR, 0, ""},
 	{`''`, token.CHAR, 0, "illegal character literal"},
 	{`'\8'`, token.CHAR, 2, "unknown escape sequence"},
@@ -672,8 +660,6 @@ var errors = []struct {
 	{"078e0", token.FLOAT, 0, ""},
 	{"078", token.INT, 0, "illegal octal number"},
 	{"07800000009", token.INT, 0, "illegal octal number"},
-	{"0x", token.INT, 0, "illegal hexadecimal number"},
-	{"0X", token.INT, 0, "illegal hexadecimal number"},
 	{"\"abc\x00def\"", token.STRING, 4, "illegal character NUL"},
 	{"\"abc\x80def\"", token.STRING, 4, "illegal UTF-8 encoding"},
 }

@@ -7,7 +7,6 @@ package fmt
 import (
 	"bytes"
 	"strconv"
-	"unicode"
 	"utf8"
 )
 
@@ -51,7 +50,6 @@ type fmt struct {
 	sharp       bool
 	space       bool
 	unicode     bool
-	uniQuote    bool // Use 'x'= prefix for %U if printable.
 	zero        bool
 }
 
@@ -65,7 +63,6 @@ func (f *fmt) clearflags() {
 	f.sharp = false
 	f.space = false
 	f.unicode = false
-	f.uniQuote = false
 	f.zero = false
 }
 
@@ -110,7 +107,7 @@ func (f *fmt) writePadding(n int, padding []byte) {
 }
 
 // Append b to f.buf, padded on left (w > 0) or right (w < 0 or f.minus)
-// clear flags afterwards.
+// clear flags aftewards.
 func (f *fmt) pad(b []byte) {
 	var padding []byte
 	var left, right int
@@ -127,7 +124,7 @@ func (f *fmt) pad(b []byte) {
 }
 
 // append s to buf, padded on left (w > 0) or right (w < 0 or f.minus).
-// clear flags afterwards.
+// clear flags aftewards.
 func (f *fmt) padString(s string) {
 	var padding []byte
 	var left, right int
@@ -235,45 +232,16 @@ func (f *fmt) integer(a int64, base uint64, signedness bool, digits string) {
 		i--
 		buf[i] = ' '
 	}
-
-	// If we want a quoted char for %#U, move the data up to make room.
-	if f.unicode && f.uniQuote && a >= 0 && a <= unicode.MaxRune && unicode.IsPrint(int(a)) {
-		runeWidth := utf8.RuneLen(int(a))
-		width := 1 + 1 + runeWidth + 1 // space, quote, rune, quote
-		copy(buf[i-width:], buf[i:])   // guaranteed to have enough room.
-		i -= width
-		// Now put " 'x'" at the end.
-		j := len(buf) - width
-		buf[j] = ' '
-		j++
-		buf[j] = '\''
-		j++
-		utf8.EncodeRune(buf[j:], int(a))
-		j += runeWidth
-		buf[j] = '\''
-	}
-
 	f.pad(buf[i:])
-}
-
-// truncate truncates the string to the specified precision, if present.
-func (f *fmt) truncate(s string) string {
-	if f.precPresent && f.prec < utf8.RuneCountInString(s) {
-		n := f.prec
-		for i := range s {
-			if n == 0 {
-				s = s[:i]
-				break
-			}
-			n--
-		}
-	}
-	return s
 }
 
 // fmt_s formats a string.
 func (f *fmt) fmt_s(s string) {
-	s = f.truncate(s)
+	if f.precPresent {
+		if f.prec < len(s) {
+			s = s[0:f.prec]
+		}
+	}
 	f.padString(s)
 }
 
@@ -307,28 +275,11 @@ func (f *fmt) fmt_sX(s string) {
 
 // fmt_q formats a string as a double-quoted, escaped Go string constant.
 func (f *fmt) fmt_q(s string) {
-	s = f.truncate(s)
 	var quoted string
 	if f.sharp && strconv.CanBackquote(s) {
 		quoted = "`" + s + "`"
 	} else {
-		if f.plus {
-			quoted = strconv.QuoteToASCII(s)
-		} else {
-			quoted = strconv.Quote(s)
-		}
-	}
-	f.padString(quoted)
-}
-
-// fmt_qc formats the integer as a single-quoted, escaped Go character constant.
-// If the character is not valid Unicode, it will print '\ufffd'.
-func (f *fmt) fmt_qc(c int64) {
-	var quoted string
-	if f.plus {
-		quoted = strconv.QuoteRuneToASCII(int(c))
-	} else {
-		quoted = strconv.QuoteRune(int(c))
+		quoted = strconv.Quote(s)
 	}
 	f.padString(quoted)
 }

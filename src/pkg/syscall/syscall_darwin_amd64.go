@@ -23,7 +23,7 @@ func NsecToTimeval(nsec int64) (tv Timeval) {
 	return
 }
 
-//sysnb	gettimeofday(tp *Timeval) (sec int64, usec int32, errno int)
+//sys	gettimeofday(tp *Timeval) (sec int64, usec int32, errno int)
 func Gettimeofday(tv *Timeval) (errno int) {
 	// The tv passed to gettimeofday must be non-nil
 	// but is otherwise unused.  The answers come back
@@ -38,16 +38,4 @@ func SetKevent(k *Kevent_t, fd, mode, flags int) {
 	k.Ident = uint64(fd)
 	k.Filter = int16(mode)
 	k.Flags = uint16(flags)
-}
-
-func (iov *Iovec) SetLen(length int) {
-	iov.Len = uint64(length)
-}
-
-func (msghdr *Msghdr) SetControllen(length int) {
-	msghdr.Controllen = uint32(length)
-}
-
-func (cmsg *Cmsghdr) SetLen(length int) {
-	cmsg.Len = uint32(length)
 }

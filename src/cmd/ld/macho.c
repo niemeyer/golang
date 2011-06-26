@@ -12,18 +12,10 @@
 
 static	int	macho64;
 static	MachoHdr	hdr;
-static	MachoLoad	*load;
+static	MachoLoad	load[16];
 static	MachoSeg	seg[16];
 static	MachoDebug	xdebug[16];
-static	int	nload, mload, nseg, ndebug, nsect;
-
-// Amount of space left for adding load commands
-// that refer to dynamic libraries.  Because these have
-// to go in the Mach-O header, we can't just pick a
-// "big enough" header size.  The initial header is 
-// one page, the non-dynamic library stuff takes
-// up about 1300 bytes; we overestimate that as 2k.
-static	int	load_budget = INITIAL_MACHO_HEADR - 2*1024;
+static	int	nload, nseg, ndebug, nsect;
 
 void
 machoinit(void)
@@ -51,18 +43,11 @@ newMachoLoad(uint32 type, uint32 ndata)
 {
 	MachoLoad *l;
 
-	if(nload >= mload) {
-		if(mload == 0)
-			mload = 1;
-		else
-			mload *= 2;
-		load = realloc(load, mload*sizeof load[0]);
-		if(load == nil) {
-			diag("out of memory");
-			errorexit();
-		}
+	if(nload >= nelem(load)) {
+		diag("too many loads");
+		errorexit();
 	}
-
+	
 	if(macho64 && (ndata & 1))
 		ndata++;
 	
@@ -275,17 +260,6 @@ domacho(void)
 void
 machoadddynlib(char *lib)
 {
-	// Will need to store the library name rounded up
-	// and 24 bytes of header metadata.  If not enough
-	// space, grab another page of initial space at the
-	// beginning of the output file.
-	load_budget -= (strlen(lib)+7)/8*8 + 24;
-	if(load_budget < 0) {
-		HEADR += 4096;
-		INITTEXT += 4096;
-		load_budget += 4096;
-	}
-
 	if(ndylib%32 == 0) {
 		dylib = realloc(dylib, (ndylib+32)*sizeof dylib[0]);
 		if(dylib == nil) {
@@ -302,6 +276,7 @@ asmbmacho(void)
 	vlong v, w;
 	vlong va;
 	int a, i;
+	char *pkgroot;
 	MachoHdr *mh;
 	MachoSect *msect;
 	MachoSeg *ms;
@@ -368,13 +343,11 @@ asmbmacho(void)
 
 	msect = newMachoSect(ms, "__data");
 	msect->addr = va+v;
+	msect->size = symaddr(lookup(".got", 0)) - msect->addr;
 	msect->off = v;
-	msect->size = segdata.filelen;
 
 	s = lookup(".got", 0);
 	if(s->size > 0) {
-		msect->size = symaddr(s) - msect->addr;
-
 		msect = newMachoSect(ms, "__nl_symbol_ptr");
 		msect->addr = symaddr(s);
 		msect->size = s->size;
@@ -455,6 +428,12 @@ asmbmacho(void)
 		ml->data[0] = 12;	/* offset to string */
 		strcpy((char*)&ml->data[1], "/usr/lib/dyld");
 
+		if(ndylib > 0) {	/* add reference to where .so files are installed */
+			pkgroot = smprint("%s/pkg/%s_%s", goroot, goos, goarch);
+			ml = newMachoLoad(0x80000000 | 0x1c, 1+(strlen(pkgroot)+1+7)/8*2);	/* LC_RPATH */
+			ml->data[0] = 12;	/* offset of string from beginning of load */
+			strcpy((char*)&ml->data[1], pkgroot);
+		}
 		for(i=0; i<ndylib; i++) {
 			ml = newMachoLoad(12, 4+(strlen(dylib[i])+1+7)/8*2);	/* LC_LOAD_DYLIB */
 			ml->data[0] = 24;	/* offset of string from beginning of load */
@@ -482,8 +461,8 @@ asmbmacho(void)
 	}
 
 	a = machowrite();
-	if(a > HEADR)
-		diag("HEADR too small: %d > %d", a, HEADR);
+	if(a > MACHORESERVE)
+		diag("MACHORESERVE too small: %d > %d", a, MACHORESERVE);
 }
 
 vlong

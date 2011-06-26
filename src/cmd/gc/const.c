@@ -103,8 +103,6 @@ convlit1(Node **np, Type *t, int explicit)
 	case ORSH:
 		convlit1(&n->left, t, explicit && isideal(n->left->type));
 		t = n->left->type;
-		if(t != T && t->etype == TIDEAL && n->val.ctype != CTINT)
-			n->val = toint(n->val);
 		if(t != T && !isint[t->etype]) {
 			yyerror("invalid operation: %#N (shift of type %T)", n, t);
 			t = T;
@@ -138,6 +136,7 @@ convlit1(Node **np, Type *t, int explicit)
 	case CTNIL:
 		switch(et) {
 		default:
+			yyerror("cannot use nil as %T", t);
 			n->type = T;
 			goto bad;
 
@@ -156,7 +155,6 @@ convlit1(Node **np, Type *t, int explicit)
 		case TMAP:
 		case TCHAN:
 		case TFUNC:
-		case TUNSAFEPTR:
 			break;
 		}
 		break;
@@ -516,8 +514,6 @@ evconst(Node *n)
 		n->right = nr;
 		if(nr->type && (issigned[nr->type->etype] || !isint[nr->type->etype]))
 			goto illegal;
-		nl->val = toint(nl->val);
-		nr->val = toint(nr->val);
 		break;
 	}
 
@@ -1055,12 +1051,12 @@ int
 cmpslit(Node *l, Node *r)
 {
 	int32 l1, l2, i, m;
-	uchar *s1, *s2;
+	char *s1, *s2;
 
 	l1 = l->val.u.sval->len;
 	l2 = r->val.u.sval->len;
-	s1 = (uchar*)l->val.u.sval->s;
-	s2 = (uchar*)r->val.u.sval->s;
+	s1 = l->val.u.sval->s;
+	s2 = r->val.u.sval->s;
 
 	m = l1;
 	if(l2 < m)

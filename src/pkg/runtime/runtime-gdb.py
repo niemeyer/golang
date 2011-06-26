@@ -2,7 +2,7 @@
 # Use of this source code is governed by a BSD-style
 # license that can be found in the LICENSE file.
 
-"""GDB Pretty printers and convenience functions for Go's runtime structures.
+"""GDB Pretty printers and convencience functions for Go's runtime structures.
 
 This script is loaded by GDB when it finds a .debug_gdb_scripts
 section in the compiled binary.  The [68]l linkers emit this with a
@@ -13,7 +13,7 @@ path to this file based on the path to the runtime package.
 #    - pretty printing only works for the 'native' strings. E.g. 'type
 #      foo string' will make foo a plain struct in the eyes of gdb,
 #      circumventing the pretty print triggering.
-
+#    -
 
 import sys, re
 
@@ -39,8 +39,7 @@ class StringTypePrinter:
 		return 'string'
 
 	def to_string(self):
-		l = int(self.val['len'])
-		return self.val['str'].string("utf-8", "ignore", l)
+		return self.val['str']
 
 
 class SliceTypePrinter:
@@ -122,13 +121,10 @@ class ChanTypePrinter:
 		return str(self.val.type)
 
 	def children(self):
-		# see chan.c chanbuf()
-		et = [x.type for x in self.val['free'].type.target().fields() if x.name == 'elem'][0]
-                ptr = (self.val.address + 1).cast(et.pointer())
-                for i in range(self.val["qcount"]):
-			j = (self.val["recvx"] + i) % self.val["dataqsiz"]
-			yield ('[%d]' % i, (ptr + j).dereference())
-
+		ptr = self.val['recvdataq']
+		for idx in range(self.val["qcount"]):
+			yield ('[%d]' % idx, ptr['elem'])
+			ptr = ptr['link']
 
 #
 #  Register all the *Printer classes above.
@@ -165,7 +161,7 @@ def is_iface(val):
 
 def is_eface(val):
 	try:
-		return str(val['_type'].type) == "struct runtime._type *" \
+		return str(val['type_'].type) == "runtime.Type *" \
 		      and str(val['data'].type) == "void *"
 	except:
 		pass
@@ -189,14 +185,14 @@ def iface_dtype(obj):
 	"Decode type of the data field of an eface or iface struct."
 
 	if is_iface(obj):
-		go_type_ptr = obj['tab']['_type']
+		go_type_ptr = obj['tab']['Type']
 	elif is_eface(obj):
-		go_type_ptr = obj['_type']
+		go_type_ptr = obj['type_']
 	else:
 		return
 
 	ct = gdb.lookup_type("struct runtime.commonType").pointer()
-	dynamic_go_type = go_type_ptr['ptr'].cast(ct).dereference()
+	dynamic_go_type = go_type_ptr['data'].cast(ct).dereference()
 	dtype_name = dynamic_go_type['string'].dereference()['str'].string()
 	type_size = int(dynamic_go_type['size'])
 	uintptr_size = int(dynamic_go_type['size'].type.sizeof)  # size is itself an uintptr
@@ -218,8 +214,6 @@ class IfacePrinter:
 		return 'string'
 
 	def to_string(self):
-		if self.val['data'] == 0:
-			return 0x0
 		try:
 			dtype = iface_dtype(self.val)
 		except:
@@ -313,11 +307,15 @@ class GoroutinesCmd(gdb.Command):
 		for ptr in linked_list(gdb.parse_and_eval("'runtime.allg'"), 'alllink'):
 			if ptr['status'] == 6:	# 'gdead'
 				continue
+			m = ptr['m']
 			s = ' '
-			if ptr['m']:
+			if m:
+				pc = m['sched']['pc'].cast(vp)
+				sp = m['sched']['sp'].cast(vp)
 				s = '*'
-                        pc = ptr['sched']['pc'].cast(vp)
-                        sp = ptr['sched']['sp'].cast(vp)
+			else:
+				pc = ptr['sched']['pc'].cast(vp)
+				sp = ptr['sched']['sp'].cast(vp)
 			blk = gdb.block_for_pc(long((pc)))
 			print s, ptr['goid'], "%8s" % sts[long((ptr['status']))], blk.function
 
@@ -327,7 +325,7 @@ def find_goroutine(goid):
 		if ptr['status'] == 6:	# 'gdead'
 			continue
 		if ptr['goid'] == goid:
-			return [ptr['sched'][x].cast(vp) for x in 'pc', 'sp']
+			return [(ptr['m'] or ptr)['sched'][x].cast(vp) for x in 'pc', 'sp']
 	return None, None
 
 
@@ -393,7 +391,7 @@ class GoIfaceCmd(gdb.Command):
 # so Itype will start with a commontype which has kind = interface
 
 #
-# Register all convenience functions and CLI commands
+# Register all convience functions and CLI commands
 #
 for k in vars().values():
 	if hasattr(k, 'invoke'):

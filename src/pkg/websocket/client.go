@@ -19,19 +19,17 @@ import (
 )
 
 type ProtocolError struct {
-	ErrorString string
+	os.ErrorString
 }
 
-func (err *ProtocolError) String() string { return string(err.ErrorString) }
-
 var (
-	ErrBadScheme            = &ProtocolError{"bad scheme"}
+	ErrBadScheme            = os.ErrorString("bad scheme")
 	ErrBadStatus            = &ProtocolError{"bad status"}
 	ErrBadUpgrade           = &ProtocolError{"missing or bad upgrade"}
 	ErrBadWebSocketOrigin   = &ProtocolError{"missing or bad WebSocket-Origin"}
 	ErrBadWebSocketLocation = &ProtocolError{"missing or bad WebSocket-Location"}
 	ErrBadWebSocketProtocol = &ProtocolError{"missing or bad WebSocket-Protocol"}
-	ErrChallengeResponse    = &ProtocolError{"mismatch challenge/response"}
+	ErrChallengeResponse    = &ProtocolError{"mismatch challange/response"}
 	secKeyRandomChars       [0x30 - 0x21 + 0x7F - 0x3A]byte
 )
 
@@ -110,10 +108,10 @@ func Dial(url, protocol, origin string) (ws *Conn, err os.Error) {
 
 	switch parsedUrl.Scheme {
 	case "ws":
-		client, err = net.Dial("tcp", parsedUrl.Host)
+		client, err = net.Dial("tcp", "", parsedUrl.Host)
 
 	case "wss":
-		client, err = tls.Dial("tcp", parsedUrl.Host, nil)
+		client, err = tls.Dial("tcp", "", parsedUrl.Host, nil)
 
 	default:
 		err = ErrBadScheme
@@ -228,7 +226,7 @@ func handshake(resourceName, host, origin, location, protocol string, br *bufio.
 	// Step 25. send CRLF.
 	bw.WriteString("\r\n")
 
-	// Step 26. generate 8 bytes random key.
+	// Step 26. genearte 8 bytes random key.
 	key3 := generateKey3()
 	// Step 27. send it out.
 	bw.Write(key3)
@@ -237,7 +235,7 @@ func handshake(resourceName, host, origin, location, protocol string, br *bufio.
 	}
 
 	// Step 28-29, 32-40. read response from server.
-	resp, err := http.ReadResponse(br, &http.Request{Method: "GET"})
+	resp, err := http.ReadResponse(br, "GET")
 	if err != nil {
 		return err
 	}
@@ -247,24 +245,24 @@ func handshake(resourceName, host, origin, location, protocol string, br *bufio.
 	}
 
 	// Step 41. check websocket headers.
-	if resp.Header.Get("Upgrade") != "WebSocket" ||
-		strings.ToLower(resp.Header.Get("Connection")) != "upgrade" {
+	if resp.Header["Upgrade"] != "WebSocket" ||
+		strings.ToLower(resp.Header["Connection"]) != "upgrade" {
 		return ErrBadUpgrade
 	}
 
-	if resp.Header.Get("Sec-Websocket-Origin") != origin {
+	if resp.Header["Sec-Websocket-Origin"] != origin {
 		return ErrBadWebSocketOrigin
 	}
 
-	if resp.Header.Get("Sec-Websocket-Location") != location {
+	if resp.Header["Sec-Websocket-Location"] != location {
 		return ErrBadWebSocketLocation
 	}
 
-	if protocol != "" && resp.Header.Get("Sec-Websocket-Protocol") != protocol {
+	if protocol != "" && resp.Header["Sec-Websocket-Protocol"] != protocol {
 		return ErrBadWebSocketProtocol
 	}
 
-	// Step 42-43. get expected data from challenge data.
+	// Step 42-43. get expected data from challange data.
 	expected, err := getChallengeResponse(number1, number2, key3)
 	if err != nil {
 		return err
@@ -285,7 +283,7 @@ func handshake(resourceName, host, origin, location, protocol string, br *bufio.
 }
 
 /*
-Handshake described in (soon obsolete)
+Handhake described in (soon obsolete)
 draft-hixie-thewebsocket-protocol-75.
 */
 func draft75handshake(resourceName, host, origin, location, protocol string, br *bufio.Reader, bw *bufio.Writer) (err os.Error) {
@@ -299,24 +297,24 @@ func draft75handshake(resourceName, host, origin, location, protocol string, br 
 	}
 	bw.WriteString("\r\n")
 	bw.Flush()
-	resp, err := http.ReadResponse(br, &http.Request{Method: "GET"})
+	resp, err := http.ReadResponse(br, "GET")
 	if err != nil {
 		return
 	}
 	if resp.Status != "101 Web Socket Protocol Handshake" {
 		return ErrBadStatus
 	}
-	if resp.Header.Get("Upgrade") != "WebSocket" ||
-		resp.Header.Get("Connection") != "Upgrade" {
+	if resp.Header["Upgrade"] != "WebSocket" ||
+		resp.Header["Connection"] != "Upgrade" {
 		return ErrBadUpgrade
 	}
-	if resp.Header.Get("Websocket-Origin") != origin {
+	if resp.Header["Websocket-Origin"] != origin {
 		return ErrBadWebSocketOrigin
 	}
-	if resp.Header.Get("Websocket-Location") != location {
+	if resp.Header["Websocket-Location"] != location {
 		return ErrBadWebSocketLocation
 	}
-	if protocol != "" && resp.Header.Get("Websocket-Protocol") != protocol {
+	if protocol != "" && resp.Header["Websocket-Protocol"] != protocol {
 		return ErrBadWebSocketProtocol
 	}
 	return

@@ -5,7 +5,7 @@
 // Manual corrections: TODO(rsc): need to fix godefs
 //	remove duplicate PtraceRegs type
 //	change RawSockaddrUnix field to Path [108]int8 (was uint8)
-//	add padding to EpollEvent
+//  add padding to EpollEvent
 
 package syscall
 
@@ -22,91 +22,10 @@ const (
 	SizeofSockaddrAny       = 0x70
 	SizeofSockaddrUnix      = 0x6e
 	SizeofSockaddrLinklayer = 0x14
-	SizeofSockaddrNetlink   = 0xc
 	SizeofLinger            = 0x8
-	SizeofIPMreq            = 0x8
-	SizeofIPv6Mreq          = 0x14
 	SizeofMsghdr            = 0x1c
 	SizeofCmsghdr           = 0xc
-	SizeofInet6Pktinfo      = 0x14
 	SizeofUcred             = 0xc
-	IFA_UNSPEC              = 0
-	IFA_ADDRESS             = 0x1
-	IFA_LOCAL               = 0x2
-	IFA_LABEL               = 0x3
-	IFA_BROADCAST           = 0x4
-	IFA_ANYCAST             = 0x5
-	IFA_CACHEINFO           = 0x6
-	IFA_MULTICAST           = 0x7
-	IFLA_UNSPEC             = 0
-	IFLA_ADDRESS            = 0x1
-	IFLA_BROADCAST          = 0x2
-	IFLA_IFNAME             = 0x3
-	IFLA_MTU                = 0x4
-	IFLA_LINK               = 0x5
-	IFLA_QDISC              = 0x6
-	IFLA_STATS              = 0x7
-	IFLA_COST               = 0x8
-	IFLA_PRIORITY           = 0x9
-	IFLA_MASTER             = 0xa
-	IFLA_WIRELESS           = 0xb
-	IFLA_PROTINFO           = 0xc
-	IFLA_TXQLEN             = 0xd
-	IFLA_MAP                = 0xe
-	IFLA_WEIGHT             = 0xf
-	IFLA_OPERSTATE          = 0x10
-	IFLA_LINKMODE           = 0x11
-	IFLA_LINKINFO           = 0x12
-	IFLA_NET_NS_PID         = 0x13
-	IFLA_IFALIAS            = 0x14
-	IFLA_MAX                = 0x14
-	RT_SCOPE_UNIVERSE       = 0
-	RT_SCOPE_SITE           = 0xc8
-	RT_SCOPE_LINK           = 0xfd
-	RT_SCOPE_HOST           = 0xfe
-	RT_SCOPE_NOWHERE        = 0xff
-	RT_TABLE_UNSPEC         = 0
-	RT_TABLE_COMPAT         = 0xfc
-	RT_TABLE_DEFAULT        = 0xfd
-	RT_TABLE_MAIN           = 0xfe
-	RT_TABLE_LOCAL          = 0xff
-	RT_TABLE_MAX            = 0xffffffff
-	RTA_UNSPEC              = 0
-	RTA_DST                 = 0x1
-	RTA_SRC                 = 0x2
-	RTA_IIF                 = 0x3
-	RTA_OIF                 = 0x4
-	RTA_GATEWAY             = 0x5
-	RTA_PRIORITY            = 0x6
-	RTA_PREFSRC             = 0x7
-	RTA_METRICS             = 0x8
-	RTA_MULTIPATH           = 0x9
-	RTA_FLOW                = 0xb
-	RTA_CACHEINFO           = 0xc
-	RTA_TABLE               = 0xf
-	RTN_UNSPEC              = 0
-	RTN_UNICAST             = 0x1
-	RTN_LOCAL               = 0x2
-	RTN_BROADCAST           = 0x3
-	RTN_ANYCAST             = 0x4
-	RTN_MULTICAST           = 0x5
-	RTN_BLACKHOLE           = 0x6
-	RTN_UNREACHABLE         = 0x7
-	RTN_PROHIBIT            = 0x8
-	RTN_THROW               = 0x9
-	RTN_NAT                 = 0xa
-	RTN_XRESOLVE            = 0xb
-	SizeofNlMsghdr          = 0x10
-	SizeofNlMsgerr          = 0x14
-	SizeofRtGenmsg          = 0x1
-	SizeofNlAttr            = 0x4
-	SizeofRtAttr            = 0x4
-	SizeofIfInfomsg         = 0x10
-	SizeofIfAddrmsg         = 0x8
-	SizeofRtmsg             = 0xc
-	SizeofRtNexthop         = 0x8
-	SizeofSockFilter        = 0x8
-	SizeofSockFprog         = 0x8
 	SizeofInotifyEvent      = 0x10
 )
 
@@ -131,37 +50,37 @@ type Timeval struct {
 }
 
 type Timex struct {
-	Modes         uint32
-	Offset        int32
-	Freq          int32
-	Maxerror      int32
-	Esterror      int32
-	Status        int32
-	Constant      int32
-	Precision     int32
-	Tolerance     int32
-	Time          Timeval
-	Tick          int32
-	Ppsfreq       int32
-	Jitter        int32
-	Shift         int32
-	Stabil        int32
-	Jitcnt        int32
-	Calcnt        int32
-	Errcnt        int32
-	Stbcnt        int32
-	Tai           int32
-	Pad_godefs_0  int32
-	Pad_godefs_1  int32
-	Pad_godefs_2  int32
-	Pad_godefs_3  int32
-	Pad_godefs_4  int32
-	Pad_godefs_5  int32
-	Pad_godefs_6  int32
-	Pad_godefs_7  int32
-	Pad_godefs_8  int32
-	Pad_godefs_9  int32
-	Pad_godefs_10 int32
+	Modes     uint32
+	Offset    int32
+	Freq      int32
+	Maxerror  int32
+	Esterror  int32
+	Status    int32
+	Constant  int32
+	Precision int32
+	Tolerance int32
+	Time      Timeval
+	Tick      int32
+	Ppsfreq   int32
+	Jitter    int32
+	Shift     int32
+	Stabil    int32
+	Jitcnt    int32
+	Calcnt    int32
+	Errcnt    int32
+	Stbcnt    int32
+	Tai       int32
+	Pad0      int32
+	Pad1      int32
+	Pad2      int32
+	Pad3      int32
+	Pad4      int32
+	Pad5      int32
+	Pad6      int32
+	Pad7      int32
+	Pad8      int32
+	Pad9      int32
+	Pad10     int32
 }
 
 type Time_t int32
@@ -205,49 +124,49 @@ type Rlimit struct {
 type _Gid_t uint32
 
 type Stat_t struct {
-	Dev          uint64
-	X__pad1      uint16
-	Pad_godefs_0 [2]byte
-	X__st_ino    uint32
-	Mode         uint32
-	Nlink        uint32
-	Uid          uint32
-	Gid          uint32
-	Rdev         uint64
-	X__pad2      uint16
-	Pad_godefs_1 [6]byte
-	Size         int64
-	Blksize      int32
-	Pad_godefs_2 [4]byte
-	Blocks       int64
-	Atim         Timespec
-	Mtim         Timespec
-	Ctim         Timespec
-	Ino          uint64
+	Dev       uint64
+	X__pad1   uint16
+	Pad0      [2]byte
+	X__st_ino uint32
+	Mode      uint32
+	Nlink     uint32
+	Uid       uint32
+	Gid       uint32
+	Rdev      uint64
+	X__pad2   uint16
+	Pad1      [6]byte
+	Size      int64
+	Blksize   int32
+	Pad2      [4]byte
+	Blocks    int64
+	Atim      Timespec
+	Mtim      Timespec
+	Ctim      Timespec
+	Ino       uint64
 }
 
 type Statfs_t struct {
-	Type         int32
-	Bsize        int32
-	Blocks       uint64
-	Bfree        uint64
-	Bavail       uint64
-	Files        uint64
-	Ffree        uint64
-	Fsid         [8]byte /* __fsid_t */
-	Namelen      int32
-	Frsize       int32
-	Spare        [5]int32
-	Pad_godefs_0 [4]byte
+	Type    int32
+	Bsize   int32
+	Blocks  uint64
+	Bfree   uint64
+	Bavail  uint64
+	Files   uint64
+	Ffree   uint64
+	Fsid    [8]byte /* __fsid_t */
+	Namelen int32
+	Frsize  int32
+	Spare   [5]int32
+	Pad0    [4]byte
 }
 
 type Dirent struct {
-	Ino          uint64
-	Off          int64
-	Reclen       uint16
-	Type         uint8
-	Name         [256]uint8
-	Pad_godefs_0 [5]byte
+	Ino    uint64
+	Off    int64
+	Reclen uint16
+	Type   uint8
+	Name   [256]uint8
+	Pad0   [5]byte
 }
 
 type RawSockaddrInet4 struct {
@@ -280,13 +199,6 @@ type RawSockaddrLinklayer struct {
 	Addr     [8]uint8
 }
 
-type RawSockaddrNetlink struct {
-	Family uint16
-	Pad    uint16
-	Pid    uint32
-	Groups uint32
-}
-
 type RawSockaddr struct {
 	Family uint16
 	Data   [14]uint8
@@ -309,16 +221,6 @@ type Iovec struct {
 	Len  uint32
 }
 
-type IPMreq struct {
-	Multiaddr [4]byte /* in_addr */
-	Interface [4]byte /* in_addr */
-}
-
-type IPv6Mreq struct {
-	Multiaddr [16]byte /* in6_addr */
-	Interface uint32
-}
-
 type Msghdr struct {
 	Name       *byte
 	Namelen    uint32
@@ -335,91 +237,10 @@ type Cmsghdr struct {
 	Type  int32
 }
 
-type Inet6Pktinfo struct {
-	Addr    [16]byte /* in6_addr */
-	Ifindex uint32
-}
-
 type Ucred struct {
 	Pid int32
 	Uid uint32
 	Gid uint32
-}
-
-type NlMsghdr struct {
-	Len   uint32
-	Type  uint16
-	Flags uint16
-	Seq   uint32
-	Pid   uint32
-}
-
-type NlMsgerr struct {
-	Error int32
-	Msg   NlMsghdr
-}
-
-type RtGenmsg struct {
-	Family uint8
-}
-
-type NlAttr struct {
-	Len  uint16
-	Type uint16
-}
-
-type RtAttr struct {
-	Len  uint16
-	Type uint16
-}
-
-type IfInfomsg struct {
-	Family     uint8
-	X__ifi_pad uint8
-	Type       uint16
-	Index      int32
-	Flags      uint32
-	Change     uint32
-}
-
-type IfAddrmsg struct {
-	Family    uint8
-	Prefixlen uint8
-	Flags     uint8
-	Scope     uint8
-	Index     uint32
-}
-
-type RtMsg struct {
-	Family   uint8
-	Dst_len  uint8
-	Src_len  uint8
-	Tos      uint8
-	Table    uint8
-	Protocol uint8
-	Scope    uint8
-	Type     uint8
-	Flags    uint32
-}
-
-type RtNexthop struct {
-	Len     uint16
-	Flags   uint8
-	Hops    uint8
-	Ifindex int32
-}
-
-type SockFilter struct {
-	Code uint16
-	Jt   uint8
-	Jf   uint8
-	K    uint32
-}
-
-type SockFprog struct {
-	Len          uint16
-	Pad_godefs_0 [2]byte
-	Filter       *SockFilter
 }
 
 type InotifyEvent struct {

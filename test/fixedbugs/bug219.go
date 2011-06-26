@@ -12,8 +12,8 @@ func f(func()) int { return 0 }
 // bug219.go:16: syntax error near if
 func g1() {
 	if x := f(func() {
-		if true {}
-	}); true {
+		if {}
+	}); {
 		_ = x;
 	}
 }
@@ -21,8 +21,8 @@ func g1() {
 // this works
 func g2() {
 	if x := f(func() {
-		//if true {}
-	}); true {
+		//if {}
+	}); {
 		_ = x;
 	}
 }
@@ -30,9 +30,9 @@ func g2() {
 // this works
 func g3() {
 	x := f(func() {
-		if true {}
+		if {}
 	});
-	if true {
+	if {
 		_ = x;
 	}
 }

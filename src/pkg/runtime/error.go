@@ -131,8 +131,3 @@ func printany(i interface{}) {
 		print("(", typestring(i), ") ", i)
 	}
 }
-
-// called from generated code
-func panicwrap(pkg, typ, meth string) {
-	panic("value method " + pkg + "." + typ + "." + meth + " called using nil *" + typ + " pointer")
-}

@@ -42,108 +42,113 @@ runtime·printf(int8 *s, ...)
 	vprintf(s, arg);
 }
 
+static byte*
+vrnd(byte *p, int32 x)
+{
+	if((uint32)(uintptr)p&(x-1))
+		p += x - ((uint32)(uintptr)p&(x-1));
+	return p;
+}
+
 // Very simple printf.  Only for debugging prints.
 // Do not add to this without checking with Rob.
 static void
-vprintf(int8 *s, byte *base)
+vprintf(int8 *s, byte *arg)
 {
 	int8 *p, *lp;
-	uintptr arg, narg;
-	byte *v;
+	byte *narg;
 
 //	lock(&debuglock);
 
 	lp = p = s;
-	arg = 0;
 	for(; *p; p++) {
 		if(*p != '%')
 			continue;
 		if(p > lp)
 			runtime·write(2, lp, p-lp);
 		p++;
-		narg = 0;
+		narg = nil;
 		switch(*p) {
 		case 't':
 			narg = arg + 1;
 			break;
 		case 'd':	// 32-bit
 		case 'x':
-			arg = runtime·rnd(arg, 4);
+			arg = vrnd(arg, 4);
 			narg = arg + 4;
 			break;
 		case 'D':	// 64-bit
 		case 'U':
 		case 'X':
 		case 'f':
-			arg = runtime·rnd(arg, sizeof(uintptr));
+			arg = vrnd(arg, sizeof(uintptr));
 			narg = arg + 8;
 			break;
 		case 'C':
-			arg = runtime·rnd(arg, sizeof(uintptr));
+			arg = vrnd(arg, sizeof(uintptr));
 			narg = arg + 16;
 			break;
 		case 'p':	// pointer-sized
 		case 's':
-			arg = runtime·rnd(arg, sizeof(uintptr));
+			arg = vrnd(arg, sizeof(uintptr));
 			narg = arg + sizeof(uintptr);
 			break;
 		case 'S':	// pointer-aligned but bigger
-			arg = runtime·rnd(arg, sizeof(uintptr));
+			arg = vrnd(arg, sizeof(uintptr));
 			narg = arg + sizeof(String);
 			break;
 		case 'a':	// pointer-aligned but bigger
-			arg = runtime·rnd(arg, sizeof(uintptr));
+			arg = vrnd(arg, sizeof(uintptr));
 			narg = arg + sizeof(Slice);
 			break;
 		case 'i':	// pointer-aligned but bigger
 		case 'e':
-			arg = runtime·rnd(arg, sizeof(uintptr));
+			arg = vrnd(arg, sizeof(uintptr));
 			narg = arg + sizeof(Eface);
 			break;
 		}
-		v = base+arg;
 		switch(*p) {
 		case 'a':
-			runtime·printslice(*(Slice*)v);
+			runtime·printslice(*(Slice*)arg);
 			break;
 		case 'd':
-			runtime·printint(*(int32*)v);
+			runtime·printint(*(int32*)arg);
 			break;
 		case 'D':
-			runtime·printint(*(int64*)v);
+			runtime·printint(*(int64*)arg);
 			break;
 		case 'e':
-			runtime·printeface(*(Eface*)v);
+			runtime·printeface(*(Eface*)arg);
 			break;
 		case 'f':
-			runtime·printfloat(*(float64*)v);
+			runtime·printfloat(*(float64*)arg);
 			break;
 		case 'C':
-			runtime·printcomplex(*(Complex128*)v);
+			runtime·printcomplex(*(Complex128*)arg);
 			break;
 		case 'i':
-			runtime·printiface(*(Iface*)v);
+			runtime·printiface(*(Iface*)arg);
 			break;
 		case 'p':
-			runtime·printpointer(*(void**)v);
+			runtime·printpointer(*(void**)arg);
 			break;
 		case 's':
-			runtime·prints(*(int8**)v);
+			runtime·prints(*(int8**)arg);
 			break;
 		case 'S':
-			runtime·printstring(*(String*)v);
+			runtime·printstring(*(String*)arg);
 			break;
 		case 't':
-			runtime·printbool(*(bool*)v);
+			runtime·printbool(*(bool*)arg);
 			break;
 		case 'U':
-			runtime·printuint(*(uint64*)v);
+			runtime·printuint(*(uint64*)arg);
 			break;
 		case 'x':
-			runtime·printhex(*(uint32*)v);
+			runtime·printhex(*(uint32*)arg);
 			break;
 		case 'X':
-			runtime·printhex(*(uint64*)v);
+			runtime·printhex(*(uint64*)arg);
 			break;
 		}
 		arg = narg;

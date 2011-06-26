@@ -18,7 +18,7 @@ func TestReadLine(t *testing.T) {
 	}
 	filename := "/etc/services" // a nice big file
 
-	fd, err := os.Open(filename)
+	fd, err := os.Open(filename, os.O_RDONLY, 0)
 	if err != nil {
 		t.Fatalf("open %s: %v", filename, err)
 	}

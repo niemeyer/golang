@@ -9,11 +9,6 @@
 TEXT runtime·setldt(SB),7,$0
 	RET
 
-TEXT runtime·open(SB),7,$0
-	MOVL    $14, AX
-	INT     $64
-	RET
-
 TEXT runtime·write(SB),7,$0
 	MOVL    $20, AX
 	INT     $64
@@ -63,10 +58,9 @@ TEXT runtime·rfork(SB),7,$0
 	MOVL	BX, m(AX)
 
 	// Initialize AX from _tos->pid
-	MOVL	_tos(SB), AX
-	MOVL	tos_pid(AX), AX
+	MOVL	0xdfffeff8, AX
 	MOVL	AX, m_procid(BX)	// save pid as m->procid
-	
+
 	CALL	runtime·stackcheck(SB)	// smashes AX, CX
 	
 	MOVL	0(DX), DX	// paranoia; check they are not nil

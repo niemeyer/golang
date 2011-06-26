@@ -41,39 +41,27 @@
 #endif
 
 char	*noname		= "<none>";
+char	thechar		= '5';
 char	*thestring 	= "arm";
 
-Header headers[] = {
-   "noheader", Hnoheader,
-   "risc", Hrisc,
-   "plan9", Hplan9x32,
-   "netbsd", Hnetbsd,
-   "ixp1200", Hixp1200,
-   "ipaq", Hipaq,
-   "linux", Hlinux,
-   0, 0
-};
-
 /*
- *	-Hrisc -T0x10005000 -R4		is aif for risc os
- *	-Hplan9 -T4128 -R4096		is plan9 format
- *	-Hnetbsd -T0xF0000020 -R4	is NetBSD format
- *	-Hixp1200			is IXP1200 (raw)
- *	-Hipaq -T0xC0008010 -R1024	is ipaq
- *	-Hlinux -Tx -Rx			is linux elf
+ *	-H1 -T0x10005000 -R4		is aif for risc os
+ *	-H2 -T4128 -R4096		is plan9 format
+ *	-H3 -T0xF0000020 -R4		is NetBSD format
+ *	-H4				is IXP1200 (raw)
+ *	-H5 -T0xC0008010 -R1024		is ipaq
  */
 
 static char*
 linkername[] =
 {
 	"runtime.softfloat",
-	"math.sqrtGoC",
 };
 
 void
 usage(void)
 {
-	fprint(2, "usage: 5l [-E entry] [-H head] [-I interpreter] [-L dir] [-T text] [-D data] [-R rnd] [-r path] [-o out] main.5\n");
+	fprint(2, "usage: 5l [-E entry] [-H head] [-L dir] [-T text] [-D data] [-R rnd] [-r path] [-o out] main.5\n");
 	errorexit();
 }
 
@@ -112,9 +100,6 @@ main(int argc, char *argv[])
 	case 'E':
 		INITENTRY = EARGF(usage());
 		break;
-	case 'I':
-		interpreter = EARGF(usage());
-		break;
 	case 'L':
 		Lflag(EARGF(usage()));
 		break;
@@ -131,7 +116,7 @@ main(int argc, char *argv[])
 		rpath = EARGF(usage());
 		break;
 	case 'H':
-		HEADTYPE = headtype(EARGF(usage()));
+		HEADTYPE = atolwhex(EARGF(usage()));
 		/* do something about setting INITTEXT */
 		break;
 	case 'V':
@@ -145,23 +130,25 @@ main(int argc, char *argv[])
 		usage();
 
 	libinit();
+	if(rpath == nil)
+		rpath = smprint("%s/pkg/%s_%s", goroot, goos, goarch);
 
 	if(!debug['9'] && !debug['U'] && !debug['B'])
 		debug[DEFAULT] = 1;
 	if(HEADTYPE == -1) {
 		if(debug['U'])
-			HEADTYPE = Hnoheader;
+			HEADTYPE = 0;
 		if(debug['B'])
-			HEADTYPE = Hrisc;
+			HEADTYPE = 1;
 		if(debug['9'])
-			HEADTYPE = Hplan9x32;
-		HEADTYPE = Hlinux;
+			HEADTYPE = 2;
+		HEADTYPE = 6;
 	}
 	switch(HEADTYPE) {
 	default:
 		diag("unknown -H option");
 		errorexit();
-	case Hnoheader:	/* no header */
+	case 0:	/* no header */
 		HEADR = 0L;
 		if(INITTEXT == -1)
 			INITTEXT = 0;
@@ -170,7 +157,7 @@ main(int argc, char *argv[])
 		if(INITRND == -1)
 			INITRND = 4;
 		break;
-	case Hrisc:	/* aif for risc os */
+	case 1:	/* aif for risc os */
 		HEADR = 128L;
 		if(INITTEXT == -1)
 			INITTEXT = 0x10005000 + HEADR;
@@ -179,7 +166,7 @@ main(int argc, char *argv[])
 		if(INITRND == -1)
 			INITRND = 4;
 		break;
-	case Hplan9x32:	/* plan 9 */
+	case 2:	/* plan 9 */
 		HEADR = 32L;
 		if(INITTEXT == -1)
 			INITTEXT = 4128;
@@ -188,7 +175,7 @@ main(int argc, char *argv[])
 		if(INITRND == -1)
 			INITRND = 4096;
 		break;
-	case Hnetbsd:	/* boot for NetBSD */
+	case 3:	/* boot for NetBSD */
 		HEADR = 32L;
 		if(INITTEXT == -1)
 			INITTEXT = 0xF0000020L;
@@ -197,7 +184,7 @@ main(int argc, char *argv[])
 		if(INITRND == -1)
 			INITRND = 4096;
 		break;
-	case Hixp1200: /* boot for IXP1200 */
+	case 4: /* boot for IXP1200 */
 		HEADR = 0L;
 		if(INITTEXT == -1)
 			INITTEXT = 0x0;
@@ -206,7 +193,7 @@ main(int argc, char *argv[])
 		if(INITRND == -1)
 			INITRND = 4;
 		break;
-	case Hipaq: /* boot for ipaq */
+	case 5: /* boot for ipaq */
 		HEADR = 16L;
 		if(INITTEXT == -1)
 			INITTEXT = 0xC0008010;
@@ -215,12 +202,12 @@ main(int argc, char *argv[])
 		if(INITRND == -1)
 			INITRND = 1024;
 		break;
-	case Hlinux:	/* arm elf */
+	case 6:	/* arm elf */
 		debug['d'] = 1;	// no dynamic linking
 		elfinit();
 		HEADR = ELFRESERVE;
 		if(INITTEXT == -1)
-			INITTEXT = 0x10000 + HEADR;
+			INITTEXT = 0x8000 + HEADR;
 		if(INITDAT == -1)
 			INITDAT = 0;
 		if(INITRND == -1)
@@ -242,6 +229,7 @@ main(int argc, char *argv[])
 	zprg.from.reg = NREG;
 	zprg.to = zprg.from;
 	buildop();
+	thumbbuildop();	// could build on demand
 	histgen = 0;
 	pc = 0;
 	dtype = 4;
@@ -274,19 +262,19 @@ main(int argc, char *argv[])
 	follow();
 	softfloat();
 	noops();
-	dostkcheck();
 	span();
 	pclntab();
 	symtab();
 	dodata();
 	address();
-	doweak();
 	reloc();
 	asmb();
 	undef();
 
-	if(debug['c'])
+	if(debug['c']){
+		thumbcount();
 		print("ARM size = %d\n", armsize);
+	}
 	if(debug['v']) {
 		Bprint(&bso, "%5.2f cpu time\n", cputime());
 		Bprint(&bso, "%d sizeof adr\n", sizeof(Adr));
@@ -315,7 +303,7 @@ zaddr(Biobuf *f, Adr *a, Sym *h[])
 	a->sym = h[c];
 	a->name = Bgetc(f);
 
-	if((schar)a->reg < 0 || a->reg > NREG) {
+	if(a->reg < 0 || a->reg > NREG) {
 		print("register out of range %d\n", a->reg);
 		Bputc(f, ALAST+1);
 		return;	/*  force real diagnostic */
@@ -403,12 +391,14 @@ nopout(Prog *p)
 	p->to.type = D_NONE;
 }
 
+static void puntfp(Prog *);
+
 void
 ldobj1(Biobuf *f, char *pkg, int64 len, char *pn)
 {
 	int32 ipc;
 	Prog *p;
-	Sym *h[NSYM], *s;
+	Sym *h[NSYM], *s, *di;
 	int v, o, r, skip;
 	uint32 sig;
 	char *name;
@@ -420,6 +410,7 @@ ldobj1(Biobuf *f, char *pkg, int64 len, char *pn)
 	lastp = nil;
 	ntext = 0;
 	eof = Boffset(f) + len;
+	di = S;
 	src[0] = 0;
 
 newloop:
@@ -576,7 +567,7 @@ loop:
 			diag("multiple initialization for %s: in both %s and %s", s->name, s->file, pn);
 			errorexit();
 		}
-		savedata(s, p, pn);
+		savedata(s, p);
 		unmal(p, sizeof *p);
 		break;
 
@@ -617,6 +608,8 @@ loop:
 		else
 			textp = s;
 		etextp = s;
+		setarch(p);
+		setthumb(p);
 		p->align = 4;
 		autosize = (p->to.offset+3L) & ~3L;
 		p->to.offset = autosize;
@@ -624,6 +617,7 @@ loop:
 		s->type = STEXT;
 		s->text = p;
 		s->value = pc;
+		s->thumb = thumb;
 		lastp = p;
 		p->pc = pc;
 		pc++;
@@ -665,9 +659,13 @@ loop:
 	case AMULD:
 	case ADIVF:
 	case ADIVD:
+		if(thumb)
+			puntfp(p);
 		goto casedef;
 
 	case AMOVF:
+		if(thumb)
+			puntfp(p);
 		if(skip)
 			goto casedef;
 
@@ -689,6 +687,8 @@ loop:
 		goto casedef;
 
 	case AMOVD:
+		if(thumb)
+			puntfp(p);
 		if(skip)
 			goto casedef;
 
@@ -742,6 +742,17 @@ prg(void)
 	p = mal(sizeof(Prog));
 	*p = zprg;
 	return p;
+}
+
+static void
+puntfp(Prog *p)
+{
+	USED(p);
+	/* floating point - punt for now */
+	cursym->text->reg = NREG;	/* ARM */
+	cursym->thumb = 0;
+	thumb = 0;
+	// print("%s: generating ARM code (contains floating point ops %d)\n", curtext->from.sym->name, p->line);
 }
 
 Prog*

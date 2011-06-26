@@ -132,38 +132,14 @@ var fmttests = []struct {
 	{"%q", `"`, `"\""`},
 	{"%q", "\a\b\f\r\n\t\v", `"\a\b\f\r\n\t\v"`},
 	{"%q", "abc\xffdef", `"abc\xffdef"`},
-	{"%q", "\u263a", `"☺"`},
-	{"%+q", "\u263a", `"\u263a"`},
+	{"%q", "\u263a", `"\u263a"`},
 	{"%q", "\U0010ffff", `"\U0010ffff"`},
-
-	// escaped characters
-	{"%q", 'x', `'x'`},
-	{"%q", 0, `'\x00'`},
-	{"%q", '\n', `'\n'`},
-	{"%q", '\u0e00', `'\u0e00'`},         // not a printable rune.
-	{"%q", '\U000c2345', `'\U000c2345'`}, // not a printable rune.
-	{"%q", int64(0x7FFFFFFF), `%!q(int64=2147483647)`},
-	{"%q", uint64(0xFFFFFFFF), `%!q(uint64=4294967295)`},
-	{"%q", '"', `'"'`},
-	{"%q", '\'', `'\''`},
-	{"%q", "\u263a", `"☺"`},
-	{"%+q", "\u263a", `"\u263a"`},
 
 	// width
 	{"%5s", "abc", "  abc"},
-	{"%2s", "\u263a", " ☺"},
+	{"%2s", "\u263a", " \u263a"},
 	{"%-5s", "abc", "abc  "},
-	{"%-8q", "abc", `"abc"   `},
 	{"%05s", "abc", "00abc"},
-	{"%08q", "abc", `000"abc"`},
-	{"%5s", "abcdefghijklmnopqrstuvwxyz", "abcdefghijklmnopqrstuvwxyz"},
-	{"%.5s", "abcdefghijklmnopqrstuvwxyz", "abcde"},
-	{"%.5s", "日本語日本語", "日本語日本"},
-	{"%.5s", []byte("日本語日本語"), "日本語日本"},
-	{"%.5q", "abcdefghijklmnopqrstuvwxyz", `"abcde"`},
-	{"%.3q", "日本語日本語", `"日本語"`},
-	{"%.3q", []byte("日本語日本語"), `"日本語"`},
-	{"%10.1q", "日本語日本語", `       "日"`},
 
 	// integers
 	{"%d", 12345, "12345"},
@@ -184,18 +160,11 @@ var fmttests = []struct {
 
 	// unicode format
 	{"%U", 0x1, "U+0001"},
-	{"%U", uint(0x1), "U+0001"},
 	{"%.8U", 0x2, "U+00000002"},
 	{"%U", 0x1234, "U+1234"},
 	{"%U", 0x12345, "U+12345"},
 	{"%10.6U", 0xABC, "  U+000ABC"},
 	{"%-10.6U", 0xABC, "U+000ABC  "},
-	{"%U", '\n', `U+000A`},
-	{"%#U", '\n', `U+000A`},
-	{"%U", 'x', `U+0078`},
-	{"%#U", 'x', `U+0078 'x'`},
-	{"%U", '\u263a', `U+263A`},
-	{"%#U", '\u263a', `U+263A '☺'`},
 
 	// floats
 	{"%+.3e", 0.0, "+0.000e+00"},
@@ -342,9 +311,9 @@ var fmttests = []struct {
 
 	// go syntax
 	{"%#v", A{1, 2, "a", []int{1, 2}}, `fmt_test.A{i:1, j:0x2, s:"a", x:[]int{1, 2}}`},
-	{"%#v", &b, "(*uint8)(0xPTR)"},
-	{"%#v", TestFmtInterface, "(func(*testing.T))(0xPTR)"},
-	{"%#v", make(chan int), "(chan int)(0xPTR)"},
+	{"%#v", &b, "(*uint8)(PTR)"},
+	{"%#v", TestFmtInterface, "(func(*testing.T))(PTR)"},
+	{"%#v", make(chan int), "(chan int)(PTR)"},
 	{"%#v", uint64(1<<64 - 1), "0xffffffffffffffff"},
 	{"%#v", 1000000000, "1000000000"},
 	{"%#v", map[string]int{"a": 1, "b": 2}, `map[string] int{"a":1, "b":2}`},
@@ -396,15 +365,14 @@ var fmttests = []struct {
 	{"%6T", &intVal, "  *int"},
 
 	// %p
-	{"p0=%p", new(int), "p0=0xPTR"},
+	{"p0=%p", new(int), "p0=PTR"},
 	{"p1=%s", &pValue, "p1=String(p)"}, // String method...
-	{"p2=%p", &pValue, "p2=0xPTR"},     // ... not called with %p
-	{"p4=%#p", new(int), "p4=PTR"},
+	{"p2=%p", &pValue, "p2=PTR"},       // ... not called with %p
 
 	// %p on non-pointers
-	{"%p", make(chan int), "0xPTR"},
-	{"%p", make(map[int]int), "0xPTR"},
-	{"%p", make([]int, 1), "0xPTR"},
+	{"%p", make(chan int), "PTR"},
+	{"%p", make(map[int]int), "PTR"},
+	{"%p", make([]int, 1), "PTR"},
 	{"%p", 27, "%!p(int=27)"}, // not a pointer at all
 
 	// erroneous things
@@ -420,8 +388,8 @@ var fmttests = []struct {
 func TestSprintf(t *testing.T) {
 	for _, tt := range fmttests {
 		s := Sprintf(tt.fmt, tt.val)
-		if i := strings.Index(tt.out, "PTR"); i >= 0 {
-			j := i
+		if i := strings.Index(s, "0x"); i >= 0 && strings.Contains(tt.out, "PTR") {
+			j := i + 2
 			for ; j < len(s); j++ {
 				c := s[j]
 				if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
@@ -473,9 +441,6 @@ func BenchmarkSprintfPrefixedInt(b *testing.B) {
 }
 
 func TestCountMallocs(t *testing.T) {
-	if testing.Short() {
-		return
-	}
 	mallocs := 0 - runtime.MemStats.Mallocs
 	for i := 0; i < 100; i++ {
 		Sprintf("")
@@ -678,59 +643,6 @@ var startests = []struct {
 func TestWidthAndPrecision(t *testing.T) {
 	for _, tt := range startests {
 		s := Sprintf(tt.fmt, tt.in...)
-		if s != tt.out {
-			t.Errorf("%q: got %q expected %q", tt.fmt, s, tt.out)
-		}
-	}
-}
-
-// A type that panics in String.
-type Panic struct {
-	message interface{}
-}
-
-// Value receiver.
-func (p Panic) GoString() string {
-	panic(p.message)
-}
-
-// Value receiver.
-func (p Panic) String() string {
-	panic(p.message)
-}
-
-// A type that panics in Format.
-type PanicF struct {
-	message interface{}
-}
-
-// Value receiver.
-func (p PanicF) Format(f State, c int) {
-	panic(p.message)
-}
-
-var panictests = []struct {
-	fmt string
-	in  interface{}
-	out string
-}{
-	// String
-	{"%d", (*Panic)(nil), "<nil>"}, // nil pointer special case
-	{"%d", Panic{io.ErrUnexpectedEOF}, "%d(PANIC=unexpected EOF)"},
-	{"%d", Panic{3}, "%d(PANIC=3)"},
-	// GoString
-	{"%#v", (*Panic)(nil), "<nil>"}, // nil pointer special case
-	{"%#v", Panic{io.ErrUnexpectedEOF}, "%v(PANIC=unexpected EOF)"},
-	{"%#v", Panic{3}, "%v(PANIC=3)"},
-	// Format
-	{"%s", (*PanicF)(nil), "<nil>"}, // nil pointer special case
-	{"%s", PanicF{io.ErrUnexpectedEOF}, "%s(PANIC=unexpected EOF)"},
-	{"%s", PanicF{3}, "%s(PANIC=3)"},
-}
-
-func TestPanics(t *testing.T) {
-	for _, tt := range panictests {
-		s := Sprintf(tt.fmt, tt.in)
 		if s != tt.out {
 			t.Errorf("%q: got %q expected %q", tt.fmt, s, tt.out)
 		}

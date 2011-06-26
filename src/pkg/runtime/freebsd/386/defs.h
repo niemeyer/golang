@@ -61,9 +61,6 @@ enum {
 	BUS_OBJERR = 0x3,
 	SEGV_MAPERR = 0x1,
 	SEGV_ACCERR = 0x2,
-	ITIMER_REAL = 0,
-	ITIMER_VIRTUAL = 0x1,
-	ITIMER_PROF = 0x2,
 };
 
 // Types
@@ -157,9 +154,7 @@ struct Mcontext {
 	int32 mc_ownedfp;
 	int32 mc_spare1[1];
 	int32 mc_fpstate[128];
-	int32 mc_fsbase;
-	int32 mc_gsbase;
-	int32 mc_spare2[6];
+	int32 mc_spare2[8];
 };
 
 typedef struct Ucontext Ucontext;
@@ -170,18 +165,6 @@ struct Ucontext {
 	StackT uc_stack;
 	int32 uc_flags;
 	int32 __spare__[4];
-	byte pad_godefs_0[12];
-};
-
-typedef struct Timeval Timeval;
-struct Timeval {
-	int32 tv_sec;
-	int32 tv_usec;
-};
-
-typedef struct Itimerval Itimerval;
-struct Itimerval {
-	Timeval it_interval;
-	Timeval it_value;
+	byte pad0[12];
 };
 #pragma pack off

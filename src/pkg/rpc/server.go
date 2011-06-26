@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 /*
-	Package rpc provides access to the exported methods of an object across a
+	The rpc package provides access to the exported methods of an object across a
 	network or other I/O connection.  A server registers an object, making it visible
 	as a service with the name of the type of the object.  After registration, exported
 	methods of the object will be accessible remotely.  A server may register multiple
@@ -13,11 +13,8 @@
 	Only methods that satisfy these criteria will be made available for remote access;
 	other methods will be ignored:
 
-		- the method name is exported, that is, begins with an upper case letter.
-		- the method receiver is exported or local (defined in the package
-		  registering the service).
-		- the method has two arguments, both exported or local types.
-		- the method's second argument is a pointer.
+		- the method receiver and name are exported, that is, begin with an upper case letter.
+		- the method has two arguments, both pointers to exported types.
 		- the method has return type os.Error.
 
 	The method's first argument represents the arguments provided by the caller; the
@@ -76,7 +73,7 @@
 		rpc.HandleHTTP()
 		l, e := net.Listen("tcp", ":1234")
 		if e != nil {
-			log.Fatal("listen error:", e)
+			log.Exit("listen error:", e)
 		}
 		go http.Serve(l, nil)
 
@@ -85,7 +82,7 @@
 
 		client, err := rpc.DialHTTP("tcp", serverAddress + ":1234")
 		if err != nil {
-			log.Fatal("dialing:", err)
+			log.Exit("dialing:", err)
 		}
 
 	Then it can make a remote call:
@@ -95,7 +92,7 @@
 		var reply int
 		err = client.Call("Arith.Multiply", args, &reply)
 		if err != nil {
-			log.Fatal("arith error:", err)
+			log.Exit("arith error:", err)
 		}
 		fmt.Printf("Arith: %d*%d=%d", args.A, args.B, *reply)
 
@@ -113,7 +110,6 @@
 package rpc
 
 import (
-	"bufio"
 	"gob"
 	"http"
 	"log"
@@ -136,13 +132,13 @@ const (
 // Precompute the reflect type for os.Error.  Can't use os.Error directly
 // because Typeof takes an empty interface value.  This is annoying.
 var unusedError *os.Error
-var typeOfOsError = reflect.TypeOf(unusedError).Elem()
+var typeOfOsError = reflect.Typeof(unusedError).(*reflect.PtrType).Elem()
 
 type methodType struct {
 	sync.Mutex // protects counters
 	method     reflect.Method
-	ArgType    reflect.Type
-	ReplyType  reflect.Type
+	ArgType    *reflect.PtrType
+	ReplyType  *reflect.PtrType
 	numCalls   uint
 }
 
@@ -157,29 +153,29 @@ type service struct {
 // but documented here as an aid to debugging, such as when analyzing
 // network traffic.
 type Request struct {
-	ServiceMethod string   // format: "Service.Method"
-	Seq           uint64   // sequence number chosen by client
-	next          *Request // for free list in Server
+	ServiceMethod string // format: "Service.Method"
+	Seq           uint64 // sequence number chosen by client
 }
 
 // Response is a header written before every RPC return.  It is used internally
 // but documented here as an aid to debugging, such as when analyzing
 // network traffic.
 type Response struct {
-	ServiceMethod string    // echoes that of the Request
-	Seq           uint64    // echoes that of the request
-	Error         string    // error, if any.
-	next          *Response // for free list in Server
+	ServiceMethod string // echoes that of the Request
+	Seq           uint64 // echoes that of the request
+	Error         string // error, if any.
+}
+
+// ClientInfo records information about an RPC client connection.
+type ClientInfo struct {
+	LocalAddr  string
+	RemoteAddr string
 }
 
 // Server represents an RPC Server.
 type Server struct {
 	sync.Mutex // protects the serviceMap
 	serviceMap map[string]*service
-	reqLock    sync.Mutex // protects freeReq
-	freeReq    *Request
-	respLock   sync.Mutex // protects freeResp
-	freeResp   *Response
 }
 
 // NewServer returns a new Server.
@@ -194,14 +190,6 @@ var DefaultServer = NewServer()
 func isExported(name string) bool {
 	rune, _ := utf8.DecodeRuneInString(name)
 	return unicode.IsUpper(rune)
-}
-
-// Is this type exported or local to this package?
-func isExportedOrLocalType(t reflect.Type) bool {
-	for t.Kind() == reflect.Ptr {
-		t = t.Elem()
-	}
-	return t.PkgPath() == "" || isExported(t.Name())
 }
 
 // Register publishes in the server the set of methods of the
@@ -230,22 +218,22 @@ func (server *Server) register(rcvr interface{}, name string, useName bool) os.E
 		server.serviceMap = make(map[string]*service)
 	}
 	s := new(service)
-	s.typ = reflect.TypeOf(rcvr)
-	s.rcvr = reflect.ValueOf(rcvr)
+	s.typ = reflect.Typeof(rcvr)
+	s.rcvr = reflect.NewValue(rcvr)
 	sname := reflect.Indirect(s.rcvr).Type().Name()
 	if useName {
 		sname = name
 	}
 	if sname == "" {
-		log.Fatal("rpc: no service name for type", s.typ.String())
+		log.Exit("rpc: no service name for type", s.typ.String())
 	}
 	if s.typ.PkgPath() != "" && !isExported(sname) && !useName {
 		s := "rpc Register: type " + sname + " is not exported"
 		log.Print(s)
-		return os.NewError(s)
+		return os.ErrorString(s)
 	}
 	if _, present := server.serviceMap[sname]; present {
-		return os.NewError("rpc: service already defined: " + sname)
+		return os.ErrorString("rpc: service already defined: " + sname)
 	}
 	s.name = sname
 	s.method = make(map[string]*methodType)
@@ -263,21 +251,30 @@ func (server *Server) register(rcvr interface{}, name string, useName bool) os.E
 			log.Println("method", mname, "has wrong number of ins:", mtype.NumIn())
 			continue
 		}
-		// First arg need not be a pointer.
-		argType := mtype.In(1)
-		if !isExportedOrLocalType(argType) {
-			log.Println(mname, "argument type not exported or local:", argType)
+		argType, ok := mtype.In(1).(*reflect.PtrType)
+		if !ok {
+			log.Println(mname, "arg type not a pointer:", mtype.In(1))
 			continue
 		}
-		// Second arg must be a pointer.
-		replyType := mtype.In(2)
-		if replyType.Kind() != reflect.Ptr {
-			log.Println("method", mname, "reply type not a pointer:", replyType)
+		replyType, ok := mtype.In(2).(*reflect.PtrType)
+		if !ok {
+			log.Println(mname, "reply type not a pointer:", mtype.In(2))
 			continue
 		}
-		if !isExportedOrLocalType(replyType) {
-			log.Println("method", mname, "reply type not exported or local:", replyType)
+		if argType.Elem().PkgPath() != "" && !isExported(argType.Elem().Name()) {
+			log.Println(mname, "argument type not exported:", argType)
 			continue
+		}
+		if replyType.Elem().PkgPath() != "" && !isExported(replyType.Elem().Name()) {
+			log.Println(mname, "reply type not exported:", replyType)
+			continue
+		}
+		if mtype.NumIn() == 4 {
+			t := mtype.In(3)
+			if t != reflect.Typeof((*ClientInfo)(nil)) {
+				log.Println(mname, "last argument not *ClientInfo")
+				continue
+			}
 		}
 		// Method needs one out: os.Error.
 		if mtype.NumOut() != 1 {
@@ -294,24 +291,31 @@ func (server *Server) register(rcvr interface{}, name string, useName bool) os.E
 	if len(s.method) == 0 {
 		s := "rpc Register: type " + sname + " has no exported methods of suitable type"
 		log.Print(s)
-		return os.NewError(s)
+		return os.ErrorString(s)
 	}
 	server.serviceMap[s.name] = s
 	return nil
 }
 
 // A value sent as a placeholder for the response when the server receives an invalid request.
-type InvalidRequest struct{}
+type InvalidRequest struct {
+	marker int
+}
 
-var invalidRequest = InvalidRequest{}
+var invalidRequest = InvalidRequest{1}
 
-func (server *Server) sendResponse(sending *sync.Mutex, req *Request, reply interface{}, codec ServerCodec, errmsg string) {
-	resp := server.getResponse()
+func _new(t *reflect.PtrType) *reflect.PtrValue {
+	v := reflect.MakeZero(t).(*reflect.PtrValue)
+	v.PointTo(reflect.MakeZero(t.Elem()))
+	return v
+}
+
+func sendResponse(sending *sync.Mutex, req *Request, reply interface{}, codec ServerCodec, errmsg string) {
+	resp := new(Response)
 	// Encode the response header
 	resp.ServiceMethod = req.ServiceMethod
 	if errmsg != "" {
 		resp.Error = errmsg
-		reply = invalidRequest
 	}
 	resp.Seq = req.Seq
 	sending.Lock()
@@ -320,7 +324,6 @@ func (server *Server) sendResponse(sending *sync.Mutex, req *Request, reply inte
 		log.Println("rpc: writing response:", err)
 	}
 	sending.Unlock()
-	server.freeResponse(resp)
 }
 
 func (m *methodType) NumCalls() (n uint) {
@@ -330,7 +333,7 @@ func (m *methodType) NumCalls() (n uint) {
 	return n
 }
 
-func (s *service) call(server *Server, sending *sync.Mutex, mtype *methodType, req *Request, argv, replyv reflect.Value, codec ServerCodec) {
+func (s *service) call(sending *sync.Mutex, mtype *methodType, req *Request, argv, replyv reflect.Value, codec ServerCodec) {
 	mtype.Lock()
 	mtype.numCalls++
 	mtype.Unlock()
@@ -343,15 +346,13 @@ func (s *service) call(server *Server, sending *sync.Mutex, mtype *methodType, r
 	if errInter != nil {
 		errmsg = errInter.(os.Error).String()
 	}
-	server.sendResponse(sending, req, replyv.Interface(), codec, errmsg)
-	server.freeRequest(req)
+	sendResponse(sending, req, replyv.Interface(), codec, errmsg)
 }
 
 type gobServerCodec struct {
-	rwc    io.ReadWriteCloser
-	dec    *gob.Decoder
-	enc    *gob.Encoder
-	encBuf *bufio.Writer
+	rwc io.ReadWriteCloser
+	dec *gob.Decoder
+	enc *gob.Encoder
 }
 
 func (c *gobServerCodec) ReadRequestHeader(r *Request) os.Error {
@@ -362,14 +363,11 @@ func (c *gobServerCodec) ReadRequestBody(body interface{}) os.Error {
 	return c.dec.Decode(body)
 }
 
-func (c *gobServerCodec) WriteResponse(r *Response, body interface{}) (err os.Error) {
-	if err = c.enc.Encode(r); err != nil {
-		return
+func (c *gobServerCodec) WriteResponse(r *Response, body interface{}) os.Error {
+	if err := c.enc.Encode(r); err != nil {
+		return err
 	}
-	if err = c.enc.Encode(body); err != nil {
-		return
-	}
-	return c.encBuf.Flush()
+	return c.enc.Encode(body)
 }
 
 func (c *gobServerCodec) Close() os.Error {
@@ -383,9 +381,7 @@ func (c *gobServerCodec) Close() os.Error {
 // ServeConn uses the gob wire format (see package gob) on the
 // connection.  To use an alternate codec, use ServeCodec.
 func (server *Server) ServeConn(conn io.ReadWriteCloser) {
-	buf := bufio.NewWriter(conn)
-	srv := &gobServerCodec{conn, gob.NewDecoder(conn), gob.NewEncoder(buf), buf}
-	server.ServeCodec(srv)
+	server.ServeCodec(&gobServerCodec{conn, gob.NewDecoder(conn), gob.NewEncoder(conn)})
 }
 
 // ServeCodec is like ServeConn but uses the specified codec to
@@ -393,37 +389,9 @@ func (server *Server) ServeConn(conn io.ReadWriteCloser) {
 func (server *Server) ServeCodec(codec ServerCodec) {
 	sending := new(sync.Mutex)
 	for {
-		req, service, mtype, err := server.readRequest(codec)
-		if err != nil {
-			if err != os.EOF {
-				log.Println("rpc:", err)
-			}
-			if err == os.EOF || err == io.ErrUnexpectedEOF {
-				break
-			}
-			// discard body
-			codec.ReadRequestBody(nil)
-
-			// send a response if we actually managed to read a header.
-			if req != nil {
-				server.sendResponse(sending, req, invalidRequest, codec, err.String())
-				server.freeRequest(req)
-			}
-			continue
-		}
-
-		// Decode the argument value.
-		var argv reflect.Value
-		argIsValue := false // if true, need to indirect before calling.
-		if mtype.ArgType.Kind() == reflect.Ptr {
-			argv = reflect.New(mtype.ArgType.Elem())
-		} else {
-			argv = reflect.New(mtype.ArgType)
-			argIsValue = true
-		}
-		// argv guaranteed to be a pointer now.
-		replyv := reflect.New(mtype.ReplyType.Elem())
-		err = codec.ReadRequestBody(argv.Interface())
+		// Grab the request header.
+		req := new(Request)
+		err := codec.ReadRequestHeader(req)
 		if err != nil {
 			if err == os.EOF || err == io.ErrUnexpectedEOF {
 				if err == io.ErrUnexpectedEOF {
@@ -431,88 +399,43 @@ func (server *Server) ServeCodec(codec ServerCodec) {
 				}
 				break
 			}
-			server.sendResponse(sending, req, replyv.Interface(), codec, err.String())
+			s := "rpc: server cannot decode request: " + err.String()
+			sendResponse(sending, req, invalidRequest, codec, s)
+			break
+		}
+		serviceMethod := strings.Split(req.ServiceMethod, ".", -1)
+		if len(serviceMethod) != 2 {
+			s := "rpc: service/method request ill-formed: " + req.ServiceMethod
+			sendResponse(sending, req, invalidRequest, codec, s)
 			continue
 		}
-		if argIsValue {
-			argv = argv.Elem()
+		// Look up the request.
+		server.Lock()
+		service, ok := server.serviceMap[serviceMethod[0]]
+		server.Unlock()
+		if !ok {
+			s := "rpc: can't find service " + req.ServiceMethod
+			sendResponse(sending, req, invalidRequest, codec, s)
+			continue
 		}
-		go service.call(server, sending, mtype, req, argv, replyv, codec)
+		mtype, ok := service.method[serviceMethod[1]]
+		if !ok {
+			s := "rpc: can't find method " + req.ServiceMethod
+			sendResponse(sending, req, invalidRequest, codec, s)
+			continue
+		}
+		// Decode the argument value.
+		argv := _new(mtype.ArgType)
+		replyv := _new(mtype.ReplyType)
+		err = codec.ReadRequestBody(argv.Interface())
+		if err != nil {
+			log.Println("rpc: tearing down", serviceMethod[0], "connection:", err)
+			sendResponse(sending, req, replyv.Interface(), codec, err.String())
+			break
+		}
+		go service.call(sending, mtype, req, argv, replyv, codec)
 	}
 	codec.Close()
-}
-
-func (server *Server) getRequest() *Request {
-	server.reqLock.Lock()
-	req := server.freeReq
-	if req == nil {
-		req = new(Request)
-	} else {
-		server.freeReq = req.next
-		*req = Request{}
-	}
-	server.reqLock.Unlock()
-	return req
-}
-
-func (server *Server) freeRequest(req *Request) {
-	server.reqLock.Lock()
-	req.next = server.freeReq
-	server.freeReq = req
-	server.reqLock.Unlock()
-}
-
-func (server *Server) getResponse() *Response {
-	server.respLock.Lock()
-	resp := server.freeResp
-	if resp == nil {
-		resp = new(Response)
-	} else {
-		server.freeResp = resp.next
-		*resp = Response{}
-	}
-	server.respLock.Unlock()
-	return resp
-}
-
-func (server *Server) freeResponse(resp *Response) {
-	server.respLock.Lock()
-	resp.next = server.freeResp
-	server.freeResp = resp
-	server.respLock.Unlock()
-}
-
-func (server *Server) readRequest(codec ServerCodec) (req *Request, service *service, mtype *methodType, err os.Error) {
-	// Grab the request header.
-	req = server.getRequest()
-	err = codec.ReadRequestHeader(req)
-	if err != nil {
-		req = nil
-		if err == os.EOF || err == io.ErrUnexpectedEOF {
-			return
-		}
-		err = os.NewError("rpc: server cannot decode request: " + err.String())
-		return
-	}
-
-	serviceMethod := strings.Split(req.ServiceMethod, ".", -1)
-	if len(serviceMethod) != 2 {
-		err = os.NewError("rpc: service/method request ill-formed: " + req.ServiceMethod)
-		return
-	}
-	// Look up the request.
-	server.Lock()
-	service = server.serviceMap[serviceMethod[0]]
-	server.Unlock()
-	if service == nil {
-		err = os.NewError("rpc: can't find service " + req.ServiceMethod)
-		return
-	}
-	mtype = service.method[serviceMethod[1]]
-	if mtype == nil {
-		err = os.NewError("rpc: can't find method " + req.ServiceMethod)
-	}
-	return
 }
 
 // Accept accepts connections on the listener and serves requests
@@ -522,7 +445,7 @@ func (server *Server) Accept(lis net.Listener) {
 	for {
 		conn, err := lis.Accept()
 		if err != nil {
-			log.Fatal("rpc.Serve: accept:", err.String()) // TODO(r): exit?
+			log.Exit("rpc.Serve: accept:", err.String()) // TODO(r): exit?
 		}
 		go server.ServeConn(conn)
 	}
@@ -542,8 +465,7 @@ func RegisterName(name string, rcvr interface{}) os.Error {
 // The server calls ReadRequestHeader and ReadRequestBody in pairs
 // to read requests from the connection, and it calls WriteResponse to
 // write a response back.  The server calls Close when finished with the
-// connection. ReadRequestBody may be called with a nil
-// argument to force the body of the request to be read and discarded.
+// connection.
 type ServerCodec interface {
 	ReadRequestHeader(*Request) os.Error
 	ReadRequestBody(interface{}) os.Error
@@ -578,14 +500,14 @@ var connected = "200 Connected to Go RPC"
 // ServeHTTP implements an http.Handler that answers RPC requests.
 func (server *Server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "CONNECT" {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.SetHeader("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		io.WriteString(w, "405 must CONNECT\n")
 		return
 	}
-	conn, _, err := w.(http.Hijacker).Hijack()
+	conn, _, err := w.Hijack()
 	if err != nil {
-		log.Print("rpc hijacking ", req.RemoteAddr, ": ", err.String())
+		log.Print("rpc hijacking ", w.RemoteAddr(), ": ", err.String())
 		return
 	}
 	io.WriteString(conn, "HTTP/1.0 "+connected+"\n\n")

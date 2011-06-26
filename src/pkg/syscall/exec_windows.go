@@ -8,96 +8,51 @@ package syscall
 
 import (
 	"sync"
-	"unsafe"
 	"utf16"
 )
 
+// Windows doesn't have a good concept of just Exec in the documented API.
+// However, the kernel32 CreateProcess does a good job with
+// ForkExec.
+
 var ForkLock sync.RWMutex
 
-// EscapeArg rewrites command line argument s as prescribed
-// in http://msdn.microsoft.com/en-us/library/ms880421.
-// This function returns "" (2 double quotes) if s is empty.
-// Alternatively, these transformations are done:
-// - every back slash (\) is doubled, but only if immediately
-//   followed by double quote (");
-// - every double quote (") is escaped by back slash (\);
-// - finally, s is wrapped with double quotes (arg -> "arg"),
-//   but only if there is space or tab inside s.
-func EscapeArg(s string) string {
-	if len(s) == 0 {
-		return "\"\""
+// Joins an array of string with sep
+// From the "strings" package.  Modified.
+func stringJoin(a []string, sep string, escape escapeFunc) string {
+	if len(a) == 0 {
+		return ""
 	}
-	n := len(s)
-	hasSpace := false
-	for i := 0; i < len(s); i++ {
-		switch s[i] {
-		case '"', '\\':
-			n++
-		case ' ', '\t':
-			hasSpace = true
-		}
+	if len(a) == 1 {
+		return a[0]
 	}
-	if hasSpace {
-		n += 2
-	}
-	if n == len(s) {
-		return s
+	n := len(sep) * (len(a) - 1)
+	for i := 0; i < len(a); i++ {
+		a[i] = escape(a[i])
+		n += len(a[i])
 	}
 
-	qs := make([]byte, n)
-	j := 0
-	if hasSpace {
-		qs[j] = '"'
-		j++
-	}
-	slashes := 0
-	for i := 0; i < len(s); i++ {
-		switch s[i] {
-		default:
-			slashes = 0
-			qs[j] = s[i]
-		case '\\':
-			slashes++
-			qs[j] = s[i]
-		case '"':
-			for ; slashes > 0; slashes-- {
-				qs[j] = '\\'
-				j++
+	b := make([]byte, n)
+	bp := 0
+	for i := 0; i < len(a); i++ {
+		s := a[i]
+		for j := 0; j < len(s); j++ {
+			b[bp] = s[j]
+			bp++
+		}
+		if i+1 < len(a) {
+			s = sep
+			for j := 0; j < len(s); j++ {
+				b[bp] = s[j]
+				bp++
 			}
-			qs[j] = '\\'
-			j++
-			qs[j] = s[i]
 		}
-		j++
 	}
-	if hasSpace {
-		for ; slashes > 0; slashes-- {
-			qs[j] = '\\'
-			j++
-		}
-		qs[j] = '"'
-		j++
-	}
-	return string(qs[:j])
+	return string(b)
 }
 
-// makeCmdLine builds a command line out of args by escaping "special"
-// characters and joining the arguments with spaces.
-func makeCmdLine(args []string) string {
-	var s string
-	for _, v := range args {
-		if s != "" {
-			s += " "
-		}
-		s += EscapeArg(v)
-	}
-	return s
-}
-
-// createEnvBlock converts an array of environment strings into
-// the representation required by CreateProcess: a sequence of NUL
-// terminated strings followed by a nil.
-// Last bytes are two UCS-2 NULs, or four NUL bytes.
+//Env block is a sequence of null terminated strings followed by a null.
+//Last bytes are two unicode nulls, or four null bytes.
 func createEnvBlock(envv []string) *uint16 {
 	if len(envv) == 0 {
 		return &utf16.Encode([]int("\x00\x00"))[0]
@@ -121,207 +76,128 @@ func createEnvBlock(envv []string) *uint16 {
 	return &utf16.Encode([]int(string(b)))[0]
 }
 
+type escapeFunc func(s string) string
+
+//escapes quotes by " -> ""
+//Also string -> "string"
+func escapeAddQuotes(s string) string {
+	//normal ascii char, one byte wide
+	rune := byte('"')
+	l := len(s)
+	n := 0
+	for i := 0; i < l; i++ {
+		if s[i] == rune {
+			n++
+		}
+	}
+	qs := make([]byte, l+n+2)
+
+	qs[0] = rune
+	j := 1
+	for i := 0; i < l; i++ {
+		qs[i+j] = s[i]
+		if s[i] == rune {
+			j++
+			qs[i+j] = rune
+		}
+	}
+	qs[len(qs)-1] = rune
+	return string(qs)
+}
+
+
 func CloseOnExec(fd int) {
-	SetHandleInformation(int32(fd), HANDLE_FLAG_INHERIT, 0)
+	return
 }
 
 func SetNonblock(fd int, nonblocking bool) (errno int) {
 	return 0
 }
 
-// getFullPath retrieves the full path of the specified file.
-// Just a wrapper for Windows GetFullPathName api.
-func getFullPath(name string) (path string, err int) {
-	p := StringToUTF16Ptr(name)
-	buf := make([]uint16, 100)
-	n, err := GetFullPathName(p, uint32(len(buf)), &buf[0], nil)
-	if err != 0 {
-		return "", err
-	}
-	if n > uint32(len(buf)) {
-		// Windows is asking for bigger buffer.
-		buf = make([]uint16, n)
-		n, err = GetFullPathName(p, uint32(len(buf)), &buf[0], nil)
-		if err != 0 {
-			return "", err
-		}
-		if n > uint32(len(buf)) {
-			return "", EINVAL
-		}
-	}
-	return UTF16ToString(buf[:n]), 0
-}
 
-func isSlash(c uint8) bool {
-	return c == '\\' || c == '/'
-}
+// TODO(kardia): Add trace
+//The command and arguments are passed via the Command line parameter.
+func forkExec(argv0 string, argv []string, envv []string, traceme bool, dir string, fd []int) (pid int, err int) {
+	if traceme == true {
+		return 0, EWINDOWS
+	}
 
-func normalizeDir(dir string) (name string, err int) {
-	ndir, err := getFullPath(dir)
-	if err != 0 {
-		return "", err
+	if len(fd) > 3 {
+		return 0, EWINDOWS
 	}
-	if len(ndir) > 2 && isSlash(ndir[0]) && isSlash(ndir[1]) {
-		// dir cannot have \\server\share\path form
-		return "", EINVAL
-	}
-	return ndir, 0
-}
 
-func volToUpper(ch int) int {
-	if 'a' <= ch && ch <= 'z' {
-		ch += 'A' - 'a'
-	}
-	return ch
-}
-
-func joinExeDirAndFName(dir, p string) (name string, err int) {
-	if len(p) == 0 {
-		return "", EINVAL
-	}
-	if len(p) > 2 && isSlash(p[0]) && isSlash(p[1]) {
-		// \\server\share\path form
-		return p, 0
-	}
-	if len(p) > 1 && p[1] == ':' {
-		// has drive letter
-		if len(p) == 2 {
-			return "", EINVAL
-		}
-		if isSlash(p[2]) {
-			return p, 0
-		} else {
-			d, err := normalizeDir(dir)
-			if err != 0 {
-				return "", err
-			}
-			if volToUpper(int(p[0])) == volToUpper(int(d[0])) {
-				return getFullPath(d + "\\" + p[2:])
-			} else {
-				return getFullPath(p)
-			}
-		}
-	} else {
-		// no drive letter
-		d, err := normalizeDir(dir)
-		if err != 0 {
-			return "", err
-		}
-		if isSlash(p[0]) {
-			return getFullPath(d[:2] + p)
-		} else {
-			return getFullPath(d + "\\" + p)
+	//CreateProcess will throw an error if the dir is not set to a valid dir
+	//  thus get the working dir if dir is empty.
+	if len(dir) == 0 {
+		if wd, ok := Getwd(); ok == 0 {
+			dir = wd
 		}
 	}
-	// we shouldn't be here
-	return "", EINVAL
-}
 
-type ProcAttr struct {
-	Dir   string
-	Env   []string
-	Files []int
-	Sys   *SysProcAttr
-}
+	startupInfo := new(StartupInfo)
+	processInfo := new(ProcessInformation)
 
-type SysProcAttr struct {
-	HideWindow bool
-	CmdLine    string // used if non-empty, else the windows command line is built by escaping the arguments passed to StartProcess
-}
+	GetStartupInfo(startupInfo)
 
-var zeroProcAttr ProcAttr
-var zeroSysProcAttr SysProcAttr
+	startupInfo.Flags = STARTF_USESTDHANDLES
+	startupInfo.StdInput = 0
+	startupInfo.StdOutput = 0
+	startupInfo.StdErr = 0
 
-func StartProcess(argv0 string, argv []string, attr *ProcAttr) (pid, handle int, err int) {
-	if len(argv0) == 0 {
-		return 0, 0, EWINDOWS
-	}
-	if attr == nil {
-		attr = &zeroProcAttr
-	}
-	sys := attr.Sys
-	if sys == nil {
-		sys = &zeroSysProcAttr
-	}
-
-	if len(attr.Files) > 3 {
-		return 0, 0, EWINDOWS
-	}
-
-	if len(attr.Dir) != 0 {
-		// StartProcess assumes that argv0 is relative to attr.Dir,
-		// because it implies Chdir(attr.Dir) before executing argv0.
-		// Windows CreateProcess assumes the opposite: it looks for
-		// argv0 relative to the current directory, and, only once the new
-		// process is started, it does Chdir(attr.Dir). We are adjusting
-		// for that difference here by making argv0 absolute.
-		var err int
-		argv0, err = joinExeDirAndFName(attr.Dir, argv0)
-		if err != 0 {
-			return 0, 0, err
+	var currentProc, _ = GetCurrentProcess()
+	if len(fd) > 0 && fd[0] > 0 {
+		if ok, err := DuplicateHandle(currentProc, int32(fd[0]), currentProc, &startupInfo.StdInput, 0, true, DUPLICATE_SAME_ACCESS); !ok {
+			return 0, err
 		}
+		defer CloseHandle(int32(startupInfo.StdInput))
 	}
-	argv0p := StringToUTF16Ptr(argv0)
-
-	var cmdline string
-	// Windows CreateProcess takes the command line as a single string:
-	// use attr.CmdLine if set, else build the command line by escaping
-	// and joining each argument with spaces
-	if sys.CmdLine != "" {
-		cmdline = sys.CmdLine
-	} else {
-		cmdline = makeCmdLine(argv)
-	}
-
-	var argvp *uint16
-	if len(cmdline) != 0 {
-		argvp = StringToUTF16Ptr(cmdline)
-	}
-
-	var dirp *uint16
-	if len(attr.Dir) != 0 {
-		dirp = StringToUTF16Ptr(attr.Dir)
-	}
-
-	// Acquire the fork lock so that no other threads
-	// create new fds that are not yet close-on-exec
-	// before we fork.
-	ForkLock.Lock()
-	defer ForkLock.Unlock()
-
-	p, _ := GetCurrentProcess()
-	fd := make([]int32, len(attr.Files))
-	for i := range attr.Files {
-		if attr.Files[i] > 0 {
-			err := DuplicateHandle(p, int32(attr.Files[i]), p, &fd[i], 0, true, DUPLICATE_SAME_ACCESS)
-			if err != 0 {
-				return 0, 0, err
-			}
-			defer CloseHandle(int32(fd[i]))
+	if len(fd) > 1 && fd[1] > 0 {
+		if ok, err := DuplicateHandle(currentProc, int32(fd[1]), currentProc, &startupInfo.StdOutput, 0, true, DUPLICATE_SAME_ACCESS); !ok {
+			return 0, err
 		}
+		defer CloseHandle(int32(startupInfo.StdOutput))
 	}
-	si := new(StartupInfo)
-	si.Cb = uint32(unsafe.Sizeof(*si))
-	si.Flags = STARTF_USESTDHANDLES
-	if sys.HideWindow {
-		si.Flags |= STARTF_USESHOWWINDOW
-		si.ShowWindow = SW_HIDE
+	if len(fd) > 2 && fd[2] > 0 {
+		if ok, err := DuplicateHandle(currentProc, int32(fd[2]), currentProc, &startupInfo.StdErr, 0, true, DUPLICATE_SAME_ACCESS); !ok {
+			return 0, err
+		}
+		defer CloseHandle(int32(startupInfo.StdErr))
 	}
-	si.StdInput = fd[0]
-	si.StdOutput = fd[1]
-	si.StdErr = fd[2]
-
-	pi := new(ProcessInformation)
-
-	err = CreateProcess(argv0p, argvp, nil, nil, true, CREATE_UNICODE_ENVIRONMENT, createEnvBlock(attr.Env), dirp, si, pi)
-	if err != 0 {
-		return 0, 0, err
+	if len(argv) == 0 {
+		argv = []string{""}
 	}
-	defer CloseHandle(pi.Thread)
+	// argv0 must not be longer then 256 chars
+	// but the entire cmd line can have up to 32k chars (msdn)
+	ok, err := CreateProcess(
+		nil,
+		StringToUTF16Ptr(escapeAddQuotes(argv0)+" "+stringJoin(argv[1:], " ", escapeAddQuotes)),
+		nil,  //ptr to struct lpProcessAttributes
+		nil,  //ptr to struct lpThreadAttributes
+		true, //bInheritHandles
+		CREATE_UNICODE_ENVIRONMENT, //Flags
+		createEnvBlock(envv),       //env block, NULL uses parent env
+		StringToUTF16Ptr(dir),
+		startupInfo,
+		processInfo)
 
-	return int(pi.ProcessId), int(pi.Process), 0
+	if ok {
+		pid = int(processInfo.ProcessId)
+		CloseHandle(processInfo.Process)
+		CloseHandle(processInfo.Thread)
+	}
+	return
 }
 
+func ForkExec(argv0 string, argv []string, envv []string, dir string, fd []int) (pid int, err int) {
+	return forkExec(argv0, argv, envv, false, dir, fd)
+}
+
+// PtraceForkExec is like ForkExec, but starts the child in a traced state.
+func PtraceForkExec(argv0 string, argv []string, envv []string, dir string, fd []int) (pid int, err int) {
+	return forkExec(argv0, argv, envv, true, dir, fd)
+}
+
+// Ordinary exec.
 func Exec(argv0 string, argv []string, envv []string) (err int) {
 	return EWINDOWS
 }

@@ -11,11 +11,7 @@ import (
 )
 
 func TestRead(t *testing.T) {
-	var n int = 4e6
-	if testing.Short() {
-		n = 1e5
-	}
-	b := make([]byte, n)
+	b := make([]byte, 4e6)
 	n, err := Read(b)
 	if n != len(b) || err != nil {
 		t.Fatalf("Read(buf) = %d, %s", n, err)

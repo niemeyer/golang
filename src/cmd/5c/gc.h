@@ -69,7 +69,7 @@ struct	Adr
 
 	Sym*	sym;
 	char	type;
-	uchar	reg;
+	char	reg;
 	char	name;
 	char	etype;
 };
@@ -83,7 +83,7 @@ struct	Prog
 	Prog*	link;
 	int32	lineno;
 	char	as;
-	uchar	reg;
+	char	reg;
 	uchar	scond;
 };
 #define	P	((Prog*)0)

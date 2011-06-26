@@ -50,6 +50,86 @@ isbranch(Prog *p)
 }
 
 static int
+ispad(Prog *p)
+{
+	if(p->as != AMOVW)
+		return 0;
+	if(p->from.type != D_REG || p->from.reg != REGTMP)
+		return 0;
+	if(p->to.type != D_REG || p->to.reg != REGTMP)
+		return 0;
+	return 1;
+}
+
+int
+fninc(Sym *s)
+{
+	if(thumb){
+		if(s->thumb){
+			if(s->foreign)
+				return 8;
+			else
+				return 0;
+		}
+		else{
+			if(s->foreign)
+				return 0;
+			else
+				diag("T A !foreign in fninc");
+		}
+	}
+	else{
+		if(s->thumb){
+			if(s->foreign)
+				return 0;
+			else
+				diag("A T !foreign in fninc");
+		}
+		else{
+			if(s->foreign)
+				return 4;
+			else
+				return 0;
+		}
+	}
+	return 0;
+}
+
+int
+fnpinc(Sym *s)
+{
+	if(!s->fnptr){	// a simplified case BX O(R) -> BL O(R)
+		if(!debug['f'])
+			diag("fnptr == 0 in fnpinc");
+		if(s->foreign)
+			diag("bad usage in fnpinc %s %d %d", s->name, s->foreign, s->thumb);
+		return 0;
+	}
+	/* 0, 1, 2, 3 squared */
+	if(s->thumb)
+		return s->foreign ? 9 : 1;
+	else
+		return s->foreign ? 4 : 0;
+}
+
+static Prog *
+pad(Prog *p, int pc)
+{
+	Prog *q;
+
+	q = prg();
+	q->as = AMOVW;
+	q->line = p->line;
+	q->from.type = D_REG;
+	q->from.reg = REGTMP;
+	q->to.type = D_REG;
+	q->to.reg = REGTMP;
+	q->pc = pc;
+	q->link = p->link;
+	return q;
+}
+
+static int
 scan(Prog *op, Prog *p, int c)
 {
 	Prog *q;
@@ -88,6 +168,7 @@ span(void)
 	Optab *o;
 	int m, bflag, i, v;
 	int32 c, otxt, out[6];
+	int lastthumb = -1;
 	Section *sect;
 	uchar *bp;
 
@@ -102,9 +183,11 @@ span(void)
 	otxt = c;
 	for(cursym = textp; cursym != nil; cursym = cursym->next) {
 		p = cursym->text;
+		setarch(p);
 		p->pc = c;
 		cursym->value = c;
 
+		lastthumb = thumb;
 		autosize = p->to.offset + 4;
 		if(p->from.sym != S)
 			p->from.sym->value = c;
@@ -112,14 +195,19 @@ span(void)
 		if(c-otxt >= 1L<<17)
 			bflag = 1;
 		otxt = c;
+		if(thumb && blitrl)
+			pool.extra += brextra(p);
 
 		for(op = p, p = p->link; p != P; op = p, p = p->link) {
 			curp = p;
+			setarch(p);
 			p->pc = c;
 			o = oplook(p);
 			m = o->size;
 			// must check literal pool here in case p generates many instructions
 			if(blitrl){
+				if(thumb && isbranch(p))
+					pool.extra += brextra(p);
 				if(checkpool(op, p->as == ACASE ? casesz(p) : m))
 					c = p->pc = scan(op, p, c);
 			}
@@ -144,6 +232,8 @@ span(void)
 			c += m;
 		}
 		if(blitrl){
+			if(thumb && isbranch(op))
+				pool.extra += brextra(op);
 			if(checkpool(op, 0))
 				c = scan(op, P, c);
 		}
@@ -165,7 +255,10 @@ span(void)
 			cursym->value = c;
 			for(p = cursym->text; p != P; p = p->link) {
 				curp = p;
+				setarch(p);
 				p->pc = c;
+				if(thumb && isbranch(p))
+					nocache(p);
 				o = oplook(p);
 /* very large branches
 				if(o->type == 6 && p->cond) {
@@ -207,6 +300,74 @@ span(void)
 		}
 	}
 
+	if(seenthumb){		// branch resolution
+		int passes = 0;
+		int lastc = 0;
+		int again;
+		Prog *oop;
+
+	loop:
+		passes++;
+		if(passes > 100){
+			diag("span looping !");
+			errorexit();
+		}
+		c = INITTEXT;
+		oop = op = nil;
+		again = 0;
+		for(cursym = textp; cursym != nil; cursym = cursym->next) {
+			cursym->value = c;
+			for(p = cursym->text; p != P; oop = op, op = p, p = p->link) {
+				curp = p;
+				setarch(p);
+				if(p->pc != c)
+					again = 1;
+				p->pc = c;
+				if(thumb && isbranch(p))
+					nocache(p);
+				o = oplook(p);
+				m = o->size;
+				if(passes == 1 && thumb && isbranch(p)){	// start conservative so unneeded alignment is not added
+					if(p->as == ABL)
+						m = 4;
+					else
+						m = 2;
+					p->align = 0;
+				}
+				if(p->align){
+					if((p->align == 4 && (c&3)) || (p->align == 2 && !(c&3))){
+						if(ispad(op)){
+							oop->link = p;
+							op = oop;
+							c -= 2;
+							p->pc = c;
+						}
+						else{
+							op->link = pad(op, c);
+							op = op->link;
+							c += 2;
+							p->pc = c;
+						}
+						again = 1;
+					}
+				}
+				if(m == 0) {
+					if(p->as == ATEXT) {
+						autosize = p->to.offset + 4;
+						if(p->from.sym != S)
+							p->from.sym->value = c;
+						continue;
+					}
+				}
+				c += m;
+			}
+			cursym->size = c - cursym->value;
+		}
+		if(c != lastc || again){
+			lastc = c;
+			goto loop;
+		}
+	}
 	c = rnd(c, 8);
 	
 	/*
@@ -219,6 +380,7 @@ span(void)
 	 */
 	for(cursym = textp; cursym != nil; cursym = cursym->next) {
 		p = cursym->text;
+		setarch(p);
 		autosize = p->to.offset + 4;
 		symgrow(cursym, cursym->size);
 	
@@ -252,6 +414,13 @@ span(void)
 int
 checkpool(Prog *p, int sz)
 {
+	if(thumb){
+		if(pool.size >= 0x3fc || (p->pc+sz+pool.extra+2+2)+(pool.size-4)-pool.start-4 >= 0x3fc)
+			return flushpool(p, 1, 0);
+		else if(p->link == P)
+			return flushpool(p, 2, 0);
+		return 0;
+	}
 	if(pool.size >= 0xffc || immaddr((p->pc+sz+4)+4+pool.size - pool.start+8) == 0)
 		return flushpool(p, 1, 0);
 	else if(p->link == P)
@@ -274,7 +443,7 @@ flushpool(Prog *p, int skip, int force)
 			q->link = blitrl;
 			blitrl = q;
 		}
-		else if(!force && (p->pc+pool.size-pool.start < 2048))
+		else if(!force && (p->pc+pool.size-pool.start < (thumb ? 0x3fc+4-pool.extra : 2048)))
 			return 0;
 		elitrl->link = p->link;
 		p->link = blitrl;
@@ -294,7 +463,10 @@ addpool(Prog *p, Adr *a)
 	Prog *q, t;
 	int c;
 
-	c = aclass(a);
+	if(thumb)
+		c = thumbaclass(a, p);
+	else
+		c = aclass(a);
 
 	t = zprg;
 	t.as = AWORD;
@@ -310,10 +482,12 @@ addpool(Prog *p, Adr *a)
 	case C_FOREG:
 	case C_SOREG:
 	case C_HOREG:
+	case C_GOREG:
 	case C_FAUTO:
 	case C_SAUTO:
 	case C_LAUTO:
 	case C_LACON:
+	case C_GACON:
 		t.to.type = D_CONST;
 		t.to.offset = instoffset;
 		break;
@@ -419,6 +593,16 @@ symaddr(Sym *s)
 		return 0;
 	
 	case STEXT:
+/* TODO(rsc): what is this for?
+#ifdef CALLEEBX
+		v += fnpinc(s);
+#else
+		if(s->thumb)
+			v++;	// T bit
+#endif
+*/
+		break;
+	
 	case SELFDATA:
 	case SRODATA:
 	case SDATA:
@@ -586,19 +770,35 @@ oplook(Prog *p)
 	int a1, a2, a3, r;
 	char *c1, *c3;
 	Optab *o, *e;
+	Optab *otab;
+	Oprang *orange;
 
+	if(thumb){
+		otab = thumboptab;
+		orange = thumboprange;
+	}
+	else{
+		otab = optab;
+		orange = oprange;
+	}
 	a1 = p->optab;
 	if(a1)
-		return optab+(a1-1);
+		return otab+(a1-1);
 	a1 = p->from.class;
 	if(a1 == 0) {
-		a1 = aclass(&p->from) + 1;
+		if(thumb)
+			a1 = thumbaclass(&p->from, p) + 1;
+		else
+			a1 = aclass(&p->from) + 1;
 		p->from.class = a1;
 	}
 	a1--;
 	a3 = p->to.class;
 	if(a3 == 0) {
-		a3 = aclass(&p->to) + 1;
+		if(thumb)
+			a3 = thumbaclass(&p->to, p) + 1;
+		else
+			a3 = aclass(&p->to) + 1;
 		p->to.class = a3;
 	}
 	a3--;
@@ -606,35 +806,35 @@ oplook(Prog *p)
 	if(p->reg != NREG)
 		a2 = C_REG;
 	r = p->as;
-	o = oprange[r].start;
+	o = orange[r].start;
 	if(o == 0) {
 		a1 = opcross[repop[r]][a1][a2][a3];
 		if(a1) {
 			p->optab = a1+1;
-			return optab+a1;
+			return otab+a1;
 		}
-		o = oprange[r].stop; /* just generate an error */
+		o = orange[r].stop; /* just generate an error */
 	}
 	if(debug['O']) {
 		print("oplook %A %O %O %O\n",
 			(int)p->as, a1, a2, a3);
 		print("		%d %d\n", p->from.type, p->to.type);
 	}
-	e = oprange[r].stop;
+	e = orange[r].stop;
 	c1 = xcmp[a1];
 	c3 = xcmp[a3];
 	for(; o<e; o++)
 		if(o->a2 == a2)
 		if(c1[o->a1])
 		if(c3[o->a3]) {
-			p->optab = (o-optab)+1;
+			p->optab = (o-otab)+1;
 			return o;
 		}
 	diag("illegal combination %A %O %O %O, %d %d",
 		p->as, a1, a2, a3, p->from.type, p->to.type);
 	prasm(p);
 	if(o == 0)
-		o = optab;
+		o = otab;
 	return o;
 }
 
@@ -685,6 +885,9 @@ cmp(int a, int b)
 		if(b == C_SBRA)
 			return 1;
 		break;
+	case C_GBRA:
+		if(b == C_SBRA || b == C_LBRA)
+			return 1;
 
 	case C_HREG:
 		return cmp(C_SP, b) || cmp(C_PC, b);
@@ -704,6 +907,9 @@ ocmp(const void *a1, const void *a2)
 	n = p1->as - p2->as;
 	if(n)
 		return n;
+	n = (p2->flag&V4) - (p1->flag&V4);	/* architecture version */
+	if(n)
+		return n;
 	n = p1->a1 - p2->a1;
 	if(n)
 		return n;
@@ -721,11 +927,15 @@ buildop(void)
 {
 	int i, n, r;
 
+	armv4 = !debug['h'];
 	for(i=0; i<C_GOK; i++)
 		for(n=0; n<C_GOK; n++)
 			xcmp[i][n] = cmp(n, i);
 	for(n=0; optab[n].as != AXXX; n++)
-		;
+		if((optab[n].flag & V4) && !armv4) {
+			optab[n].as = AXXX;
+			break;
+		}
 	qsort(optab, n, sizeof(optab[0]), ocmp);
 	for(i=0; i<n; i++) {
 		r = optab[i].as;
@@ -815,8 +1025,6 @@ buildop(void)
 			oprange[AMULD] = oprange[r];
 			oprange[ADIVF] = oprange[r];
 			oprange[ADIVD] = oprange[r];
-			oprange[ASQRTF] = oprange[r];
-			oprange[ASQRTD] = oprange[r];
 			oprange[AMOVFD] = oprange[r];
 			oprange[AMOVDF] = oprange[r];
 			break;
@@ -846,8 +1054,6 @@ buildop(void)
 
 		case ALDREX:
 		case ASTREX:
-		case ALDREXD:
-		case ASTREXD:
 		case ATST:
 			break;
 		}

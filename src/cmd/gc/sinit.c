@@ -173,10 +173,10 @@ initfix(NodeList *l)
 
 /*
  * from here down is the walk analysis
- * of composite literals.
+ * of composit literals.
  * most of the work is to generate
  * data statements for the constant
- * part of the composite literal.
+ * part of the composit literal.
  */
 
 static	void	structlit(int ctxt, int pass, Node *n, Node *var, NodeList **init);

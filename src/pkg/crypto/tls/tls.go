@@ -2,8 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package tls partially implements the TLS 1.1 protocol, as specified in RFC
-// 4346.
+// This package partially implements the TLS 1.1 protocol, as specified in RFC 4346.
 package tls
 
 import (
@@ -88,9 +87,8 @@ func Listen(network, laddr string, config *Config) (*Listener, os.Error) {
 // Dial interprets a nil configuration as equivalent to
 // the zero configuration; see the documentation of Config
 // for the defaults.
-func Dial(network, addr string, config *Config) (*Conn, os.Error) {
-	raddr := addr
-	c, err := net.Dial(network, raddr)
+func Dial(network, laddr, raddr string, config *Config) (*Conn, os.Error) {
+	c, err := net.Dial(network, laddr, raddr)
 	if err != nil {
 		return nil, err
 	}
@@ -125,41 +123,29 @@ func LoadX509KeyPair(certFile string, keyFile string) (cert Certificate, err os.
 	if err != nil {
 		return
 	}
-	keyPEMBlock, err := ioutil.ReadFile(keyFile)
-	if err != nil {
+
+	certDERBlock, _ := pem.Decode(certPEMBlock)
+	if certDERBlock == nil {
+		err = os.ErrorString("crypto/tls: failed to parse certificate PEM data")
 		return
 	}
-	return X509KeyPair(certPEMBlock, keyPEMBlock)
-}
 
-// X509KeyPair parses a public/private key pair from a pair of
-// PEM encoded data.
-func X509KeyPair(certPEMBlock, keyPEMBlock []byte) (cert Certificate, err os.Error) {
-	var certDERBlock *pem.Block
-	for {
-		certDERBlock, certPEMBlock = pem.Decode(certPEMBlock)
-		if certDERBlock == nil {
-			break
-		}
-		if certDERBlock.Type == "CERTIFICATE" {
-			cert.Certificate = append(cert.Certificate, certDERBlock.Bytes)
-		}
-	}
+	cert.Certificate = [][]byte{certDERBlock.Bytes}
 
-	if len(cert.Certificate) == 0 {
-		err = os.NewError("crypto/tls: failed to parse certificate PEM data")
+	keyPEMBlock, err := ioutil.ReadFile(keyFile)
+	if err != nil {
 		return
 	}
 
 	keyDERBlock, _ := pem.Decode(keyPEMBlock)
 	if keyDERBlock == nil {
-		err = os.NewError("crypto/tls: failed to parse key PEM data")
+		err = os.ErrorString("crypto/tls: failed to parse key PEM data")
 		return
 	}
 
 	key, err := x509.ParsePKCS1PrivateKey(keyDERBlock.Bytes)
 	if err != nil {
-		err = os.NewError("crypto/tls: failed to parse key: " + err.String())
+		err = os.ErrorString("crypto/tls: failed to parse key")
 		return
 	}
 
@@ -167,13 +153,13 @@ func X509KeyPair(certPEMBlock, keyPEMBlock []byte) (cert Certificate, err os.Err
 
 	// We don't need to parse the public key for TLS, but we so do anyway
 	// to check that it looks sane and matches the private key.
-	x509Cert, err := x509.ParseCertificate(cert.Certificate[0])
+	x509Cert, err := x509.ParseCertificate(certDERBlock.Bytes)
 	if err != nil {
 		return
 	}
 
 	if x509Cert.PublicKeyAlgorithm != x509.RSA || x509Cert.PublicKey.(*rsa.PublicKey).N.Cmp(key.PublicKey.N) != 0 {
-		err = os.NewError("crypto/tls: private key does not match public key")
+		err = os.ErrorString("crypto/tls: private key does not match public key")
 		return
 	}
 

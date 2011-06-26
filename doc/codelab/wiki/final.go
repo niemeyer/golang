@@ -64,7 +64,7 @@ func init() {
 }
 
 func renderTemplate(w http.ResponseWriter, tmpl string, p *Page) {
-	err := templates[tmpl].Execute(w, p)
+	err := templates[tmpl].Execute(p, w)
 	if err != nil {
 		http.Error(w, err.String(), http.StatusInternalServerError)
 	}

@@ -69,7 +69,6 @@ extern "C" {
 #include <math.h>
 #include <ctype.h>	/* for tolower */
 #include <signal.h>
-#include <time.h>
 
 /*
  * OS-specific crap
@@ -79,7 +78,7 @@ extern "C" {
 #define _NEEDUINT 1
 #define _NEEDULONG 1
 
-#ifdef _WIN32
+#ifdef __MINGW32__
 typedef jmp_buf sigjmp_buf;
 #endif
 typedef long p9jmp_buf[sizeof(sigjmp_buf)/sizeof(long)];
@@ -140,7 +139,7 @@ typedef long p9jmp_buf[sizeof(sigjmp_buf)/sizeof(long)];
 #	undef _NEEDUSHORT
 #	undef _NEEDUINT
 #	undef _NEEDULONG
-#elif defined(_WIN32)
+#elif defined(__MINGW32__)
 #else
 	/* No idea what system this is -- try some defaults */
 #	include <pthread.h>
@@ -209,7 +208,7 @@ typedef u64int uint64;
  */
 #if defined(__GNUC__)
 #	undef strcmp	/* causes way too many warnings */
-#	if __GNUC__ >= 4 || (__GNUC__==3 && !defined(__APPLE_CC__) && !defined(_WIN32))
+#	if __GNUC__ >= 4 || (__GNUC__==3 && !defined(__APPLE_CC__) && !defined(__MINGW32__))
 #		undef AUTOLIB
 #		define AUTOLIB(x) int __p9l_autolib_ ## x __attribute__ ((weak));
 #		undef AUTOFRAMEWORK

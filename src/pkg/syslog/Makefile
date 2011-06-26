@@ -7,6 +7,5 @@ include ../../Make.inc
 TARG=syslog
 GOFILES=\
 	syslog.go\
-	syslog_unix.go\
 
 include ../../Make.pkg

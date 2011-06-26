@@ -5,6 +5,7 @@
 package main
 
 import (
+	"bytes"
 	"exec"
 	"flag"
 	"http"
@@ -41,7 +42,7 @@ func main() {
 	case "386":
 		archChar = "8"
 	default:
-		log.Fatalln("unrecognized GOARCH:", runtime.GOARCH)
+		log.Exitln("unrecognized GOARCH:", runtime.GOARCH)
 	}
 
 	// source of unique numbers
@@ -53,7 +54,7 @@ func main() {
 
 	http.HandleFunc("/", FrontPage)
 	http.HandleFunc("/compile", Compile)
-	log.Fatal(http.ListenAndServe(*httpListen, nil))
+	log.Exit(http.ListenAndServe(*httpListen, nil))
 }
 
 // FrontPage is an HTTP handler that renders the goplay interface. 
@@ -65,7 +66,7 @@ func FrontPage(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		data = helloWorld
 	}
-	frontPage.Execute(w, data)
+	frontPage.Execute(data, w)
 }
 
 // Compile is an HTTP handler that reads Go source code from the request,
@@ -82,7 +83,7 @@ func Compile(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// write request Body to x.go
-	f, err := os.Create(src)
+	f, err := os.Open(src, os.O_CREAT|os.O_WRONLY|os.O_TRUNC, 0666)
 	if err != nil {
 		error(w, nil, err)
 		return
@@ -122,7 +123,7 @@ func Compile(w http.ResponseWriter, req *http.Request) {
 	if *htmlOutput {
 		w.Write(out)
 	} else {
-		output.Execute(w, out)
+		output.Execute(out, w)
 	}
 }
 
@@ -131,15 +132,40 @@ func Compile(w http.ResponseWriter, req *http.Request) {
 func error(w http.ResponseWriter, out []byte, err os.Error) {
 	w.WriteHeader(404)
 	if out != nil {
-		output.Execute(w, out)
+		output.Execute(out, w)
 	} else {
-		output.Execute(w, err.String())
+		output.Execute(err.String(), w)
 	}
 }
 
 // run executes the specified command and returns its output and an error.
 func run(cmd ...string) ([]byte, os.Error) {
-	return exec.Command(cmd[0], cmd[1:]...).CombinedOutput()
+	// find the specified binary
+	bin, err := exec.LookPath(cmd[0])
+	if err != nil {
+		// report binary as well as the error
+		return nil, os.NewError(cmd[0] + ": " + err.String())
+	}
+
+	// run the binary and read its combined stdout and stderr into a buffer
+	p, err := exec.Run(bin, cmd, os.Environ(), "", exec.DevNull, exec.Pipe, exec.MergeWithStdout)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	io.Copy(&buf, p.Stdout)
+	w, err := p.Wait(0)
+	p.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	// set the error return value if the program had a non-zero exit status
+	if !w.Exited() || w.ExitStatus() != 0 {
+		err = os.ErrorString("running " + cmd[0] + ": " + w.String())
+	}
+
+	return buf.Bytes(), err
 }
 
 var frontPage, output *template.Template // HTML templates
@@ -209,8 +235,8 @@ function autoindent(el) {
 	}, 1);
 }
 
-function keyHandler(event) {
-	var e = window.event || event;
+function keyHandler() {
+	var e = window.event;
 	if (e.keyCode == 9) { // tab
 		insertTabs(1);
 		e.preventDefault();
@@ -264,7 +290,7 @@ function compileUpdate() {
 </head>
 <body>
 <table width="100%"><tr><td width="60%" valign="top">
-<textarea autofocus="true" id="edit" spellcheck="false" onkeydown="keyHandler(event);" onkeyup="autocompile();">«@|html»</textarea>
+<textarea autofocus="true" id="edit" spellcheck="false" onkeydown="keyHandler();" onkeyup="autocompile();">«@|html»</textarea>
 <div class="hints">
 (Shift-Enter to compile and run.)&nbsp;&nbsp;&nbsp;&nbsp;
 <input type="checkbox" id="autocompile" value="checked" /> Compile and run after each keystroke

@@ -81,17 +81,17 @@ struct	Obj		/* functions to handle each intermediate (.$O) file */
 
 static Obj	obj[] =
 {			/* functions to identify and parse each type of obj */
-	[Obj68020]   = { "68020 .2",	_is2, _read2 },
-	[ObjAmd64]   = { "amd64 .6",	_is6 , _read6 },
-	[ObjArm]     = { "arm .5",	_is5, _read5 },
-	[ObjAlpha]   = { "alpha .7",	_is7, _read7 },
-	[Obj386]     = { "386 .8",	_is8, _read8 },
-	[ObjSparc]   = { "sparc .k",	_isk, _readk },
-	[ObjPower]   = { "power .q",	_isq, _readq },
-	[ObjMips]    = { "mips .v",	_isv, _readv },
-	[ObjSparc64] = { "sparc64 .u",  _isu, _readu },
-	[ObjPower64] = { "power64 .9",	_is9, _read9 },
-	[Maxobjtype] = { 0, 0, 0 }
+	[Obj68020]	"68020 .2",	_is2, _read2,
+	[ObjAmd64]	"amd64 .6",	_is6, _read6,
+	[ObjArm]	"arm .5",	_is5, _read5,
+	[ObjAlpha]	"alpha .7",	_is7, _read7,
+	[Obj386]	"386 .8",	_is8, _read8,
+	[ObjSparc]	"sparc .k",	_isk, _readk,
+	[ObjPower]	"power .q",	_isq, _readq,
+	[ObjMips]	"mips .v",	_isv, _readv,
+	[ObjSparc64]	"sparc64 .u",	_isu, _readu,
+	[ObjPower64]	"power64 .9",	_is9, _read9,
+	[Maxobjtype]	0, 0
 };
 
 struct	Symtab
@@ -116,24 +116,34 @@ objtype(Biobuf *bp, char **name)
 	int i;
 	char buf[MAXIS];
 	int c;
-	char *p;
+
+Retry:
+	if(Bread(bp, buf, MAXIS) < MAXIS)
+		return -1;
+	Bseek(bp, -MAXIS, 1);
+	for (i = 0; i < Maxobjtype; i++) {
+		if (obj[i].is && (*obj[i].is)(buf)) {
+			if (name)
+				*name = obj[i].name;
+			return i;
+		}
+	}
 
 	/*
-	 * Look for import block.
+	 * Maybe there's an import block we need to skip
 	 */
-	p = Brdline(bp, '\n');
-	if(p == nil)
-		return -1;
-	if(Blinelen(bp) < 10 || strncmp(p, "go object ", 10) != 0)
-		return -1;
-	Bseek(bp, -1, 1);
+	for(i = 0; i < MAXIS; i++) {
+		if(isalpha(buf[i]) || isdigit(buf[i]))
+			continue;
+		if(i == 0 || buf[i] != '\n')
+			return -1;
+		break;
+	}
 
 	/*
 	 * Found one.  Skip until "\n!\n"
 	 */
-	for(;;) {
-		if((c = Bgetc(bp)) == Beof)
-			return -1;
+	while((c = Bgetc(bp)) != Beof) {
 		if(c != '\n')
 			continue;
 		c = Bgetc(bp);
@@ -146,20 +156,8 @@ objtype(Biobuf *bp, char **name)
 			Bungetc(bp);
 			continue;
 		}
-		break;
+		goto Retry;
 	}
-
-	if(Bread(bp, buf, MAXIS) < MAXIS)
-		return -1;
-	Bseek(bp, -MAXIS, 1);
-	for (i = 0; i < Maxobjtype; i++) {
-		if (obj[i].is && (*obj[i].is)(buf)) {
-			if (name)
-				*name = obj[i].name;
-			return i;
-		}
-	}
-
 	return -1;
 }
 
@@ -215,7 +213,7 @@ processprog(Prog *p, int doautos)
 {
 	if(p->kind == aNone)
 		return 1;
-	if((schar)p->sym < 0 || p->sym >= NNAMES)
+	if(p->sym < 0 || p->sym >= NNAMES)
 		return 0;
 	switch(p->kind)
 	{

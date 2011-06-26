@@ -201,10 +201,7 @@ func TestIndexByte(t *testing.T) {
 
 // test a larger buffer with different sizes and alignments
 func TestIndexByteBig(t *testing.T) {
-	var n = 1024
-	if testing.Short() {
-		n = 128
-	}
+	const n = 1024
 	b := make([]byte, n)
 	for i := 0; i < n; i++ {
 		// different start alignments

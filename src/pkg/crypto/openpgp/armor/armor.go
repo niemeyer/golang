@@ -2,15 +2,15 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package armor implements OpenPGP ASCII Armor, see RFC 4880. OpenPGP Armor is
+// This package implements OpenPGP ASCII Armor, see RFC 4880. OpenPGP Armor is
 // very similar to PEM except that it has an additional CRC checksum.
 package armor
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/openpgp/error"
 	"encoding/base64"
+	"encoding/line"
 	"io"
 	"os"
 )
@@ -63,7 +63,7 @@ var armorEndOfLine = []byte("-----")
 // lineReader wraps a line based reader. It watches for the end of an armor
 // block and records the expected CRC value.
 type lineReader struct {
-	in  *bufio.Reader
+	in  *line.Reader
 	buf []byte
 	eof bool
 	crc uint32
@@ -112,7 +112,7 @@ func (l *lineReader) Read(p []byte) (n int, err os.Error) {
 		return 0, os.EOF
 	}
 
-	if len(line) > 64 {
+	if len(line) != 64 {
 		return 0, ArmorCorrupt
 	}
 
@@ -153,10 +153,10 @@ func (r *openpgpReader) Read(p []byte) (n int, err os.Error) {
 
 // Decode reads a PGP armored block from the given Reader. It will ignore
 // leading garbage. If it doesn't find a block, it will return nil, os.EOF. The
-// given Reader is not usable after calling this function: an arbitrary amount
+// given Reader is not usable after calling this function: an arbitary amount
 // of data may have been read past the end of the block.
 func Decode(in io.Reader) (p *Block, err os.Error) {
-	r, _ := bufio.NewReaderSize(in, 100)
+	r := line.NewReader(in, 100)
 	var line []byte
 	ignoreNext := false
 

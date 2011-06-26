@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package twofish implements Bruce Schneier's Twofish encryption algorithm.
+// This package implements Bruce Schneier's Twofish encryption algorithm.
 package twofish
 
 // Twofish is defined in http://www.schneier.com/paper-twofish-paper.pdf [TWOFISH]
@@ -116,7 +116,7 @@ func (c *Cipher) Reset() {
 		c.k[i] = 0
 	}
 	for i := range c.s {
-		for j := 0; j < 256; j++ {
+		for j := 0; j < 265; j++ {
 			c.s[i][j] = 0
 		}
 	}

@@ -21,7 +21,7 @@ type tx struct {
 	x int
 }
 
-var txType = reflect.TypeOf((*tx)(nil)).Elem()
+var txType = reflect.Typeof((*tx)(nil)).(*reflect.PtrType).Elem().(*reflect.StructType)
 
 // A type that can unmarshal itself.
 
@@ -40,11 +40,6 @@ var (
 	umtrue   = unmarshaler{true}
 )
 
-type badTag struct {
-	X string
-	Y string "y"
-	Z string "@#*%(#@"
-}
 
 type unmarshalTest struct {
 	in  string
@@ -64,14 +59,11 @@ var unmarshalTests = []unmarshalTest{
 	{`"g-clef: \uD834\uDD1E"`, new(string), "g-clef: \U0001D11E", nil},
 	{`"invalid: \uD834x\uDD1E"`, new(string), "invalid: \uFFFDx\uFFFD", nil},
 	{"null", new(interface{}), nil, nil},
-	{`{"X": [1,2,3], "Y": 4}`, new(T), T{Y: 4}, &UnmarshalTypeError{"array", reflect.TypeOf("")}},
+	{`{"X": [1,2,3], "Y": 4}`, new(T), T{Y: 4}, &UnmarshalTypeError{"array", reflect.Typeof("")}},
 	{`{"x": 1}`, new(tx), tx{}, &UnmarshalFieldError{"x", txType, txType.Field(0)}},
 
-	// skip invalid tags
-	{`{"X":"a", "y":"b", "Z":"c"}`, new(badTag), badTag{"a", "b", "c"}, nil},
-
 	// syntax errors
-	{`{"X": "foo", "Y"}`, nil, nil, &SyntaxError{"invalid character '}' after object key", 17}},
+	{`{"X": "foo", "Y"}`, nil, nil, SyntaxError("invalid character '}' after object key")},
 
 	// composite tests
 	{allValueIndent, new(All), allValue, nil},
@@ -125,12 +117,12 @@ func TestMarshalBadUTF8(t *testing.T) {
 }
 
 func TestUnmarshal(t *testing.T) {
+	var scan scanner
 	for i, tt := range unmarshalTests {
-		var scan scanner
 		in := []byte(tt.in)
 		if err := checkValid(in, &scan); err != nil {
 			if !reflect.DeepEqual(err, tt.err) {
-				t.Errorf("#%d: checkValid: %#v", i, err)
+				t.Errorf("#%d: checkValid: %v", i, err)
 				continue
 			}
 		}
@@ -138,7 +130,8 @@ func TestUnmarshal(t *testing.T) {
 			continue
 		}
 		// v = new(right-type)
-		v := reflect.New(reflect.TypeOf(tt.ptr).Elem())
+		v := reflect.NewValue(tt.ptr).(*reflect.PtrValue)
+		v.PointTo(reflect.MakeZero(v.Type().(*reflect.PtrType).Elem()))
 		if err := Unmarshal([]byte(in), v.Interface()); !reflect.DeepEqual(err, tt.err) {
 			t.Errorf("#%d: %v want %v", i, err, tt.err)
 			continue
@@ -156,7 +149,6 @@ func TestUnmarshal(t *testing.T) {
 }
 
 func TestUnmarshalMarshal(t *testing.T) {
-	initBig()
 	var v interface{}
 	if err := Unmarshal(jsonBig, &v); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
@@ -169,25 +161,6 @@ func TestUnmarshalMarshal(t *testing.T) {
 		t.Errorf("Marshal jsonBig")
 		diff(t, b, jsonBig)
 		return
-	}
-}
-
-func TestLargeByteSlice(t *testing.T) {
-	s0 := make([]byte, 2000)
-	for i := range s0 {
-		s0[i] = byte(i)
-	}
-	b, err := Marshal(s0)
-	if err != nil {
-		t.Fatalf("Marshal: %v", err)
-	}
-	var s1 []byte
-	if err := Unmarshal(b, &s1); err != nil {
-		t.Fatalf("Unmarshal: %v", err)
-	}
-	if bytes.Compare(s0, s1) != 0 {
-		t.Errorf("Marshal large byte slice")
-		diff(t, s0, s1)
 	}
 }
 
@@ -439,7 +412,11 @@ var allValueIndent = `{
 		"str25",
 		"str26"
 	],
-	"ByteSlice": "Gxwd",
+	"ByteSlice": [
+		27,
+		28,
+		29
+	],
 	"Small": {
 		"Tag": "tag30"
 	},
@@ -525,7 +502,7 @@ var pallValueIndent = `{
 	"EmptySlice": [],
 	"NilSlice": [],
 	"StringSlice": [],
-	"ByteSlice": "",
+	"ByteSlice": [],
 	"Small": {
 		"Tag": ""
 	},

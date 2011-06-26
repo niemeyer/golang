@@ -5,8 +5,6 @@
 package zlib
 
 import (
-	"bytes"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -14,131 +12,95 @@ import (
 )
 
 var filenames = []string{
-	"../testdata/e.txt",
-	"../testdata/pi.txt",
+	"testdata/e.txt",
+	"testdata/pi.txt",
 }
 
-var data = []string{
-	"test a reasonable sized string that can be compressed",
-}
-
-// Tests that compressing and then decompressing the given file at the given compression level and dictionary
+// Tests that compressing and then decompressing the given file at the given compression level
 // yields equivalent bytes to the original file.
-func testFileLevelDict(t *testing.T, fn string, level int, d string) {
+func testFileLevel(t *testing.T, fn string, level int) {
 	// Read the file, as golden output.
-	golden, err := os.Open(fn)
+	golden, err := os.Open(fn, os.O_RDONLY, 0444)
 	if err != nil {
-		t.Errorf("%s (level=%d, dict=%q): %v", fn, level, d, err)
+		t.Errorf("%s (level=%d): %v", fn, level, err)
 		return
 	}
 	defer golden.Close()
-	b0, err0 := ioutil.ReadAll(golden)
-	if err0 != nil {
-		t.Errorf("%s (level=%d, dict=%q): %v", fn, level, d, err0)
+
+	// Read the file again, and push it through a pipe that compresses at the write end, and decompresses at the read end.
+	raw, err := os.Open(fn, os.O_RDONLY, 0444)
+	if err != nil {
+		t.Errorf("%s (level=%d): %v", fn, level, err)
 		return
 	}
-	testLevelDict(t, fn, b0, level, d)
-}
-
-func testLevelDict(t *testing.T, fn string, b0 []byte, level int, d string) {
-	// Make dictionary, if given.
-	var dict []byte
-	if d != "" {
-		dict = []byte(d)
-	}
-
-	// Push data through a pipe that compresses at the write end, and decompresses at the read end.
 	piper, pipew := io.Pipe()
 	defer piper.Close()
 	go func() {
+		defer raw.Close()
 		defer pipew.Close()
-		zlibw, err := NewWriterDict(pipew, level, dict)
+		zlibw, err := NewWriterLevel(pipew, level)
 		if err != nil {
-			t.Errorf("%s (level=%d, dict=%q): %v", fn, level, d, err)
+			t.Errorf("%s (level=%d): %v", fn, level, err)
 			return
 		}
 		defer zlibw.Close()
-		_, err = zlibw.Write(b0)
-		if err == os.EPIPE {
-			// Fail, but do not report the error, as some other (presumably reported) error broke the pipe.
-			return
-		}
-		if err != nil {
-			t.Errorf("%s (level=%d, dict=%q): %v", fn, level, d, err)
-			return
+		var b [1024]byte
+		for {
+			n, err0 := raw.Read(b[0:])
+			if err0 != nil && err0 != os.EOF {
+				t.Errorf("%s (level=%d): %v", fn, level, err0)
+				return
+			}
+			_, err1 := zlibw.Write(b[0:n])
+			if err1 == os.EPIPE {
+				// Fail, but do not report the error, as some other (presumably reportable) error broke the pipe.
+				return
+			}
+			if err1 != nil {
+				t.Errorf("%s (level=%d): %v", fn, level, err1)
+				return
+			}
+			if err0 == os.EOF {
+				break
+			}
 		}
 	}()
-	zlibr, err := NewReaderDict(piper, dict)
+	zlibr, err := NewReader(piper)
 	if err != nil {
-		t.Errorf("%s (level=%d, dict=%q): %v", fn, level, d, err)
+		t.Errorf("%s (level=%d): %v", fn, level, err)
 		return
 	}
 	defer zlibr.Close()
 
-	// Compare the decompressed data.
+	// Compare the two.
+	b0, err0 := ioutil.ReadAll(golden)
 	b1, err1 := ioutil.ReadAll(zlibr)
+	if err0 != nil {
+		t.Errorf("%s (level=%d): %v", fn, level, err0)
+		return
+	}
 	if err1 != nil {
-		t.Errorf("%s (level=%d, dict=%q): %v", fn, level, d, err1)
+		t.Errorf("%s (level=%d): %v", fn, level, err1)
 		return
 	}
 	if len(b0) != len(b1) {
-		t.Errorf("%s (level=%d, dict=%q): length mismatch %d versus %d", fn, level, d, len(b0), len(b1))
+		t.Errorf("%s (level=%d): length mismatch %d versus %d", fn, level, len(b0), len(b1))
 		return
 	}
 	for i := 0; i < len(b0); i++ {
 		if b0[i] != b1[i] {
-			t.Errorf("%s (level=%d, dict=%q): mismatch at %d, 0x%02x versus 0x%02x\n", fn, level, d, i, b0[i], b1[i])
+			t.Errorf("%s (level=%d): mismatch at %d, 0x%02x versus 0x%02x\n", fn, level, i, b0[i], b1[i])
 			return
 		}
 	}
 }
 
 func TestWriter(t *testing.T) {
-	for i, s := range data {
-		b := []byte(s)
-		tag := fmt.Sprintf("#%d", i)
-		testLevelDict(t, tag, b, DefaultCompression, "")
-		testLevelDict(t, tag, b, NoCompression, "")
-		for level := BestSpeed; level <= BestCompression; level++ {
-			testLevelDict(t, tag, b, level, "")
-		}
-	}
-}
-
-func TestWriterBig(t *testing.T) {
 	for _, fn := range filenames {
-		testFileLevelDict(t, fn, DefaultCompression, "")
-		testFileLevelDict(t, fn, NoCompression, "")
+		testFileLevel(t, fn, DefaultCompression)
+		testFileLevel(t, fn, NoCompression)
 		for level := BestSpeed; level <= BestCompression; level++ {
-			testFileLevelDict(t, fn, level, "")
+			testFileLevel(t, fn, level)
 		}
-	}
-}
-
-func TestWriterDict(t *testing.T) {
-	const dictionary = "0123456789."
-	for _, fn := range filenames {
-		testFileLevelDict(t, fn, DefaultCompression, dictionary)
-		testFileLevelDict(t, fn, NoCompression, dictionary)
-		for level := BestSpeed; level <= BestCompression; level++ {
-			testFileLevelDict(t, fn, level, dictionary)
-		}
-	}
-}
-
-func TestWriterDictIsUsed(t *testing.T) {
-	var input = []byte("Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.")
-	buf := bytes.NewBuffer(nil)
-	compressor, err := NewWriterDict(buf, BestCompression, input)
-	if err != nil {
-		t.Errorf("error in NewWriterDict: %s", err)
-		return
-	}
-	compressor.Write(input)
-	compressor.Close()
-	const expectedMaxSize = 25
-	output := buf.Bytes()
-	if len(output) > expectedMaxSize {
-		t.Errorf("result too large (got %d, want <= %d bytes). Is the dictionary being used?", len(output), expectedMaxSize)
 	}
 }

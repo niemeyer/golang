@@ -33,8 +33,6 @@
 #define	EXTERN
 #include "opt.h"
 
-#define	NREGVAR	8
-#define	REGBITS	((uint32)0xff)
 #define	P2R(p)	(Reg*)(p->reg)
 
 static	int	first	= 1;
@@ -116,8 +114,6 @@ setaddrs(Bits bit)
 	}
 }
 
-static char* regname[] = { ".ax", ".cx", ".dx", ".bx", ".sp", ".bp", ".si", ".di" };
-
 void
 regopt(Prog *firstp)
 {
@@ -146,17 +142,7 @@ regopt(Prog *firstp)
 	r1 = R;
 	firstr = R;
 	lastr = R;
-	
-	/*
-	 * control flow is more complicated in generated go code
-	 * than in generated c code.  define pseudo-variables for
-	 * registers, so we have complete register usage information.
-	 */
-	nvar = NREGVAR;
-	memset(var, 0, NREGVAR*sizeof var[0]);
-	for(i=0; i<NREGVAR; i++)
-		var[i].sym = lookup(regname[i]);
-
+	nvar = 0;
 	regbits = RtoB(D_SP);
 	for(z=0; z<BITS; z++) {
 		externs.b[z] = 0;
@@ -263,19 +249,14 @@ regopt(Prog *firstp)
 		/*
 		 * right side write
 		 */
-		case AFSTSW:
-		case ALEAL:
 		case ANOP:
 		case AMOVL:
 		case AMOVB:
 		case AMOVW:
 		case AMOVBLSX:
 		case AMOVBLZX:
-		case AMOVBWSX:
-		case AMOVBWZX:
 		case AMOVWLSX:
 		case AMOVWLZX:
-		case APOPL:
 			for(z=0; z<BITS; z++)
 				r->set.b[z] |= bit.b[z];
 			break;
@@ -340,23 +321,6 @@ regopt(Prog *firstp)
 		case AADCL:
 		case ASBBL:
 
-		case ASETCC:
-		case ASETCS:
-		case ASETEQ:
-		case ASETGE:
-		case ASETGT:
-		case ASETHI:
-		case ASETLE:
-		case ASETLS:
-		case ASETLT:
-		case ASETMI:
-		case ASETNE:
-		case ASETOC:
-		case ASETOS:
-		case ASETPC:
-		case ASETPL:
-		case ASETPS:
-
 		case AXCHGB:
 		case AXCHGW:
 		case AXCHGL:
@@ -385,32 +349,20 @@ regopt(Prog *firstp)
 			if(p->to.type != D_NONE)
 				break;
 
+		case AIDIVB:
 		case AIDIVL:
 		case AIDIVW:
-		case ADIVL:
-		case ADIVW:
-		case AMULL:
-		case AMULW:
-			r->set.b[0] |= RtoB(D_AX) | RtoB(D_DX);
-			r->use1.b[0] |= RtoB(D_AX) | RtoB(D_DX);
-			break;
-
-		case AIDIVB:
 		case AIMULB:
 		case ADIVB:
+		case ADIVL:
+		case ADIVW:
 		case AMULB:
-			r->set.b[0] |= RtoB(D_AX);
-			r->use1.b[0] |= RtoB(D_AX);
-			break;
+		case AMULL:
+		case AMULW:
 
 		case ACWD:
-			r->set.b[0] |= RtoB(D_AX) | RtoB(D_DX);
-			r->use1.b[0] |= RtoB(D_AX);
-			break;
-
 		case ACDQ:
-			r->set.b[0] |= RtoB(D_DX);
-			r->use1.b[0] |= RtoB(D_AX);
+			r->regu |= RtoB(D_AX) | RtoB(D_DX);
 			break;
 
 		case AREP:
@@ -418,8 +370,7 @@ regopt(Prog *firstp)
 		case ALOOP:
 		case ALOOPEQ:
 		case ALOOPNE:
-			r->set.b[0] |= RtoB(D_CX);
-			r->use1.b[0] |= RtoB(D_CX);
+			r->regu |= RtoB(D_CX);
 			break;
 
 		case AMOVSB:
@@ -428,8 +379,7 @@ regopt(Prog *firstp)
 		case ACMPSB:
 		case ACMPSL:
 		case ACMPSW:
-			r->set.b[0] |= RtoB(D_SI) | RtoB(D_DI);
-			r->use1.b[0] |= RtoB(D_SI) | RtoB(D_DI);
+			r->regu |= RtoB(D_SI) | RtoB(D_DI);
 			break;
 
 		case ASTOSB:
@@ -438,22 +388,16 @@ regopt(Prog *firstp)
 		case ASCASB:
 		case ASCASL:
 		case ASCASW:
-			r->set.b[0] |= RtoB(D_DI);
-			r->use1.b[0] |= RtoB(D_AX) | RtoB(D_DI);
+			r->regu |= RtoB(D_AX) | RtoB(D_DI);
 			break;
 
 		case AINSB:
 		case AINSL:
 		case AINSW:
-			r->set.b[0] |= RtoB(D_DX) | RtoB(D_DI);
-			r->use1.b[0] |= RtoB(D_DI);
-			break;
-
 		case AOUTSB:
 		case AOUTSL:
 		case AOUTSW:
-			r->set.b[0] |= RtoB(D_DI);
-			r->use1.b[0] |= RtoB(D_DX) | RtoB(D_DI);
+			r->regu |= RtoB(D_DI) | RtoB(D_DX);
 			break;
 		}
 	}
@@ -558,24 +502,6 @@ loop2:
 
 	if(debug['R'] && debug['v'])
 		dumpit("pass4", firstr);
-
-	/*
-	 * pass 4.5
-	 * move register pseudo-variables into regu.
-	 */
-	for(r = firstr; r != R; r = r->link) {
-		r->regu = (r->refbehind.b[0] | r->set.b[0]) & REGBITS;
-
-		r->set.b[0] &= ~REGBITS;
-		r->use1.b[0] &= ~REGBITS;
-		r->use2.b[0] &= ~REGBITS;
-		r->refbehind.b[0] &= ~REGBITS;
-		r->refahead.b[0] &= ~REGBITS;
-		r->calbehind.b[0] &= ~REGBITS;
-		r->calahead.b[0] &= ~REGBITS;
-		r->regdiff.b[0] &= ~REGBITS;
-		r->act.b[0] &= ~REGBITS;
-	}
 
 	/*
 	 * pass 5
@@ -730,7 +656,6 @@ addmove(Reg *r, int bn, int rn, int f)
 	a->etype = v->etype;
 	a->type = v->name;
 	a->gotype = v->gotype;
-	a->node = v->node;
 
 	// need to clean this up with wptr and
 	// some of the defaults
@@ -807,7 +732,7 @@ Bits
 mkvar(Reg *r, Adr *a)
 {
 	Var *v;
-	int i, t, n, et, z, w, flag, regu;
+	int i, t, n, et, z, w, flag;
 	int32 o;
 	Bits bit;
 	Sym *s;
@@ -819,17 +744,14 @@ mkvar(Reg *r, Adr *a)
 	if(t == D_NONE)
 		goto none;
 
-	if(r != R)
-		r->use1.b[0] |= doregbits(a->index);
+	if(r != R) {
+		r->regu |= doregbits(t);
+		r->regu |= doregbits(a->index);
+	}
 
 	switch(t) {
 	default:
-		regu = doregbits(t);
-		if(regu == 0)
-			goto none;
-		bit = zbits;
-		bit.b[0] = regu;
-		return bit;
+		goto none;
 
 	case D_ADDR:
 		a->type = a->index;
@@ -899,7 +821,6 @@ mkvar(Reg *r, Adr *a)
 	v->etype = et;
 	v->width = w;
 	v->addr = flag;		// funny punning
-	v->node = a->node;
 
 	if(debug['R'])
 		print("bit=%2d et=%2d w=%d %S %D flag=%d\n", i, et, w, s, a, v->addr);
@@ -1533,7 +1454,6 @@ noreturn(Prog *p)
 		symlist[1] = pkglookup("panicslice", runtimepkg);
 		symlist[2] = pkglookup("throwinit", runtimepkg);
 		symlist[3] = pkglookup("panic", runtimepkg);
-		symlist[4] = pkglookup("panicwrap", runtimepkg);
 	}
 
 	s = p->to.sym;

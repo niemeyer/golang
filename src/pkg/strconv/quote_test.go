@@ -11,66 +11,24 @@ import (
 )
 
 type quoteTest struct {
-	in    string
-	out   string
-	ascii string
+	in  string
+	out string
 }
 
 var quotetests = []quoteTest{
-	{"\a\b\f\r\n\t\v", `"\a\b\f\r\n\t\v"`, `"\a\b\f\r\n\t\v"`},
-	{"\\", `"\\"`, `"\\"`},
-	{"abc\xffdef", `"abc\xffdef"`, `"abc\xffdef"`},
-	{"\u263a", `"☺"`, `"\u263a"`},
-	{"\U0010ffff", `"\U0010ffff"`, `"\U0010ffff"`},
-	{"\x04", `"\x04"`, `"\x04"`},
+	{"\a\b\f\r\n\t\v", `"\a\b\f\r\n\t\v"`},
+	{"\\", `"\\"`},
+	{"abc\xffdef", `"abc\xffdef"`},
+	{"\u263a", `"\u263a"`},
+	{"\U0010ffff", `"\U0010ffff"`},
+	{"\x04", `"\x04"`},
 }
 
 func TestQuote(t *testing.T) {
-	for _, tt := range quotetests {
+	for i := 0; i < len(quotetests); i++ {
+		tt := quotetests[i]
 		if out := Quote(tt.in); out != tt.out {
 			t.Errorf("Quote(%s) = %s, want %s", tt.in, out, tt.out)
-		}
-	}
-}
-
-func TestQuoteToASCII(t *testing.T) {
-	for _, tt := range quotetests {
-		if out := QuoteToASCII(tt.in); out != tt.ascii {
-			t.Errorf("QuoteToASCII(%s) = %s, want %s", tt.in, out, tt.ascii)
-		}
-	}
-}
-
-type quoteRuneTest struct {
-	in    int
-	out   string
-	ascii string
-}
-
-var quoterunetests = []quoteRuneTest{
-	{'a', `'a'`, `'a'`},
-	{'\a', `'\a'`, `'\a'`},
-	{'\\', `'\\'`, `'\\'`},
-	{0xFF, `'ÿ'`, `'\u00ff'`},
-	{0x263a, `'☺'`, `'\u263a'`},
-	{0xfffd, `'�'`, `'\ufffd'`},
-	{0x0010ffff, `'\U0010ffff'`, `'\U0010ffff'`},
-	{0x0010ffff + 1, `'�'`, `'\ufffd'`},
-	{0x04, `'\x04'`, `'\x04'`},
-}
-
-func TestQuoteRune(t *testing.T) {
-	for _, tt := range quoterunetests {
-		if out := QuoteRune(tt.in); out != tt.out {
-			t.Errorf("QuoteRune(%U) = %s, want %s", tt.in, out, tt.out)
-		}
-	}
-}
-
-func TestQuoteRuneToASCII(t *testing.T) {
-	for _, tt := range quoterunetests {
-		if out := QuoteRuneToASCII(tt.in); out != tt.ascii {
-			t.Errorf("QuoteRuneToASCII(%U) = %s, want %s", tt.in, out, tt.ascii)
 		}
 	}
 }
@@ -122,19 +80,15 @@ var canbackquotetests = []canBackquoteTest{
 }
 
 func TestCanBackquote(t *testing.T) {
-	for _, tt := range canbackquotetests {
+	for i := 0; i < len(canbackquotetests); i++ {
+		tt := canbackquotetests[i]
 		if out := CanBackquote(tt.in); out != tt.out {
 			t.Errorf("CanBackquote(%q) = %v, want %v", tt.in, out, tt.out)
 		}
 	}
 }
 
-type unQuoteTest struct {
-	in  string
-	out string
-}
-
-var unquotetests = []unQuoteTest{
+var unquotetests = []quoteTest{
 	{`""`, ""},
 	{`"a"`, "a"},
 	{`"abc"`, "abc"},
@@ -192,20 +146,23 @@ var misquoted = []string{
 }
 
 func TestUnquote(t *testing.T) {
-	for _, tt := range unquotetests {
+	for i := 0; i < len(unquotetests); i++ {
+		tt := unquotetests[i]
 		if out, err := Unquote(tt.in); err != nil && out != tt.out {
 			t.Errorf("Unquote(%#q) = %q, %v want %q, nil", tt.in, out, err, tt.out)
 		}
 	}
 
 	// run the quote tests too, backward
-	for _, tt := range quotetests {
+	for i := 0; i < len(quotetests); i++ {
+		tt := quotetests[i]
 		if in, err := Unquote(tt.out); in != tt.in {
 			t.Errorf("Unquote(%#q) = %q, %v, want %q, nil", tt.out, in, err, tt.in)
 		}
 	}
 
-	for _, s := range misquoted {
+	for i := 0; i < len(misquoted); i++ {
+		s := misquoted[i]
 		if out, err := Unquote(s); out != "" || err != os.EINVAL {
 			t.Errorf("Unquote(%#q) = %q, %v want %q, %v", s, out, err, "", os.EINVAL)
 		}

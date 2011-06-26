@@ -2,8 +2,33 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package time provides functionality for measuring and displaying time.
+// The time package provides functionality for measuring and
+// displaying time.
 package time
+
+import (
+	"os"
+)
+
+// Seconds reports the number of seconds since the Unix epoch,
+// January 1, 1970 00:00:00 UTC.
+func Seconds() int64 {
+	sec, _, err := os.Time()
+	if err != nil {
+		panic(err)
+	}
+	return sec
+}
+
+// Nanoseconds reports the number of nanoseconds since the Unix epoch,
+// January 1, 1970 00:00:00 UTC.
+func Nanoseconds() int64 {
+	sec, nsec, err := os.Time()
+	if err != nil {
+		panic(err)
+	}
+	return sec*1e9 + nsec
+}
 
 // Days of the week.
 const (
@@ -22,7 +47,7 @@ type Time struct {
 	Month, Day           int    // Jan-2 is 1, 2
 	Hour, Minute, Second int    // 15:04:05 is 15, 4, 5.
 	Weekday              int    // Sunday, Monday, ...
-	ZoneOffset           int    // seconds east of UTC, e.g. -7*60*60 for -0700
+	ZoneOffset           int    // seconds east of UTC, e.g. -7*60 for -0700
 	Zone                 string // e.g., "MST"
 }
 

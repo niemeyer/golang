@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package websocket implements a client and server for the Web Socket protocol.
+// The websocket package implements a client and server for the Web Socket protocol.
 // The protocol is defined at http://tools.ietf.org/html/draft-hixie-thewebsocketprotocol
 package websocket
 
@@ -13,7 +13,6 @@ import (
 	"bufio"
 	"crypto/md5"
 	"encoding/binary"
-	"http"
 	"io"
 	"net"
 	"os"
@@ -44,8 +43,6 @@ type Conn struct {
 	Location string
 	// The subprotocol for the Web Socket.
 	Protocol string
-	// The initial http Request (for the Server side only).
-	Request *http.Request
 
 	buf *bufio.ReadWriter
 	rwc io.ReadWriteCloser
@@ -158,7 +155,7 @@ func (ws *Conn) SetReadTimeout(nsec int64) os.Error {
 	return os.EINVAL
 }
 
-// SetWriteTimeout sets the connection's network write timeout in nanoseconds.
+// SetWritetTimeout sets the connection's network write timeout in nanoseconds.
 func (ws *Conn) SetWriteTimeout(nsec int64) os.Error {
 	if conn, ok := ws.rwc.(net.Conn); ok {
 		return conn.SetWriteTimeout(nsec)

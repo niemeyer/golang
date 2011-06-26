@@ -272,19 +272,9 @@ func (t *Time) Format(layout string) string {
 		case stdHour:
 			p = zeroPad(t.Hour)
 		case stdHour12:
-			// Noon is 12PM, midnight is 12AM.
-			hr := t.Hour % 12
-			if hr == 0 {
-				hr = 12
-			}
-			p = strconv.Itoa(hr)
+			p = strconv.Itoa(t.Hour % 12)
 		case stdZeroHour12:
-			// Noon is 12PM, midnight is 12AM.
-			hr := t.Hour % 12
-			if hr == 0 {
-				hr = 12
-			}
-			p = zeroPad(hr)
+			p = zeroPad(t.Hour % 12)
 		case stdMinute:
 			p = strconv.Itoa(t.Minute)
 		case stdZeroMinute:
@@ -355,7 +345,7 @@ func (t *Time) String() string {
 	return t.Format(UnixDate)
 }
 
-var errBad = os.NewError("bad") // just a marker; not returned to user
+var errBad = os.ErrorString("bad") // just a marker; not returned to user
 
 // ParseError describes a problem parsing a time string.
 type ParseError struct {
@@ -439,7 +429,6 @@ func skip(value, prefix string) (string, os.Error) {
 func Parse(alayout, avalue string) (*Time, os.Error) {
 	var t Time
 	rangeErrString := "" // set if a value is out of range
-	amSet := false       // do we need to subtract 12 from the hour for midnight?
 	pmSet := false       // do we need to add 12 to the hour?
 	layout, value := alayout, avalue
 	// Each iteration processes one std value.
@@ -569,12 +558,9 @@ func Parse(alayout, avalue string) (*Time, os.Error) {
 				break
 			}
 			p, value = value[0:2], value[2:]
-			switch p {
-			case "PM":
+			if p == "PM" {
 				pmSet = true
-			case "AM":
-				amSet = true
-			default:
+			} else if p != "AM" {
 				err = errBad
 			}
 		case stdpm:
@@ -583,12 +569,9 @@ func Parse(alayout, avalue string) (*Time, os.Error) {
 				break
 			}
 			p, value = value[0:2], value[2:]
-			switch p {
-			case "pm":
+			if p == "pm" {
 				pmSet = true
-			case "am":
-				amSet = true
-			default:
+			} else if p != "am" {
 				err = errBad
 			}
 		case stdTZ:
@@ -630,8 +613,6 @@ func Parse(alayout, avalue string) (*Time, os.Error) {
 	}
 	if pmSet && t.Hour < 12 {
 		t.Hour += 12
-	} else if amSet && t.Hour == 12 {
-		t.Hour = 0
 	}
 	return &t, nil
 }

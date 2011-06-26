@@ -2,17 +2,20 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package s2k implements the various OpenPGP string-to-key transforms as
+// This package implements the various OpenPGP string-to-key transforms as
 // specified in RFC 4800 section 3.7.1.
 package s2k
 
 import (
-	"crypto"
+	"crypto/md5"
 	"crypto/openpgp/error"
+	"crypto/ripemd160"
+	"crypto/sha1"
+	"crypto/sha256"
+	"crypto/sha512"
 	"hash"
 	"io"
 	"os"
-	"strconv"
 )
 
 // Simple writes to out the result of computing the Simple S2K function (RFC
@@ -84,13 +87,9 @@ func Parse(r io.Reader) (f func(out, in []byte), err os.Error) {
 		return
 	}
 
-	hash, ok := HashIdToHash(buf[1])
-	if !ok {
-		return nil, error.UnsupportedError("hash for S2K function: " + strconv.Itoa(int(buf[1])))
-	}
-	h := hash.New()
+	h := hashFuncFromType(buf[1])
 	if h == nil {
-		return nil, error.UnsupportedError("hash not available: " + strconv.Itoa(int(hash)))
+		return nil, error.UnsupportedError("hash for S2K function")
 	}
 
 	switch buf[0] {
@@ -123,58 +122,25 @@ func Parse(r io.Reader) (f func(out, in []byte), err os.Error) {
 	return nil, error.UnsupportedError("S2K function")
 }
 
-// Serialize salts and stretches the given passphrase and writes the resulting
-// key into key. It also serializes an S2K descriptor to w.
-func Serialize(w io.Writer, key []byte, rand io.Reader, passphrase []byte) os.Error {
-	var buf [11]byte
-	buf[0] = 3 /* iterated and salted */
-	buf[1], _ = HashToHashId(crypto.SHA1)
-	salt := buf[2:10]
-	if _, err := io.ReadFull(rand, salt); err != nil {
-		return err
-	}
-	const count = 65536 // this is the default in gpg
-	buf[10] = 96        // 65536 iterations
-	if _, err := w.Write(buf[:]); err != nil {
-		return err
+// hashFuncFromType returns a hash.Hash which corresponds to the given hash
+// type byte. See RFC 4880, section 9.4.
+func hashFuncFromType(hashType byte) hash.Hash {
+	switch hashType {
+	case 1:
+		return md5.New()
+	case 2:
+		return sha1.New()
+	case 3:
+		return ripemd160.New()
+	case 8:
+		return sha256.New()
+	case 9:
+		return sha512.New384()
+	case 10:
+		return sha512.New()
+	case 11:
+		return sha256.New224()
 	}
 
-	Iterated(key, crypto.SHA1.New(), passphrase, salt, count)
 	return nil
-}
-
-// hashToHashIdMapping contains pairs relating OpenPGP's hash identifier with
-// Go's crypto.Hash type. See RFC 4880, section 9.4.
-var hashToHashIdMapping = []struct {
-	id   byte
-	hash crypto.Hash
-}{
-	{1, crypto.MD5},
-	{2, crypto.SHA1},
-	{3, crypto.RIPEMD160},
-	{8, crypto.SHA256},
-	{9, crypto.SHA384},
-	{10, crypto.SHA512},
-	{11, crypto.SHA224},
-}
-
-// HashIdToHash returns a crypto.Hash which corresponds to the given OpenPGP
-// hash id.
-func HashIdToHash(id byte) (h crypto.Hash, ok bool) {
-	for _, m := range hashToHashIdMapping {
-		if m.id == id {
-			return m.hash, true
-		}
-	}
-	return 0, false
-}
-
-// HashIdToHash returns an OpenPGP hash id which corresponds the given Hash.
-func HashToHashId(h crypto.Hash) (id byte, ok bool) {
-	for _, m := range hashToHashIdMapping {
-		if m.hash == h {
-			return m.id, true
-		}
-	}
-	return 0, false
 }

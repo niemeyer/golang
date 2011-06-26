@@ -4,55 +4,46 @@
 
 #include "runtime.h"
 #include "malloc.h"
-#include "os.h"
 
 extern byte end[];
 static byte *bloc = { end };
 
 enum
 {
-	Round = 4095
+	Round = 7
 };
 
 void*
-runtime·SysAlloc(uintptr nbytes)
+runtime·SysAlloc(uintptr ask)
 {
 	uintptr bl;
 	
 	// Plan 9 sbrk from /sys/src/libc/9sys/sbrk.c
 	bl = ((uintptr)bloc + Round) & ~Round;
-	if(runtime·brk_((void*)(bl + nbytes)) < 0)
+	if(runtime·brk_((void*)(bl + ask)) < 0)
 		return (void*)-1;
-	bloc = (byte*)bl + nbytes;
+	bloc = (byte*)bl + ask;
 	return (void*)bl;
 }
 
 void
-runtime·SysFree(void *v, uintptr nbytes)
+runtime·SysFree(void *v, uintptr n)
 {
 	// from tiny/mem.c
 	// Push pointer back if this is a free
 	// of the most recent SysAlloc.
-	nbytes += (nbytes + Round) & ~Round;
-	if(bloc == (byte*)v+nbytes)
-		bloc -= nbytes;	
+	n += (n + Round) & ~Round;
+	if(bloc == (byte*)v+n)
+		bloc -= n;	
 }
 
 void
-runtime·SysUnused(void *v, uintptr nbytes)
+runtime·SysUnused(void *v, uintptr n)
 {
-	USED(v, nbytes);
+	USED(v, n);
 }
 
 void
-runtime·SysMap(void *v, uintptr nbytes)
+runtime·SysMemInit(void)
 {
-	USED(v, nbytes);
-}
-
-void*
-runtime·SysReserve(void *v, uintptr nbytes)
-{
-	USED(v);
-	return runtime·SysAlloc(nbytes);
 }

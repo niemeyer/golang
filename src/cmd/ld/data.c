@@ -241,7 +241,7 @@ dynrelocsym(Sym *s)
 {
 	Reloc *r;
 	
-	if(HEADTYPE == Hwindows) {
+	if(thechar == '8' && HEADTYPE == 10) { // Windows PE
 		Sym *rel, *targ;
 		
 		rel = lookup(".rel", 0);
@@ -249,7 +249,7 @@ dynrelocsym(Sym *s)
 			return;
 		for(r=s->r; r<s->r+s->nr; r++) {
 			targ = r->sym;
-			if(r->sym->plt == -2 && r->sym->got != -2) { // make dynimport JMP table for PE object files.
+			if(r->sym->plt == -2) { // make dynimport JMP table for PE object files.
 				targ->plt = rel->size;
 				r->sym = rel;
 				r->add = targ->plt;
@@ -278,10 +278,6 @@ dynreloc(void)
 {
 	Sym *s;
 	
-	// -d supresses dynamic loader format, so we may as well not
-	// compute these sections or mark their symbols as reachable.
-	if(debug['d'] && HEADTYPE != Hwindows)
-		return;
 	if(debug['v'])
 		Bprint(&bso, "%5.2f reloc\n", cputime());
 	Bflush(&bso);
@@ -316,7 +312,7 @@ symgrow(Sym *s, int32 siz)
 }
 
 void
-savedata(Sym *s, Prog *p, char *pn)
+savedata(Sym *s, Prog *p)
 {
 	int32 off, siz, i, fl;
 	uchar *cast;
@@ -325,10 +321,8 @@ savedata(Sym *s, Prog *p, char *pn)
 
 	off = p->from.offset;
 	siz = p->datasize;
-	if(off < 0 || siz < 0 || off >= 1<<30 || siz >= 100)
-		mangle(pn);
 	symgrow(s, off+siz);
-
+	
 	switch(p->to.type) {
 	default:
 		diag("bad data: %P", p);
@@ -486,13 +480,13 @@ codeblk(int32 addr, int32 size)
 			q = sym->p;
 			
 			while(n >= 16) {
-				Bprint(&bso, "%.6ux\t%-20.16I\n", addr, q);
+				Bprint(&bso, "%.6ux\t%-20.16I\n",  addr, q);
 				addr += 16;
 				q += 16;
 				n -= 16;
 			}
 			if(n > 0)
-				Bprint(&bso, "%.6ux\t%-20.*I\n", addr, (int)n, q);
+				Bprint(&bso, "%.6ux\t%-20.*I\n", addr, n, q);
 			addr += n;
 			continue;
 		}
@@ -506,7 +500,7 @@ codeblk(int32 addr, int32 size)
 			Bprint(&bso, "%.6ux\t", p->pc);
 			q = sym->p + p->pc - sym->value;
 			n = epc - p->pc;
-			Bprint(&bso, "%-20.*I | %P\n", (int)n, q, p);
+			Bprint(&bso, "%-20.*I | %P\n", n, q, p);
 			addr += n;
 		}
 	}
@@ -547,7 +541,7 @@ datblk(int32 addr, int32 size)
 			Bprint(&bso, "%-20s %.8ux| 00 ...\n", "(pre-pad)", addr);
 			addr = sym->value;
 		}
-		Bprint(&bso, "%-20s %.8ux|", sym->name, (uint)addr);
+		Bprint(&bso, "%-20s %.8ux|", sym->name, addr);
 		p = sym->p;
 		ep = p + sym->np;
 		while(p < ep)
@@ -559,8 +553,8 @@ datblk(int32 addr, int32 size)
 	}
 
 	if(addr < eaddr)
-		Bprint(&bso, "%-20s %.8ux| 00 ...\n", "(post-pad)", (uint)addr);
-	Bprint(&bso, "%-20s %.8ux|\n", "", (uint)eaddr);
+		Bprint(&bso, "%-20s %.8ux| 00 ...\n", "(post-pad)", addr);
+	Bprint(&bso, "%-20s %.8ux|\n", "", eaddr);
 }
 
 void
@@ -728,7 +722,7 @@ addsize(Sym *s, Sym *t)
 void
 dodata(void)
 {
-	int32 t, datsize;
+	int32 h, t, datsize;
 	Section *sect;
 	Sym *s, *last, **l;
 
@@ -738,22 +732,23 @@ dodata(void)
 
 	last = nil;
 	datap = nil;
-
-	for(s=allsym; s!=S; s=s->allsym) {
-		if(!s->reachable || s->special)
-			continue;
-		if(STEXT < s->type && s->type < SXREF) {
-			if(last == nil)
-				datap = s;
-			else
-				last->next = s;
-			s->next = nil;
-			last = s;
+	for(h=0; h<NHASH; h++) {
+		for(s=hash[h]; s!=S; s=s->hash){
+			if(!s->reachable || s->special)
+				continue;
+			if(STEXT < s->type && s->type < SXREF) {
+				if(last == nil)
+					datap = s;
+				else
+					last->next = s;
+				s->next = nil;
+				last = s;
+			}
 		}
 	}
 
 	for(s = datap; s != nil; s = s->next) {
-		if(s->np > 0 && s->type == SBSS)
+		if(s->np > 0 && s->type == SBSS)	// TODO: necessary?
 			s->type = SDATA;
 		if(s->np > s->size)
 			diag("%s: initialize bounds (%lld < %d)",
@@ -785,13 +780,14 @@ dodata(void)
 	 */
 
 	/* read-only data */
-	sect = addsection(&segtext, ".rodata", 04);
+	sect = addsection(&segtext, ".rodata", 06);
 	sect->vaddr = 0;
 	datsize = 0;
 	s = datap;
 	for(; s != nil && s->type < SDATA; s = s->next) {
 		s->type = SRODATA;
-		t = rnd(s->size, PtrSize);
+		t = rnd(s->size, 4);
+		s->size = t;
 		s->value = datsize;
 		datsize += t;
 	}
@@ -808,13 +804,9 @@ dodata(void)
 			diag("%s: no size", s->name);
 			t = 1;
 		}
-		if(t >= PtrSize)
-			t = rnd(t, PtrSize);
-		else if(t > 2)
-			t = rnd(t, 4);
-		if(t & 1) {
+		if(t & 1)
 			;
-		} else if(t & 2)
+		else if(t & 2)
 			datsize = rnd(datsize, 2);
 		else if(t & 4)
 			datsize = rnd(datsize, 4);
@@ -834,18 +826,15 @@ dodata(void)
 			diag("unexpected symbol type %d", s->type);
 		}
 		t = s->size;
-		if(t >= PtrSize)
-			t = rnd(t, PtrSize);
-		else if(t > 2)
-			t = rnd(t, 4);
-		if(t & 1) {
+		if(t & 1)
 			;
-		} else if(t & 2)
+		else if(t & 2)
 			datsize = rnd(datsize, 2);
 		else if(t & 4)
 			datsize = rnd(datsize, 4);
 		else
 			datsize = rnd(datsize, 8);
+		s->size = t;
 		s->value = datsize;
 		datsize += t;
 	}
@@ -890,7 +879,7 @@ textaddress(void)
 void
 address(void)
 {
-	Section *s, *text, *data, *rodata;
+	Section *s, *text, *data, *rodata, *bss;
 	Sym *sym, *sub;
 	uvlong va;
 
@@ -909,10 +898,12 @@ address(void)
 	segdata.rwx = 06;
 	segdata.vaddr = va;
 	segdata.fileoff = va - segtext.vaddr + segtext.fileoff;
-	if(HEADTYPE == Hwindows)
+	if((thechar == '6' || thechar == '8') && HEADTYPE == 10)	// Windows PE
 		segdata.fileoff = segtext.fileoff + rnd(segtext.len, PEFILEALIGN);
-	if(HEADTYPE == Hplan9x32)
+	if(thechar == '8' && HEADTYPE == 2) {	// Plan 9		
+		segdata.vaddr = va = rnd(va, 4096);
 		segdata.fileoff = segtext.fileoff + segtext.filelen;
+	}
 	for(s=segdata.sect; s != nil; s=s->next) {
 		s->vaddr = va;
 		va += s->len;
@@ -923,6 +914,7 @@ address(void)
 	text = segtext.sect;
 	rodata = segtext.sect->next;
 	data = segdata.sect;
+	bss = segdata.sect->next;
 
 	for(sym = datap; sym != nil; sym = sym->next) {
 		cursym = sym;

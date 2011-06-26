@@ -61,9 +61,6 @@ enum {
 	BUS_OBJERR = 0x3,
 	SEGV_MAPERR = 0x1,
 	SEGV_ACCERR = 0x2,
-	ITIMER_REAL = 0,
-	ITIMER_VIRTUAL = 0x1,
-	ITIMER_PROF = 0x2,
 };
 
 // Types
@@ -86,7 +83,7 @@ struct ThrParam {
 	int64 *child_tid;
 	int64 *parent_tid;
 	int32 flags;
-	byte pad_godefs_0[4];
+	byte pad0[4];
 	Rtprio *rtp;
 	void* spare[3];
 };
@@ -96,7 +93,7 @@ struct Sigaltstack {
 	int8 *ss_sp;
 	uint64 ss_size;
 	int32 ss_flags;
-	byte pad_godefs_0[4];
+	byte pad0[4];
 };
 
 typedef struct Sigset Sigset;
@@ -117,7 +114,7 @@ struct StackT {
 	int8 *ss_sp;
 	uint64 ss_size;
 	int32 ss_flags;
-	byte pad_godefs_0[4];
+	byte pad0[4];
 };
 
 typedef struct Siginfo Siginfo;
@@ -181,18 +178,6 @@ struct Ucontext {
 	StackT uc_stack;
 	int32 uc_flags;
 	int32 __spare__[4];
-	byte pad_godefs_0[12];
-};
-
-typedef struct Timeval Timeval;
-struct Timeval {
-	int64 tv_sec;
-	int64 tv_usec;
-};
-
-typedef struct Itimerval Itimerval;
-struct Itimerval {
-	Timeval it_interval;
-	Timeval it_value;
+	byte pad0[12];
 };
 #pragma pack off

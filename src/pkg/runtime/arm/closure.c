@@ -43,7 +43,7 @@ vars:		WORD	arg0
 		WORD	arg2
 */
 
-extern void runtime·cacheflush(byte* start, byte* end);
+extern void cacheflush(byte* start, byte* end);
 
 #pragma textflag 7
 void

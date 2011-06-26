@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
-	"gob"
 	"testing"
 	"testing/quick"
 )
@@ -343,98 +342,6 @@ func TestSetString(t *testing.T) {
 		}
 		if n2.Cmp(expected) != 0 {
 			t.Errorf("#%d (input '%s') got: %s want: %d", i, test.in, n2, test.val)
-		}
-	}
-}
-
-
-var formatTests = []struct {
-	input  string
-	format string
-	output string
-}{
-	{"<nil>", "%x", "<nil>"},
-	{"<nil>", "%#x", "<nil>"},
-	{"<nil>", "%#y", "%!y(big.Int=<nil>)"},
-
-	{"10", "%b", "1010"},
-	{"10", "%o", "12"},
-	{"10", "%d", "10"},
-	{"10", "%v", "10"},
-	{"10", "%x", "a"},
-	{"10", "%X", "A"},
-	{"-10", "%X", "-A"},
-	{"10", "%y", "%!y(big.Int=10)"},
-	{"-10", "%y", "%!y(big.Int=-10)"},
-
-	{"10", "%#b", "1010"},
-	{"10", "%#o", "012"},
-	{"10", "%#d", "10"},
-	{"10", "%#v", "10"},
-	{"10", "%#x", "0xa"},
-	{"10", "%#X", "0XA"},
-	{"-10", "%#X", "-0XA"},
-	{"10", "%#y", "%!y(big.Int=10)"},
-	{"-10", "%#y", "%!y(big.Int=-10)"},
-}
-
-
-func TestFormat(t *testing.T) {
-	for i, test := range formatTests {
-		var x *Int
-		if test.input != "<nil>" {
-			var ok bool
-			x, ok = new(Int).SetString(test.input, 0)
-			if !ok {
-				t.Errorf("#%d failed reading input %s", i, test.input)
-			}
-		}
-		output := fmt.Sprintf(test.format, x)
-		if output != test.output {
-			t.Errorf("#%d got %s; want %s", i, output, test.output)
-		}
-	}
-}
-
-
-var scanTests = []struct {
-	input     string
-	format    string
-	output    string
-	remaining int
-}{
-	{"1010", "%b", "10", 0},
-	{"0b1010", "%v", "10", 0},
-	{"12", "%o", "10", 0},
-	{"012", "%v", "10", 0},
-	{"10", "%d", "10", 0},
-	{"10", "%v", "10", 0},
-	{"a", "%x", "10", 0},
-	{"0xa", "%v", "10", 0},
-	{"A", "%X", "10", 0},
-	{"-A", "%X", "-10", 0},
-	{"+0b1011001", "%v", "89", 0},
-	{"0xA", "%v", "10", 0},
-	{"0 ", "%v", "0", 1},
-	{"2+3", "%v", "2", 2},
-	{"0XABC 12", "%v", "2748", 3},
-}
-
-
-func TestScan(t *testing.T) {
-	var buf bytes.Buffer
-	for i, test := range scanTests {
-		x := new(Int)
-		buf.Reset()
-		buf.WriteString(test.input)
-		if _, err := fmt.Fscanf(&buf, test.format, x); err != nil {
-			t.Errorf("#%d error: %s", i, err.String())
-		}
-		if x.String() != test.output {
-			t.Errorf("#%d got %s; want %s", i, x.String(), test.output)
-		}
-		if buf.Len() != test.remaining {
-			t.Errorf("#%d got %d bytes remaining; want %d", i, buf.Len(), test.remaining)
 		}
 	}
 }
@@ -808,24 +715,17 @@ var composites = []string{
 
 
 func TestProbablyPrime(t *testing.T) {
-	nreps := 20
-	if testing.Short() {
-		nreps = 1
-	}
 	for i, s := range primes {
 		p, _ := new(Int).SetString(s, 10)
-		if !ProbablyPrime(p, nreps) {
+		if !ProbablyPrime(p, 20) {
 			t.Errorf("#%d prime found to be non-prime (%s)", i, s)
 		}
 	}
 
 	for i, s := range composites {
 		c, _ := new(Int).SetString(s, 10)
-		if ProbablyPrime(c, nreps) {
+		if ProbablyPrime(c, 20) {
 			t.Errorf("#%d composite found to be prime (%s)", i, s)
-		}
-		if testing.Short() {
-			break
 		}
 	}
 }
@@ -1077,152 +977,6 @@ func testBitFunSelf(t *testing.T, msg string, f bitFun, x, y *Int, exp string) {
 }
 
 
-func altBit(x *Int, i int) uint {
-	z := new(Int).Rsh(x, uint(i))
-	z = z.And(z, NewInt(1))
-	if z.Cmp(new(Int)) != 0 {
-		return 1
-	}
-	return 0
-}
-
-
-func altSetBit(z *Int, x *Int, i int, b uint) *Int {
-	one := NewInt(1)
-	m := one.Lsh(one, uint(i))
-	switch b {
-	case 1:
-		return z.Or(x, m)
-	case 0:
-		return z.AndNot(x, m)
-	}
-	panic("set bit is not 0 or 1")
-}
-
-
-func testBitset(t *testing.T, x *Int) {
-	n := x.BitLen()
-	z := new(Int).Set(x)
-	z1 := new(Int).Set(x)
-	for i := 0; i < n+10; i++ {
-		old := z.Bit(i)
-		old1 := altBit(z1, i)
-		if old != old1 {
-			t.Errorf("bitset: inconsistent value for Bit(%s, %d), got %v want %v", z1, i, old, old1)
-		}
-		z := new(Int).SetBit(z, i, 1)
-		z1 := altSetBit(new(Int), z1, i, 1)
-		if z.Bit(i) == 0 {
-			t.Errorf("bitset: bit %d of %s got 0 want 1", i, x)
-		}
-		if z.Cmp(z1) != 0 {
-			t.Errorf("bitset: inconsistent value after SetBit 1, got %s want %s", z, z1)
-		}
-		z.SetBit(z, i, 0)
-		altSetBit(z1, z1, i, 0)
-		if z.Bit(i) != 0 {
-			t.Errorf("bitset: bit %d of %s got 1 want 0", i, x)
-		}
-		if z.Cmp(z1) != 0 {
-			t.Errorf("bitset: inconsistent value after SetBit 0, got %s want %s", z, z1)
-		}
-		altSetBit(z1, z1, i, old)
-		z.SetBit(z, i, old)
-		if z.Cmp(z1) != 0 {
-			t.Errorf("bitset: inconsistent value after SetBit old, got %s want %s", z, z1)
-		}
-	}
-	if z.Cmp(x) != 0 {
-		t.Errorf("bitset: got %s want %s", z, x)
-	}
-}
-
-
-var bitsetTests = []struct {
-	x string
-	i int
-	b uint
-}{
-	{"0", 0, 0},
-	{"0", 200, 0},
-	{"1", 0, 1},
-	{"1", 1, 0},
-	{"-1", 0, 1},
-	{"-1", 200, 1},
-	{"0x2000000000000000000000000000", 108, 0},
-	{"0x2000000000000000000000000000", 109, 1},
-	{"0x2000000000000000000000000000", 110, 0},
-	{"-0x2000000000000000000000000001", 108, 1},
-	{"-0x2000000000000000000000000001", 109, 0},
-	{"-0x2000000000000000000000000001", 110, 1},
-}
-
-
-func TestBitSet(t *testing.T) {
-	for _, test := range bitwiseTests {
-		x := new(Int)
-		x.SetString(test.x, 0)
-		testBitset(t, x)
-		x = new(Int)
-		x.SetString(test.y, 0)
-		testBitset(t, x)
-	}
-	for i, test := range bitsetTests {
-		x := new(Int)
-		x.SetString(test.x, 0)
-		b := x.Bit(test.i)
-		if b != test.b {
-
-			t.Errorf("#%d want %v got %v", i, test.b, b)
-		}
-	}
-}
-
-
-func BenchmarkBitset(b *testing.B) {
-	z := new(Int)
-	z.SetBit(z, 512, 1)
-	b.ResetTimer()
-	b.StartTimer()
-	for i := b.N - 1; i >= 0; i-- {
-		z.SetBit(z, i&512, 1)
-	}
-}
-
-
-func BenchmarkBitsetNeg(b *testing.B) {
-	z := NewInt(-1)
-	z.SetBit(z, 512, 0)
-	b.ResetTimer()
-	b.StartTimer()
-	for i := b.N - 1; i >= 0; i-- {
-		z.SetBit(z, i&512, 0)
-	}
-}
-
-
-func BenchmarkBitsetOrig(b *testing.B) {
-	z := new(Int)
-	altSetBit(z, z, 512, 1)
-	b.ResetTimer()
-	b.StartTimer()
-	for i := b.N - 1; i >= 0; i-- {
-		altSetBit(z, z, i&512, 1)
-	}
-}
-
-
-func BenchmarkBitsetNegOrig(b *testing.B) {
-	z := NewInt(-1)
-	altSetBit(z, z, 512, 0)
-	b.ResetTimer()
-	b.StartTimer()
-	for i := b.N - 1; i >= 0; i-- {
-		altSetBit(z, z, i&512, 0)
-	}
-}
-
-
 func TestBitwise(t *testing.T) {
 	x := new(Int)
 	y := new(Int)
@@ -1257,7 +1011,6 @@ var notTests = []struct {
 	},
 }
 
-
 func TestNot(t *testing.T) {
 	in := new(Int)
 	out := new(Int)
@@ -1286,7 +1039,6 @@ var modInverseTests = []struct {
 	{"239487239847", "2410312426921032588552076022197566074856950548502459942654116941958108831682612228890093858261341614673227141477904012196503648957050582631942730706805009223062734745341073406696246014589361659774041027169249453200378729434170325843778659198143763193776859869524088940195577346119843545301547043747207749969763750084308926339295559968882457872412993810129130294592999947926365264059284647209730384947211681434464714438488520940127459844288859336526896320919633919"},
 }
 
-
 func TestModInverse(t *testing.T) {
 	var element, prime Int
 	one := NewInt(1)
@@ -1298,46 +1050,6 @@ func TestModInverse(t *testing.T) {
 		inverse.Mod(inverse, &prime)
 		if inverse.Cmp(one) != 0 {
 			t.Errorf("#%d: failed (e·e^(-1)=%s)", i, inverse)
-		}
-	}
-}
-
-
-// used by TestIntGobEncoding and TestRatGobEncoding
-var gobEncodingTests = []string{
-	"0",
-	"1",
-	"2",
-	"10",
-	"42",
-	"1234567890",
-	"298472983472983471903246121093472394872319615612417471234712061",
-}
-
-func TestIntGobEncoding(t *testing.T) {
-	var medium bytes.Buffer
-	enc := gob.NewEncoder(&medium)
-	dec := gob.NewDecoder(&medium)
-	for i, test := range gobEncodingTests {
-		for j := 0; j < 2; j++ {
-			medium.Reset() // empty buffer for each test case (in case of failures)
-			stest := test
-			if j != 0 {
-				// negative numbers
-				stest = "-" + test
-			}
-			var tx Int
-			tx.SetString(stest, 10)
-			if err := enc.Encode(&tx); err != nil {
-				t.Errorf("#%d%c: encoding failed: %s", i, 'a'+j, err)
-			}
-			var rx Int
-			if err := dec.Decode(&rx); err != nil {
-				t.Errorf("#%d%c: decoding failed: %s", i, 'a'+j, err)
-			}
-			if rx.Cmp(&tx) != 0 {
-				t.Errorf("#%d%c: transmission failed: got %s want %s", i, 'a'+j, &rx, &tx)
-			}
 		}
 	}
 }

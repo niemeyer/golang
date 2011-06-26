@@ -24,7 +24,6 @@ func main() {
 	case 1:
 		L1:  // ERROR "statement"
 	default:
-		     // correct since no semicolon is required before a '}'
-		L2:  // ERROR "not used"
+		L2:  // correct since no semicolon is required before a '}'
 	}
 }

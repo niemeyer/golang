@@ -36,7 +36,7 @@ import (
 	"io"
 	"log"
 	"os"
-	"path/filepath"
+	pathutil "path"
 	"regexp"
 	"runtime"
 	"strings"
@@ -83,21 +83,20 @@ func exec(rw http.ResponseWriter, args []string) (status int) {
 	if *verbose {
 		log.Printf("executing %v", args)
 	}
-	p, err := os.StartProcess(bin, args, &os.ProcAttr{Files: fds, Dir: *goroot})
+	pid, err := os.ForkExec(bin, args, os.Environ(), *goroot, fds)
 	defer r.Close()
 	w.Close()
 	if err != nil {
-		log.Printf("os.StartProcess(%q): %v", bin, err)
+		log.Printf("os.ForkExec(%q): %v", bin, err)
 		return 2
 	}
-	defer p.Release()
 
 	var buf bytes.Buffer
 	io.Copy(&buf, r)
-	wait, err := p.Wait(0)
+	wait, err := os.Wait(pid, 0)
 	if err != nil {
 		os.Stderr.Write(buf.Bytes())
-		log.Printf("os.Wait(%d, 0): %v", p.Pid, err)
+		log.Printf("os.Wait(%d, 0): %v", pid, err)
 		return 2
 	}
 	status = wait.ExitStatus()
@@ -111,7 +110,7 @@ func exec(rw http.ResponseWriter, args []string) (status int) {
 		os.Stderr.Write(buf.Bytes())
 	}
 	if rw != nil {
-		rw.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		rw.SetHeader("content-type", "text/plain; charset=utf-8")
 		rw.Write(buf.Bytes())
 	}
 
@@ -152,7 +151,7 @@ func usage() {
 
 func loggingHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		log.Printf("%s\t%s", req.RemoteAddr, req.URL)
+		log.Printf("%s\t%s", w.RemoteAddr(), req.URL)
 		h.ServeHTTP(w, req)
 	})
 }
@@ -176,7 +175,7 @@ func remoteSearch(query string) (res *http.Response, err os.Error) {
 	// remote search
 	for _, addr := range addrs {
 		url := "http://" + addr + search
-		res, err = http.Get(url)
+		res, _, err = http.Get(url)
 		if err == nil && res.StatusCode == http.StatusOK {
 			break
 		}
@@ -222,20 +221,13 @@ func main() {
 	flag.Usage = usage
 	flag.Parse()
 
-	// Determine file system to use.
-	// TODO(gri) Complete this - for now we only have one.
-	fs = OS
-
-	// Clean goroot: normalize path separator.
-	*goroot = filepath.Clean(*goroot)
-
 	// Check usage: either server and no args, or command line and args
 	if (*httpAddr != "") != (flag.NArg() == 0) {
 		usage()
 	}
 
 	if *tabwidth < 0 {
-		log.Fatalf("negative tabwidth %d", *tabwidth)
+		log.Exitf("negative tabwidth %d", *tabwidth)
 	}
 
 	initHandlers()
@@ -250,13 +242,8 @@ func main() {
 			log.Printf("address = %s", *httpAddr)
 			log.Printf("goroot = %s", *goroot)
 			log.Printf("tabwidth = %d", *tabwidth)
-			switch {
-			case !*indexEnabled:
-				log.Print("search index disabled")
-			case *maxResults > 0:
-				log.Printf("full text index enabled (maxresults = %d)", *maxResults)
-			default:
-				log.Print("identifier search index enabled")
+			if *maxResults > 0 {
+				log.Printf("maxresults = %d (full text index enabled)", *maxResults)
 			}
 			if !fsMap.IsEmpty() {
 				log.Print("user-defined mapping:")
@@ -293,13 +280,11 @@ func main() {
 		}
 
 		// Start indexing goroutine.
-		if *indexEnabled {
-			go indexer()
-		}
+		go indexer()
 
 		// Start http server.
 		if err := http.ListenAndServe(*httpAddr, handler); err != nil {
-			log.Fatalf("ListenAndServe %s: %v", *httpAddr, err)
+			log.Exitf("ListenAndServe %s: %v", *httpAddr, err)
 		}
 
 		return
@@ -316,7 +301,7 @@ func main() {
 		for i := 0; i < flag.NArg(); i++ {
 			res, err := remoteSearch(flag.Arg(i))
 			if err != nil {
-				log.Fatalf("remoteSearch: %s", err)
+				log.Exitf("remoteSearch: %s", err)
 			}
 			io.Copy(os.Stdout, res.Body)
 		}
@@ -328,14 +313,14 @@ func main() {
 	if len(path) > 0 && path[0] == '.' {
 		// assume cwd; don't assume -goroot
 		cwd, _ := os.Getwd() // ignore errors
-		path = filepath.Join(cwd, path)
+		path = pathutil.Join(cwd, path)
 	}
 	relpath := path
 	abspath := path
-	if !filepath.IsAbs(path) {
+	if len(path) > 0 && path[0] != '/' {
 		abspath = absolutePath(path, pkgHandler.fsRoot)
 	} else {
-		relpath = relativeURL(path)
+		relpath = relativePath(path)
 	}
 
 	var mode PageInfoMode
@@ -351,20 +336,15 @@ func main() {
 	//            if there are multiple packages in a directory.
 	info := pkgHandler.getPageInfo(abspath, relpath, "", mode)
 
-	if info.IsEmpty() {
+	if info.Err != nil || info.PAst == nil && info.PDoc == nil && info.Dirs == nil {
 		// try again, this time assume it's a command
-		if !filepath.IsAbs(path) {
+		if len(path) > 0 && path[0] != '/' {
 			abspath = absolutePath(path, cmdHandler.fsRoot)
 		}
-		cmdInfo := cmdHandler.getPageInfo(abspath, relpath, "", mode)
-		// only use the cmdInfo if it actually contains a result
-		// (don't hide errors reported from looking up a package)
-		if !cmdInfo.IsEmpty() {
-			info = cmdInfo
-		}
+		info = cmdHandler.getPageInfo(abspath, relpath, "", mode)
 	}
 	if info.Err != nil {
-		log.Fatalf("%v", info.Err)
+		log.Exitf("%v", info.Err)
 	}
 
 	// If we have more than one argument, use the remaining arguments for filtering
@@ -372,7 +352,7 @@ func main() {
 		args := flag.Args()[1:]
 		rx := makeRx(args)
 		if rx == nil {
-			log.Fatalf("illegal regular expression from %v", args)
+			log.Exitf("illegal regular expression from %v", args)
 		}
 
 		filter := func(s string) bool { return rx.MatchString(s) }
@@ -386,11 +366,7 @@ func main() {
 				if i > 0 {
 					fmt.Println()
 				}
-				if *html {
-					writeAnyHTML(os.Stdout, info.FSet, d)
-				} else {
-					writeAny(os.Stdout, info.FSet, d)
-				}
+				writeAny(os.Stdout, info.FSet, *html, d)
 				fmt.Println()
 			}
 			return
@@ -400,7 +376,7 @@ func main() {
 		}
 	}
 
-	if err := packageText.Execute(os.Stdout, info); err != nil {
+	if err := packageText.Execute(info, os.Stdout); err != nil {
 		log.Printf("packageText.Execute: %s", err)
 	}
 }

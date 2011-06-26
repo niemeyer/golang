@@ -22,12 +22,13 @@ const ImplementsGetwd = false
 
 func Getwd() (string, int) { return "", ENOTSUP }
 
+
 /*
  * Wrapped
  */
 
-//sysnb	getgroups(ngid int, gid *_Gid_t) (n int, errno int)
-//sysnb	setgroups(ngid int, gid *_Gid_t) (errno int)
+//sys	getgroups(ngid int, gid *_Gid_t) (n int, errno int)
+//sys	setgroups(ngid int, gid *_Gid_t) (errno int)
 
 func Getgroups() (gids []int, errno int) {
 	n, err := getgroups(0, nil)
@@ -65,12 +66,6 @@ func Setgroups(gids []int) (errno int) {
 		a[i] = _Gid_t(v)
 	}
 	return setgroups(len(a), &a[0])
-}
-
-func ReadDirent(fd int, buf []byte) (n int, errno int) {
-	// Final argument is (basep *uintptr) and the syscall doesn't take nil.
-	// TODO(rsc): Can we use a single global basep for all calls?
-	return Getdirentries(fd, buf, new(uintptr))
 }
 
 // Wait status is 7 bits at bottom, either 0 (exited),
@@ -135,7 +130,7 @@ func Wait4(pid int, wstatus *WaitStatus, options int, rusage *Rusage) (wpid int,
 	return
 }
 
-//sysnb	pipe() (r int, w int, errno int)
+//sys	pipe() (r int, w int, errno int)
 
 func Pipe(p []int) (errno int) {
 	if len(p) != 2 {
@@ -153,11 +148,10 @@ func Sleep(ns int64) (errno int) {
 //sys	accept(s int, rsa *RawSockaddrAny, addrlen *_Socklen) (fd int, errno int)
 //sys	bind(s int, addr uintptr, addrlen _Socklen) (errno int)
 //sys	connect(s int, addr uintptr, addrlen _Socklen) (errno int)
-//sysnb	socket(domain int, typ int, proto int) (fd int, errno int)
-//sys	getsockopt(s int, level int, name int, val uintptr, vallen *_Socklen) (errno int)
-//sys	setsockopt(s int, level int, name int, val uintptr, vallen uintptr) (errno int)
-//sysnb	getpeername(fd int, rsa *RawSockaddrAny, addrlen *_Socklen) (errno int)
-//sysnb	getsockname(fd int, rsa *RawSockaddrAny, addrlen *_Socklen) (errno int)
+//sys	socket(domain int, typ int, proto int) (fd int, errno int)
+//sys	setsockopt(s int, level int, name int, val uintptr, vallen int) (errno int)
+//sys	getpeername(fd int, rsa *RawSockaddrAny, addrlen *_Socklen) (errno int)
+//sys	getsockname(fd int, rsa *RawSockaddrAny, addrlen *_Socklen) (errno int)
 //sys	Shutdown(s int, how int) (errno int)
 
 // For testing: clients can set this flag to force
@@ -190,10 +184,9 @@ func (sa *SockaddrInet4) sockaddr() (uintptr, _Socklen, int) {
 }
 
 type SockaddrInet6 struct {
-	Port   int
-	ZoneId uint32
-	Addr   [16]byte
-	raw    RawSockaddrInet6
+	Port int
+	Addr [16]byte
+	raw  RawSockaddrInet6
 }
 
 func (sa *SockaddrInet6) sockaddr() (uintptr, _Socklen, int) {
@@ -205,7 +198,6 @@ func (sa *SockaddrInet6) sockaddr() (uintptr, _Socklen, int) {
 	p := (*[2]byte)(unsafe.Pointer(&sa.raw.Port))
 	p[0] = byte(sa.Port >> 8)
 	p[1] = byte(sa.Port)
-	sa.raw.Scope_id = sa.ZoneId
 	for i := 0; i < len(sa.Addr); i++ {
 		sa.raw.Addr[i] = sa.Addr[i]
 	}
@@ -231,40 +223,8 @@ func (sa *SockaddrUnix) sockaddr() (uintptr, _Socklen, int) {
 	return uintptr(unsafe.Pointer(&sa.raw)), _Socklen(sa.raw.Len), 0
 }
 
-func (sa *SockaddrDatalink) sockaddr() (uintptr, _Socklen, int) {
-	if sa.Index == 0 {
-		return 0, 0, EINVAL
-	}
-	sa.raw.Len = sa.Len
-	sa.raw.Family = AF_LINK
-	sa.raw.Index = sa.Index
-	sa.raw.Type = sa.Type
-	sa.raw.Nlen = sa.Nlen
-	sa.raw.Alen = sa.Alen
-	sa.raw.Slen = sa.Slen
-	for i := 0; i < len(sa.raw.Data); i++ {
-		sa.raw.Data[i] = sa.Data[i]
-	}
-	return uintptr(unsafe.Pointer(&sa.raw)), SizeofSockaddrDatalink, 0
-}
-
 func anyToSockaddr(rsa *RawSockaddrAny) (Sockaddr, int) {
 	switch rsa.Addr.Family {
-	case AF_LINK:
-		pp := (*RawSockaddrDatalink)(unsafe.Pointer(rsa))
-		sa := new(SockaddrDatalink)
-		sa.Len = pp.Len
-		sa.Family = pp.Family
-		sa.Index = pp.Index
-		sa.Type = pp.Type
-		sa.Nlen = pp.Nlen
-		sa.Alen = pp.Alen
-		sa.Slen = pp.Slen
-		for i := 0; i < len(sa.Data); i++ {
-			sa.Data[i] = pp.Data[i]
-		}
-		return sa, 0
-
 	case AF_UNIX:
 		pp := (*RawSockaddrUnix)(unsafe.Pointer(rsa))
 		if pp.Len < 3 || pp.Len > SizeofSockaddrUnix {
@@ -298,7 +258,6 @@ func anyToSockaddr(rsa *RawSockaddrAny) (Sockaddr, int) {
 		sa := new(SockaddrInet6)
 		p := (*[2]byte)(unsafe.Pointer(&pp.Port))
 		sa.Port = int(p[0])<<8 + int(p[1])
-		sa.ZoneId = pp.Scope_id
 		for i := 0; i < len(sa.Addr); i++ {
 			sa.Addr[i] = pp.Addr[i]
 		}
@@ -364,18 +323,11 @@ func Socket(domain, typ, proto int) (fd, errno int) {
 	return
 }
 
-//sysnb socketpair(domain int, typ int, proto int, fd *[2]int) (errno int)
+//sys socketpair(domain int, typ int, proto int, fd *[2]int) (errno int)
 
 func Socketpair(domain, typ, proto int) (fd [2]int, errno int) {
 	errno = socketpair(domain, typ, proto, &fd)
 	return
-}
-
-func GetsockoptInt(fd, level, opt int) (value, errno int) {
-	var n int32
-	vallen := _Socklen(4)
-	errno = getsockopt(fd, level, opt, uintptr(unsafe.Pointer(&n)), &vallen)
-	return int(n), errno
 }
 
 func SetsockoptInt(fd, level, opt int, value int) (errno int) {
@@ -391,16 +343,8 @@ func SetsockoptLinger(fd, level, opt int, l *Linger) (errno int) {
 	return setsockopt(fd, level, opt, uintptr(unsafe.Pointer(l)), unsafe.Sizeof(*l))
 }
 
-func SetsockoptIPMreq(fd, level, opt int, mreq *IPMreq) (errno int) {
-	return setsockopt(fd, level, opt, uintptr(unsafe.Pointer(mreq)), unsafe.Sizeof(*mreq))
-}
-
-func SetsockoptIPv6Mreq(fd, level, opt int, mreq *IPv6Mreq) (errno int) {
-	return setsockopt(fd, level, opt, uintptr(unsafe.Pointer(mreq)), unsafe.Sizeof(*mreq))
-}
-
 func SetsockoptString(fd, level, opt int, s string) (errno int) {
-	return setsockopt(fd, level, opt, uintptr(unsafe.Pointer(&[]byte(s)[0])), uintptr(len(s)))
+	return setsockopt(fd, level, opt, uintptr(unsafe.Pointer(&[]byte(s)[0])), len(s))
 }
 
 //sys recvfrom(fd int, p []byte, flags int, from *RawSockaddrAny, fromlen *_Socklen) (n int, errno int)
@@ -423,80 +367,6 @@ func Sendto(fd int, p []byte, flags int, to Sockaddr) (errno int) {
 		return err
 	}
 	return sendto(fd, p, flags, ptr, n)
-}
-
-//sys	recvmsg(s int, msg *Msghdr, flags int) (n int, errno int)
-
-func Recvmsg(fd int, p, oob []byte, flags int) (n, oobn int, recvflags int, from Sockaddr, errno int) {
-	var msg Msghdr
-	var rsa RawSockaddrAny
-	msg.Name = (*byte)(unsafe.Pointer(&rsa))
-	msg.Namelen = uint32(SizeofSockaddrAny)
-	var iov Iovec
-	if len(p) > 0 {
-		iov.Base = (*byte)(unsafe.Pointer(&p[0]))
-		iov.SetLen(len(p))
-	}
-	var dummy byte
-	if len(oob) > 0 {
-		// receive at least one normal byte
-		if len(p) == 0 {
-			iov.Base = &dummy
-			iov.SetLen(1)
-		}
-		msg.Control = (*byte)(unsafe.Pointer(&oob[0]))
-		msg.SetControllen(len(oob))
-	}
-	msg.Iov = &iov
-	msg.Iovlen = 1
-	if n, errno = recvmsg(fd, &msg, flags); errno != 0 {
-		return
-	}
-	oobn = int(msg.Controllen)
-	recvflags = int(msg.Flags)
-	// source address is only specified if the socket is unconnected
-	if rsa.Addr.Family != AF_UNSPEC {
-		from, errno = anyToSockaddr(&rsa)
-	}
-	return
-}
-
-//sys	sendmsg(s int, msg *Msghdr, flags int) (errno int)
-
-func Sendmsg(fd int, p, oob []byte, to Sockaddr, flags int) (errno int) {
-	var ptr uintptr
-	var salen _Socklen
-	if to != nil {
-		var err int
-		ptr, salen, err = to.sockaddr()
-		if err != 0 {
-			return err
-		}
-	}
-	var msg Msghdr
-	msg.Name = (*byte)(unsafe.Pointer(ptr))
-	msg.Namelen = uint32(salen)
-	var iov Iovec
-	if len(p) > 0 {
-		iov.Base = (*byte)(unsafe.Pointer(&p[0]))
-		iov.SetLen(len(p))
-	}
-	var dummy byte
-	if len(oob) > 0 {
-		// send at least one normal byte
-		if len(p) == 0 {
-			iov.Base = &dummy
-			iov.SetLen(1)
-		}
-		msg.Control = (*byte)(unsafe.Pointer(&oob[0]))
-		msg.SetControllen(len(oob))
-	}
-	msg.Iov = &iov
-	msg.Iovlen = 1
-	if errno = sendmsg(fd, &msg, flags); errno != 0 {
-		return
-	}
-	return
 }
 
 // TODO:
@@ -525,7 +395,8 @@ func Kevent(kq int, changes, events []Kevent_t, timeout *Timespec) (n int, errno
 
 // Translate "kern.hostname" to []_C_int{0,1,2,3}.
 func nametomib(name string) (mib []_C_int, errno int) {
-	const siz = unsafe.Sizeof(mib[0])
+	const CTL_MAXNAME = 12
+	const siz = uintptr(unsafe.Sizeof(mib[0]))
 
 	// NOTE(rsc): It seems strange to set the buffer to have
 	// size CTL_MAXNAME+2 but use only CTL_MAXNAME
@@ -614,27 +485,20 @@ func Futimes(fd int, tv []Timeval) (errno int) {
 
 //sys	fcntl(fd int, cmd int, arg int) (val int, errno int)
 
+func Recvmsg(fd int, p, oob []byte, flags int) (n, oobn int, recvflags int, from Sockaddr, errno int) {
+	return 0, 0, 0, nil, EAFNOSUPPORT
+}
+
+func Sendmsg(fd int, p, oob []byte, to Sockaddr, flags int) (errno int) {
+	return EAFNOSUPPORT
+}
+
 // TODO: wrap
 //	Acct(name nil-string) (errno int)
 //	Gethostuuid(uuid *byte, timeout *Timespec) (errno int)
+//	Getsockopt(s int, level int, name int, val *byte, vallen *int) (errno int)
 //	Madvise(addr *byte, len int, behav int) (errno int)
 //	Mprotect(addr *byte, len int, prot int) (errno int)
 //	Msync(addr *byte, len int, flags int) (errno int)
+//	Munmap(addr *byte, len int) (errno int)
 //	Ptrace(req int, pid int, addr uintptr, data int) (ret uintptr, errno int)
-
-//sys	mmap(addr uintptr, length uintptr, prot int, flag int, fd int, pos int64) (ret uintptr, errno int)
-//sys	munmap(addr uintptr, length uintptr) (errno int)
-
-var mapper = &mmapper{
-	active: make(map[*byte][]byte),
-	mmap:   mmap,
-	munmap: munmap,
-}
-
-func Mmap(fd int, offset int64, length int, prot int, flags int) (data []byte, errno int) {
-	return mapper.Mmap(fd, offset, length, prot, flags)
-}
-
-func Munmap(b []byte) (errno int) {
-	return mapper.Munmap(b)
-}

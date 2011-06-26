@@ -6,7 +6,6 @@ package http
 
 import (
 	"bytes"
-	"io/ioutil"
 	"testing"
 )
 
@@ -22,9 +21,9 @@ var respWriteTests = []respWriteTest{
 			StatusCode:    503,
 			ProtoMajor:    1,
 			ProtoMinor:    0,
-			Request:       dummyReq("GET"),
-			Header:        Header{},
-			Body:          ioutil.NopCloser(bytes.NewBufferString("abcdef")),
+			RequestMethod: "GET",
+			Header:        map[string]string{},
+			Body:          nopCloser{bytes.NewBufferString("abcdef")},
 			ContentLength: 6,
 		},
 
@@ -38,9 +37,9 @@ var respWriteTests = []respWriteTest{
 			StatusCode:    200,
 			ProtoMajor:    1,
 			ProtoMinor:    0,
-			Request:       dummyReq("GET"),
-			Header:        Header{},
-			Body:          ioutil.NopCloser(bytes.NewBufferString("abcdef")),
+			RequestMethod: "GET",
+			Header:        map[string]string{},
+			Body:          nopCloser{bytes.NewBufferString("abcdef")},
 			ContentLength: -1,
 		},
 		"HTTP/1.0 200 OK\r\n" +
@@ -53,9 +52,9 @@ var respWriteTests = []respWriteTest{
 			StatusCode:       200,
 			ProtoMajor:       1,
 			ProtoMinor:       1,
-			Request:          dummyReq("GET"),
-			Header:           Header{},
-			Body:             ioutil.NopCloser(bytes.NewBufferString("abcdef")),
+			RequestMethod:    "GET",
+			Header:           map[string]string{},
+			Body:             nopCloser{bytes.NewBufferString("abcdef")},
 			ContentLength:    6,
 			TransferEncoding: []string{"chunked"},
 			Close:            true,
@@ -65,29 +64,6 @@ var respWriteTests = []respWriteTest{
 			"Connection: close\r\n" +
 			"Transfer-Encoding: chunked\r\n\r\n" +
 			"6\r\nabcdef\r\n0\r\n\r\n",
-	},
-
-	// Header value with a newline character (Issue 914).
-	// Also tests removal of leading and trailing whitespace.
-	{
-		Response{
-			StatusCode: 204,
-			ProtoMajor: 1,
-			ProtoMinor: 1,
-			Request:    dummyReq("GET"),
-			Header: Header{
-				"Foo": []string{" Bar\nBaz "},
-			},
-			Body:             nil,
-			ContentLength:    0,
-			TransferEncoding: []string{"chunked"},
-			Close:            true,
-		},
-
-		"HTTP/1.1 204 No Content\r\n" +
-			"Connection: close\r\n" +
-			"Foo: Bar Baz\r\n" +
-			"\r\n",
 	},
 }
 
@@ -102,7 +78,7 @@ func TestResponseWrite(t *testing.T) {
 		}
 		sraw := braw.String()
 		if sraw != tt.Raw {
-			t.Errorf("Test %d, expecting:\n%q\nGot:\n%q\n", i, tt.Raw, sraw)
+			t.Errorf("Test %d, expecting:\n%s\nGot:\n%s\n", i, tt.Raw, sraw)
 			continue
 		}
 	}

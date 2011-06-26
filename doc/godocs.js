@@ -28,28 +28,13 @@ function godocs_onload() {
 
 function godocs_bindSearchEvents() {
   var search = document.getElementById('search');
-  if (!search) {
-    // no search box (index disabled)
-    return;
-  }
   function clearInactive() {
     if (search.className == "inactive") {
       search.value = "";
       search.className = "";
     }
   }
-  function restoreInactive() {
-    if (search.value != "") {
-      return;
-    }
-    if (search.type != "search") {
-      search.value = search.getAttribute("placeholder");
-    }
-    search.className = "inactive";
-  }
-  restoreInactive();
   bindEvent(search, 'focus', clearInactive);
-  bindEvent(search, 'blur', restoreInactive);
 }
 
 /* Generates a table of contents: looks for h2 and h3 elements and generates
@@ -104,7 +89,7 @@ function godocs_generateTOC() {
     }
   }
 
-  if (toc_items.length <= 1) { return; }
+  if (!toc_items.length) { return; }
 
   var dl1 = document.createElement('dl');
   var dl2 = document.createElement('dl');

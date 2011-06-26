@@ -54,7 +54,7 @@ architectures.
 </dl>
 
 <p>
-Except for things like low-level operating system interface code, the run-time
+Except for things like low-level operating system interface code, the runtime
 support is the same in all ports and includes a mark-and-sweep garbage collector
 (a fancier one is in the works), efficient array and string slicing,
 support for segmented stacks, and a strong goroutine implementation.
@@ -80,7 +80,7 @@ To build it, you need these programs installed:
 <li>GCC, 
 <li>the standard C libraries, 
 <li>the parser generator Bison,
-<li>GNU <tt>make</tt> (version 3.81 or later),
+<li><tt>make</tt>, 
 <li><tt>awk</tt>, and 
 <li>the text editor <tt>ed</tt>.
 </ul>
@@ -91,9 +91,7 @@ installed as part of
 <a href="http://developer.apple.com/TOOLS/Xcode/">Xcode</a>. 
 </p>
 
-<p>On Ubuntu/Debian, use <code>sudo apt-get install bison ed gawk gcc libc6-dev
-make</code>. If you want to build 32-bit binaries on a 64-bit system you'll
-also need the <code>libc6-dev-i386</code> package.
+<p>On Ubuntu/Debian, use <code>sudo apt-get install bison ed gawk gcc libc6-dev make</code>.
 </p>
 
 <h2 id="mercurial">Install Mercurial, if needed</h2>
@@ -112,21 +110,6 @@ package repository will most likely be old and broken.)
 If that fails, try installing manually from the <a href="http://mercurial.selenic.com/wiki/Download">Mercurial Download</a> page.</p>
 </p>
 
-<p>
-Mercurial versions 1.7.x and up require the configuration of
-<a href="http://mercurial.selenic.com/wiki/CACertificates">Certification Authorities</a>
-(CAs). Error messages of the form:
-</p>
-<pre>
-warning: go.googlecode.com certificate with fingerprint b1:af: ... bc not verified (check hostfingerprints or web.cacerts config setting)
-</pre>
-<p>
-when using Mercurial indicate that the CAs are missing.
-Check your Mercurial version (<code>hg --version</code>) and
-<a href="http://mercurial.selenic.com/wiki/CACertificates#Configuration_of_HTTPS_certificate_authorities">configure the CAs</a>
-if necessary.
-</p>
-
 <h2 id="fetch">Fetch the repository</h2>
 
 <p>
@@ -136,7 +119,7 @@ and make sure the <code>go</code> directory does not exist.
 Then check out the repository:</p>
 
 <pre>
-$ hg clone -u release https://go.googlecode.com/hg/ go
+$ hg clone -r release https://go.googlecode.com/hg/ go
 </pre>
 
 <h2 id="install">Install Go</h2>
@@ -155,7 +138,8 @@ If all goes well, it will finish by printing output like:
 </p>
 
 <pre>
-ALL TESTS PASSED
+--- cd ../test
+N known bugs; 0 unexpected bugs
 
 ---
 Installed Go for linux/amd64 in /home/you/go.
@@ -165,7 +149,8 @@ The compiler is 6g.
 </pre>
 
 <p>
-where the details on the last few lines reflect the operating system,
+where <var>N</var> is a number that varies from release to release
+and the details on the last few lines will reflect the operating system,
 architecture, and root directory used during the install.
 </p>
 
@@ -277,24 +262,7 @@ For the full story, consult Go's extensive
 
 <h2 id="releases">Keeping up with releases</h2>
 
-<p>
-The Go project maintains two stable tags in its Mercurial repository:
-<code>release</code> and <code>weekly</code>.
-The <code>weekly</code> tag is updated about once a week, and should be used by
-those who want to track the project's development.
-The <code>release</code> tag is given, less often, to those weekly releases
-that have proven themselves to be robust.
-</p>
-
-<p>
-Most Go users will want to keep their Go installation at the latest
-<code>release</code> tag.
-New releases are announced on the
-<a href="http://groups.google.com/group/golang-announce">golang-announce</a>
-mailing list.
-</p>
-
-<p>
+<p>New releases are announced on the <a href="http://groups.google.com/group/golang-nuts">Go Nuts</a> mailing list.
 To update an existing tree to the latest release, you can run:
 </p>
 
@@ -304,10 +272,6 @@ $ hg pull
 $ hg update release
 $ ./all.bash
 </pre>
-
-<p>
-To use the <code>weekly</code> tag run <code>hg update weekly</code> instead.
-</p>
 
 <h2 id="community">Community resources</h2>
 
@@ -441,9 +405,9 @@ to override the defaults.
 <code>$GOARM</code> (arm, default=6)
 </dt>
 <dd>
-	The ARM architecture version the run-time libraries should target.
+	The ARM architecture version the runtime libraries should target.
 	ARMv6 cores have more efficient synchronization primitives. Setting
-	<code>$GOARM</code> to 5 will compile the run-time libraries using
+	<code>$GOARM</code> to 5 will compile the runtime libraries using
 	just SWP instructions that work on older architectures as well.
 	Running v6 code on an older core will cause an illegal instruction trap.
 </dd>

@@ -135,7 +135,6 @@ ldpkg(Biobuf *f, char *pkg, int64 len, char *filename, int whence)
 		if(debug['u'] && whence != ArchiveObj &&
 		   (p0+6 > p1 || memcmp(p0, " safe\n", 6) != 0)) {
 			fprint(2, "%s: load of unsafe package %s\n", argv0, filename);
-			nerrors++;
 			errorexit();
 		}
 		if(p0 < p1) {
@@ -149,6 +148,8 @@ ldpkg(Biobuf *f, char *pkg, int64 len, char *filename, int whence)
 		}
 		if(strcmp(pkg, "main") == 0 && strcmp(name, "main") != 0)
 			fprint(2, "%s: %s: not package main (package %s)\n", argv0, filename, name);
+		else if(strcmp(pkg, "main") != 0 && strcmp(name, "main") == 0)
+			fprint(2, "%s: %s: importing %s, found package main", argv0, filename, pkg);
 		loadpkgdata(filename, pkg, p0, p1 - p0);
 	}
 
@@ -412,11 +413,11 @@ parsemethod(char **pp, char *ep, char **methp)
 static void
 loaddynimport(char *file, char *pkg, char *p, int n)
 {
-	char *pend, *next, *name, *def, *p0, *lib, *q;
+	char *pend, *next, *name, *def, *p0, *lib;
 	Sym *s;
 
-	USED(file);
 	pend = p + n;
+	p0 = p;
 	for(; p<pend; p=next) {
 		next = strchr(p, '\n');
 		if(next == nil)
@@ -445,37 +446,25 @@ loaddynimport(char *file, char *pkg, char *p, int n)
 		*strchr(name, ' ') = 0;
 		*strchr(def, ' ') = 0;
 		
-		if(debug['d']) {
-			fprint(2, "%s: %s: cannot use dynamic imports with -d flag\n", argv0, file);
-			nerrors++;
-			return;
-		}
-		
 		if(strcmp(name, "_") == 0 && strcmp(def, "_") == 0) {
 			// allow #pragma dynimport _ _ "foo.so"
 			// to force a link of foo.so.
-			havedynamic = 1;
 			adddynlib(lib);
 			continue;
 		}
 
 		name = expandpkg(name, pkg);
-		q = strchr(def, '@');
-		if(q)
-			*q++ = '\0';
 		s = lookup(name, 0);
 		if(s->type == 0 || s->type == SXREF) {
 			s->dynimplib = lib;
 			s->dynimpname = def;
-			s->dynimpvers = q;
 			s->type = SDYNIMPORT;
-			havedynamic = 1;
 		}
 	}
 	return;
 
 err:
-	fprint(2, "%s: %s: invalid dynimport line: %s\n", argv0, file, p0);
+	fprint(2, "%s: invalid dynimport line: %s\n", argv0, p0);
 	nerrors++;
 }
 
@@ -485,8 +474,8 @@ loaddynexport(char *file, char *pkg, char *p, int n)
 	char *pend, *next, *local, *elocal, *remote, *p0;
 	Sym *s;
 
-	USED(file);
 	pend = p + n;
+	p0 = p;
 	for(; p<pend; p=next) {
 		next = strchr(p, '\n');
 		if(next == nil)
@@ -562,8 +551,6 @@ mark(Sym *s)
 	int i;
 
 	if(s == S || s->reachable)
-		return;
-	if(strncmp(s->name, "weak.", 5) == 0)
 		return;
 	s->reachable = 1;
 	if(s->text)
@@ -669,35 +656,6 @@ deadcode(void)
 		textp = nil;
 	else
 		last->next = nil;
-	
-	for(s = allsym; s != S; s = s->allsym)
-		if(strncmp(s->name, "weak.", 5) == 0) {
-			s->special = 1;  // do not lay out in data segment
-			s->reachable = 1;
-			s->hide = 1;
-		}
-}
-
-void
-doweak(void)
-{
-	Sym *s, *t;
-
-	// resolve weak references only if
-	// target symbol will be in binary anyway.
-	for(s = allsym; s != S; s = s->allsym) {
-		if(strncmp(s->name, "weak.", 5) == 0) {
-			t = rlookup(s->name+5, s->version);
-			if(t && t->type != 0 && t->reachable) {
-				s->value = t->value;
-				s->type = t->type;
-			} else {
-				s->type = SCONST;
-				s->value = 0;
-			}
-			continue;
-		}
-	}
 }
 
 void

@@ -10,14 +10,6 @@ ifeq ($(GOARCH),arm)
 ENABLED:=0
 endif
 
-ifeq ($(GOOS),plan9)
-ENABLED:=0
-endif
-
-ifeq ($(DISABLE_CGO),1)
-ENABLED:=0
-endif
-
 TARG=runtime/cgo
 
 GOFILES=\
@@ -32,19 +24,17 @@ CGO_OFILES=\
 	$(GOOS)_$(GOARCH).o\
 	util.o\
 
-ifeq ($(GOOS),windows)
-CGO_LDFLAGS=-lm -mthreads
-else
-CGO_LDFLAGS=-lpthread
-CGO_OFILES+=setenv.o\
-
-endif
-
 OFILES=\
 	iscgo.$O\
 	callbacks.$O\
 	_cgo_import.$O\
 	$(CGO_OFILES)\
+
+ifeq ($(GOOS),windows)
+CGO_LDFLAGS=-lm -mthreads
+else
+CGO_LDFLAGS=-lpthread
+endif
 
 ifeq ($(GOOS),freebsd)
 OFILES+=\
