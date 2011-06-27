@@ -768,13 +768,9 @@ dodata(void)
 	 */
 	dynreloc();
 	
-	/*
-	 * some symbols may no longer belong in datap (Mach-O)
-	 * or may be symbol/line tables without data (ELF)
-	 */
+	/* some symbols may no longer belong in datap (Mach-O) */
 	for(l=&datap; (s=*l) != nil; ) {
-		if(s->type <= STEXT || SXREF <= s->type ||
-		   (s->type == SSYMTAB || s->type == SPCLNTAB) && s->size == 0)
+		if(s->type <= STEXT || SXREF <= s->type)
 			*l = s->next;
 		else
 			l = &s->next;
