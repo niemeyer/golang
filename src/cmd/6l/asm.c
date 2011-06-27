@@ -1009,20 +1009,6 @@ asmb(void)
 			elfshbits(sect);
 
 		if (!debug['s']) {
-			/*
-			sh = newElfShdr(elfstr[ElfStrGosymtab]);
-			sh->type = SHT_PROGBITS;
-			sh->flags = SHF_ALLOC;
-			sh->addralign = 1;
-			shsym(sh, lookup("symtab", 0));
-
-			sh = newElfShdr(elfstr[ElfStrGopclntab]);
-			sh->type = SHT_PROGBITS;
-			sh->flags = SHF_ALLOC;
-			sh->addralign = 1;
-			shsym(sh, lookup("pclntab", 0));
-			*/
-
 			sh = newElfShdr(elfstr[ElfStrSymtab]);
 			sh->type = SHT_SYMTAB;
 			sh->off = symo;
