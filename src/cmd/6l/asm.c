@@ -714,10 +714,11 @@ asmb(void)
 	seek(cout, sect->vaddr - segtext.vaddr + segtext.fileoff, 0);
 	codeblk(sect->vaddr, sect->len);
 
-	/* output read-only data in text segment */
-	sect = segtext.sect->next;
-	seek(cout, sect->vaddr - segtext.vaddr + segtext.fileoff, 0);
-	datblk(sect->vaddr, sect->len);
+	/* output read-only data in text segment (rodata, gosymtab and pclntab) */
+	for(sect = sect->next; sect != nil; sect = sect->next) {
+		seek(cout, sect->vaddr - segtext.vaddr + segtext.fileoff, 0);
+		datblk(sect->vaddr, sect->len);
+	}
 
 	if(debug['v'])
 		Bprint(&bso, "%5.2f datblk\n", cputime());

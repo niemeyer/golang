@@ -802,30 +802,24 @@ dodata(void)
 	sect->len = datsize - sect->vaddr;
 
 	/* gosymtab */
-	if(s != nil && s->type < SPCLNTAB) {
-		sect = addsection(&segtext, ".gosymtab", 04);
-		sect->vaddr = datsize;
-		for(; s != nil && s->type < SPCLNTAB; s = s->next) {
-			s->type = SRODATA;
-			t = rnd(s->size, PtrSize);
-			s->value = datsize;
-			datsize += t;
-		}
-		sect->len = datsize - sect->vaddr;
+	sect = addsection(&segtext, ".gosymtab", 04);
+	sect->vaddr = datsize;
+	for(; s != nil && s->type < SPCLNTAB; s = s->next) {
+		s->type = SRODATA;
+		s->value = datsize;
+		datsize += s->size;
 	}
+	sect->len = datsize - sect->vaddr;
 
 	/* gopclntab */
-	if(s != nil && s->type < SDATA) {
-		sect = addsection(&segtext, ".gopclntab", 04);
-		sect->vaddr = datsize;
-		for(; s != nil && s->type < SDATA; s = s->next) {
-			s->type = SRODATA;
-			t = rnd(s->size, PtrSize);
-			s->value = datsize;
-			datsize += t;
-		}
-		sect->len = datsize - sect->vaddr;
+	sect = addsection(&segtext, ".gopclntab", 04);
+	sect->vaddr = datsize;
+	for(; s != nil && s->type < SDATA; s = s->next) {
+		s->type = SRODATA;
+		s->value = datsize;
+		datsize += s->size;
 	}
+	sect->len = datsize - sect->vaddr;
 
 	/* data */
 	datsize = 0;
@@ -920,7 +914,7 @@ textaddress(void)
 void
 address(void)
 {
-	Section *s, *text, *data, *rodata;
+	Section *s, *text, *data, *rodata, *symtab, *pclntab;
 	Sym *sym, *sub;
 	uvlong va;
 
@@ -951,7 +945,9 @@ address(void)
 	segdata.filelen = segdata.sect->len;	// assume .data is first
 	
 	text = segtext.sect;
-	rodata = segtext.sect->next;
+	rodata = text->next;
+	symtab = rodata->next;
+	pclntab = symtab->next;
 	data = segdata.sect;
 
 	for(sym = datap; sym != nil; sym = sym->next) {
@@ -968,12 +964,11 @@ address(void)
 	xdefine("etext", STEXT, text->vaddr + text->len);
 	xdefine("rodata", SRODATA, rodata->vaddr);
 	xdefine("erodata", SRODATA, rodata->vaddr + rodata->len);
+	xdefine("symtab", SRODATA, symtab->vaddr);
+	xdefine("esymtab", SRODATA, symtab->vaddr + symtab->len);
+	xdefine("pclntab", SRODATA, pclntab->vaddr);
+	xdefine("epclntab", SRODATA, pclntab->vaddr + pclntab->len);
 	xdefine("data", SBSS, data->vaddr);
 	xdefine("edata", SBSS, data->vaddr + data->len);
 	xdefine("end", SBSS, segdata.vaddr + segdata.len);
-
-	sym = lookup("pclntab", 0);
-	xdefine("epclntab", SRODATA, sym->value + sym->size);
-	sym = lookup("symtab", 0);
-	xdefine("esymtab", SRODATA, sym->value + sym->size);
 }
