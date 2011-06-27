@@ -1,0 +1,17 @@
+Mailed: False
+Description:
+	ld: fix strip by removing overlap of sections
+	
+	The gosymtab and gopclntab sections were pointing to the proper
+	data, but that data was already owned by the rodata sections.
+	Some ELF references explicitly prohibit multiple sections from
+	owning the same data, and strip behaves accordingly.
+	
+	The data for these sections was moved to after rodata, and the
+	gosymtab and gopclntab sections now own their respective ranges.
+	
+	strip is happy now, both with and without -s being provided at
+	link time.  Note that it won't remove these sections, since they
+	are necessary at runtime for generating proper backtraces and
+	similar introspection operations.
+Files:
