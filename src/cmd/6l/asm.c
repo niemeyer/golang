@@ -87,9 +87,6 @@ enum {
 	ElfStrText,
 	ElfStrData,
 	ElfStrBss,
-	ElfStrGosymcounts,
-	ElfStrGosymtab,
-	ElfStrGopclntab,
 	ElfStrShstrtab,
 	ElfStrSymtab,
 	ElfStrStrtab,
@@ -571,10 +568,9 @@ doelf(void)
 	elfstr[ElfStrBss] = addstring(shstrtab, ".bss");
 	addstring(shstrtab, ".elfdata");
 	addstring(shstrtab, ".rodata");
+	addstring(shstrtab, ".gosymtab");
+	addstring(shstrtab, ".gopclntab");
 	if(!debug['s']) {
-		elfstr[ElfStrGosymcounts] = addstring(shstrtab, ".gosymcounts");
-		elfstr[ElfStrGosymtab] = addstring(shstrtab, ".gosymtab");
-		elfstr[ElfStrGopclntab] = addstring(shstrtab, ".gopclntab");
 		elfstr[ElfStrSymtab] = addstring(shstrtab, ".symtab");
 		elfstr[ElfStrStrtab] = addstring(shstrtab, ".strtab");
 		dwarfaddshstrings(shstrtab);
@@ -1013,6 +1009,7 @@ asmb(void)
 			elfshbits(sect);
 
 		if (!debug['s']) {
+			/*
 			sh = newElfShdr(elfstr[ElfStrGosymtab]);
 			sh->type = SHT_PROGBITS;
 			sh->flags = SHF_ALLOC;
@@ -1024,6 +1021,7 @@ asmb(void)
 			sh->flags = SHF_ALLOC;
 			sh->addralign = 1;
 			shsym(sh, lookup("pclntab", 0));
+			*/
 
 			sh = newElfShdr(elfstr[ElfStrSymtab]);
 			sh->type = SHT_SYMTAB;

@@ -768,9 +768,13 @@ dodata(void)
 	 */
 	dynreloc();
 	
-	/* some symbols may no longer belong in datap (Mach-O) */
+	/*
+	 * some symbols may no longer belong in datap (Mach-O)
+	 * or may be symbol/line tables without data (ELF)
+	 */
 	for(l=&datap; (s=*l) != nil; ) {
-		if(s->type <= STEXT || SXREF <= s->type)
+		if(s->type <= STEXT || SXREF <= s->type ||
+		   (s->type == SSYMTAB || s->type == SPCLNTAB) && s->size == 0)
 			*l = s->next;
 		else
 			l = &s->next;
@@ -789,14 +793,40 @@ dodata(void)
 	sect->vaddr = 0;
 	datsize = 0;
 	s = datap;
-	for(; s != nil && s->type < SDATA; s = s->next) {
+	for(; s != nil && s->type < SSYMTAB; s = s->next) {
 		s->type = SRODATA;
 		t = rnd(s->size, PtrSize);
 		s->value = datsize;
 		datsize += t;
 	}
 	sect->len = datsize - sect->vaddr;
-	
+
+	/* gosymtab */
+	if(s != nil && s->type < SPCLNTAB) {
+		sect = addsection(&segtext, ".gosymtab", 04);
+		sect->vaddr = datsize;
+		for(; s != nil && s->type < SPCLNTAB; s = s->next) {
+			s->type = SRODATA;
+			t = rnd(s->size, PtrSize);
+			s->value = datsize;
+			datsize += t;
+		}
+		sect->len = datsize - sect->vaddr;
+	}
+
+	/* gopclntab */
+	if(s != nil && s->type < SDATA) {
+		sect = addsection(&segtext, ".gopclntab", 04);
+		sect->vaddr = datsize;
+		for(; s != nil && s->type < SDATA; s = s->next) {
+			s->type = SRODATA;
+			t = rnd(s->size, PtrSize);
+			s->value = datsize;
+			datsize += t;
+		}
+		sect->len = datsize - sect->vaddr;
+	}
+
 	/* data */
 	datsize = 0;
 	sect = addsection(&segdata, ".data", 06);
