@@ -4567,3 +4567,7 @@ data/src/cmd/gofix/oserrorstring.go.i
 data/src/pkg/net/interface_windows.go.i
 data/src/cmd/gofix/oserrorstring_test.go.i
 data/src/pkg/exp/template/parse_test.go.i
+data/src/cmd/gofix/filepath_test.go.i
+data/src/cmd/gofix/sortslice_test.go.i
+data/src/cmd/gofix/filepath.go.i
+data/src/cmd/gofix/sortslice.go.i
