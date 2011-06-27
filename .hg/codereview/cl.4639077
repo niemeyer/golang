@@ -1,17 +1,29 @@
 Mailed: False
 Description:
-	ld: fix strip by removing overlap of sections
+	ld: fix ELF strip by removing overlap of sections
 	
 	The gosymtab and gopclntab sections were pointing to the proper
-	data, but that data was already owned by the rodata sections.
+	data, but that data was already owned by the rodata section.
 	Some ELF references explicitly prohibit multiple sections from
 	owning the same data, and strip behaves accordingly.
 	
 	The data for these sections was moved to after rodata, and the
 	gosymtab and gopclntab sections now own their respective ranges.
 	
-	strip is happy now, both with and without -s being provided at
-	link time.  Note that it won't remove these sections, since they
-	are necessary at runtime for generating proper backtraces and
-	similar introspection operations.
+	This change makes strip happy both with and without -s being
+	provided at link time.  Note that it won't remove these sections
+	because they are still allocated, and that's by design since
+	they are necessary at runtime for generating proper backtraces
+	and similar introspection operations.
+	
+	Fixes 1242.
+	
+	NOTE: Tested on Linux 386/amd64/arm only.
 Files:
+	src/cmd/5l/asm.c
+	src/cmd/6l/asm.c
+	src/cmd/8l/asm.c
+	src/cmd/ld/data.c
+	src/cmd/ld/lib.c
+	src/cmd/ld/lib.h
+	src/cmd/ld/symtab.c
