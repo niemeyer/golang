@@ -1,4 +1,4 @@
-Mailed: False
+Mailed: True
 Description:
 	ld: fix ELF strip by removing overlap of sections
 	
@@ -16,9 +16,13 @@ Description:
 	they are necessary at runtime for generating proper backtraces
 	and similar introspection operations.
 	
+	Unlike the previous behavior, -s will now maintain zero-sized
+	gosymtab and gopclntab sections.  This makes the implementation
+	slightly cleaner.
+	
 	Fixes 1242.
 	
-	NOTE: Tested on Linux 386/amd64/arm only.
+	NOTE: Tested on Linux amd64/386/arm only.
 Files:
 	src/cmd/5l/asm.c
 	src/cmd/6l/asm.c
