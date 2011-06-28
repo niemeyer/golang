@@ -9,6 +9,7 @@ GOFILES=\
 	filepath.go\
 	fix.go\
 	httpfinalurl.go\
+	httpfs.go\
 	httpheaders.go\
 	httpserver.go\
 	main.go\
@@ -18,6 +19,7 @@ GOFILES=\
 	procattr.go\
 	reflect.go\
 	sortslice.go\
+	stringssplit.go\
 	typecheck.go\
 
 include ../../Make.cmd

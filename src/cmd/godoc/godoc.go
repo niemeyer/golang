@@ -84,7 +84,7 @@ var (
 
 func initHandlers() {
 	fsMap.Init(*pkgPath)
-	fileServer = http.FileServer(*goroot, "")
+	fileServer = http.FileServer(http.Dir(*goroot))
 	cmdHandler = httpHandler{"/cmd/", filepath.Join(*goroot, "src", "cmd"), false}
 	pkgHandler = httpHandler{"/pkg/", filepath.Join(*goroot, "src", "pkg"), true}
 }
@@ -160,7 +160,7 @@ func readDirList(filename string) ([]string, os.Error) {
 		}
 		return e == nil && isPkgDir(d)
 	}
-	list := canonicalizePaths(strings.Split(string(contents), "\n", -1), filter)
+	list := canonicalizePaths(strings.Split(string(contents), "\n"), filter)
 	// for each parent path, remove all it's children q
 	// (requirement for binary search to work when filtering)
 	i := 0

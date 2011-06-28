@@ -4571,3 +4571,16 @@ data/src/cmd/gofix/filepath_test.go.i
 data/src/cmd/gofix/sortslice_test.go.i
 data/src/cmd/gofix/filepath.go.i
 data/src/cmd/gofix/sortslice.go.i
+data/test/fixedbugs/bug345.dir/io.go.i
+data/src/cmd/gofix/httpfs.go.i
+data/test/fixedbugs/bug345.go.i
+data/src/pkg/xml/marshal_test.go.i
+data/src/cmd/gofix/stringssplit_test.go.i
+data/src/pkg/exp/regexp/syntax/prog.go.i
+data/test/fixedbugs/bug345.dir/main.go.i
+data/src/cmd/gofix/stringssplit.go.i
+data/src/pkg/exp/regexp/syntax/prog_test.go.i
+data/src/cmd/gofix/httpfs_test.go.i
+data/src/pkg/xml/marshal.go.i
+data/src/pkg/xml/atom_test.go.i
+data/src/pkg/exp/regexp/syntax/compile.go.i
