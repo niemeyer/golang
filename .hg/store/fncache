@@ -4584,3 +4584,9 @@ data/src/cmd/gofix/httpfs_test.go.i
 data/src/pkg/xml/marshal.go.i
 data/src/pkg/xml/atom_test.go.i
 data/src/pkg/exp/regexp/syntax/compile.go.i
+data/src/pkg/runtime/386/atomic.c.i
+data/src/pkg/exp/template/exec.go.i
+data/src/pkg/runtime/amd64/atomic.c.i
+data/src/pkg/exp/template/exec_test.go.i
+data/src/pkg/runtime/sema_test.go.i
+data/src/pkg/runtime/arm/atomic.c.i
