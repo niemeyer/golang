@@ -4590,3 +4590,9 @@ data/src/pkg/runtime/amd64/atomic.c.i
 data/src/pkg/exp/template/exec_test.go.i
 data/src/pkg/runtime/sema_test.go.i
 data/src/pkg/runtime/arm/atomic.c.i
+data/src/cmd/gofix/signal_test.go.i
+data/src/pkg/runtime/windows/amd64/rt0.s.i
+data/src/pkg/runtime/windows/amd64/defs.h.i
+data/src/pkg/runtime/windows/amd64/signal.c.i
+data/src/pkg/runtime/windows/amd64/sys.s.i
+data/src/cmd/gofix/signal.go.i
