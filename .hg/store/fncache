@@ -4596,3 +4596,12 @@ data/src/pkg/runtime/windows/amd64/defs.h.i
 data/src/pkg/runtime/windows/amd64/signal.c.i
 data/src/pkg/runtime/windows/amd64/sys.s.i
 data/src/cmd/gofix/signal.go.i
+data/src/pkg/csv/reader_test.go.i
+data/src/pkg/csv/reader.go.i
+data/doc/progs/file_windows.go.i
+data/src/pkg/csv/writer.go.i
+data/src/pkg/exp/regexp/syntax/simplify_test.go.i
+data/src/pkg/csv/writer_test.go.i
+data/src/pkg/csv/Makefile.i
+data/src/pkg/exp/regexp/syntax/simplify.go.i
+data/misc/dashboard/godashboard/auth.py.i
