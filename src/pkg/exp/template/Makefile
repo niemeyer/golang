@@ -7,7 +7,9 @@ include ../../../Make.inc
 TARG=exp/template
 GOFILES=\
 	exec.go\
+	funcs.go\
 	lex.go\
 	parse.go\
+	set.go\
 
 include ../../../Make.pkg

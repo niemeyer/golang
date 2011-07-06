@@ -4605,3 +4605,6 @@ data/src/pkg/csv/writer_test.go.i
 data/src/pkg/csv/Makefile.i
 data/src/pkg/exp/regexp/syntax/simplify.go.i
 data/misc/dashboard/godashboard/auth.py.i
+data/src/pkg/exp/template/funcs.go.i
+data/src/pkg/exp/template/set_test.go.i
+data/src/pkg/exp/template/set.go.i
