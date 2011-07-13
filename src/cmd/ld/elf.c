@@ -393,7 +393,7 @@ elfdynhash(void)
 
 	nsym = nelfsym;
 	s = lookup(".hash", 0);
-	s->type = SELFDATA;
+	s->type = SELFRODATA;
 	s->reachable = 1;
 
 	i = nsym;
@@ -539,6 +539,12 @@ elfshbits(Section *sect)
 	return nil;
 
 found:
+	for(i=0; i<hdr.shnum; i++) {
+		sh = shdr[i];
+		if(sh->name == off)
+			return sh;
+	}
+
 	sh = newElfShdr(off);
 	if(sect->vaddr < sect->seg->vaddr + sect->seg->filelen)
 		sh->type = SHT_PROGBITS;
