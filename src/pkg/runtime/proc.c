@@ -56,6 +56,7 @@ struct Sched {
 	Lock;
 
 	G *gfree;	// available gs (status == Gdead)
+	int32 goidgen;
 
 	G *ghead;	// gs waiting to run
 	G *gtail;
@@ -96,6 +97,7 @@ static G* gfget(void);
 static void matchmg(void);	// match ms to gs
 static void readylocked(G*);	// ready, but sched is locked
 static void mnextg(M*, G*);
+static void mcommoninit(M*);
 
 // The bootstrap sequence is:
 //
@@ -115,10 +117,10 @@ runtime·schedinit(void)
 	int32 n;
 	byte *p;
 
-	runtime·allm = m;
 	m->nomemprof++;
-
 	runtime·mallocinit();
+	mcommoninit(m);
+
 	runtime·goargs();
 	runtime·goenvs();
 
@@ -132,7 +134,6 @@ runtime·schedinit(void)
 	if(p != nil && (n = runtime·atoi(p)) != 0)
 		runtime·gomaxprocs = n;
 	runtime·sched.mcpumax = runtime·gomaxprocs;
-	runtime·sched.mcount = 1;
 	runtime·sched.predawn = 1;
 
 	m->nomemprof--;
@@ -204,6 +205,20 @@ runtime·idlegoroutine(void)
 	if(g->idlem != nil)
 		runtime·throw("g is already an idle goroutine");
 	g->idlem = m;
+}
+
+static void
+mcommoninit(M *m)
+{
+	// Add to runtime·allm so garbage collector doesn't free m
+	// when it is just in a register or thread-local storage.
+	m->alllink = runtime·allm;
+	runtime·allm = m;
+
+	m->id = runtime·sched.mcount++;
+	m->fastrand = 0x49f6428aUL + m->id;
+	m->stackalloc = runtime·malloc(sizeof(*m->stackalloc));
+	runtime·FixAlloc_Init(m->stackalloc, FixedStack, runtime·SysAlloc, nil, nil);
 }
 
 // Put on `g' queue.  Sched must be locked.
@@ -490,11 +505,7 @@ matchmg(void)
 		// Find the m that will run g.
 		if((m = mget(g)) == nil){
 			m = runtime·malloc(sizeof(M));
-			// Add to runtime·allm so garbage collector doesn't free m
-			// when it is just in a register or thread-local storage.
-			m->alllink = runtime·allm;
-			runtime·allm = m;
-			m->id = runtime·sched.mcount++;
+			mcommoninit(m);
 
 			if(runtime·iscgo) {
 				CgoThreadStart ts;
@@ -698,7 +709,7 @@ runtime·oldstack(void)
 	uint32 argsize;
 	byte *sp;
 	G *g1;
-	static int32 goid;
+	int32 goid;
 
 //printf("oldstack m->cret=%p\n", m->cret);
 
@@ -709,9 +720,10 @@ runtime·oldstack(void)
 	argsize = old.argsize;
 	if(argsize > 0) {
 		sp -= argsize;
-		runtime·mcpy(top->argp, sp, argsize);
+		runtime·memmove(top->argp, sp, argsize);
 	}
 	goid = old.gobuf.g->goid;	// fault if g is bad, before gogo
+	USED(goid);
 
 	if(old.free != 0)
 		runtime·stackfree(g1->stackguard - StackGuard, old.free);
@@ -790,7 +802,7 @@ runtime·newstack(void)
 	sp = (byte*)top;
 	if(argsize > 0) {
 		sp -= argsize;
-		runtime·mcpy(sp, m->moreargp, argsize);
+		runtime·memmove(sp, m->moreargp, argsize);
 	}
 	if(thechar == '5') {
 		// caller would have saved its LR below args.
@@ -891,7 +903,7 @@ runtime·newproc1(byte *fn, byte *argp, int32 narg, int32 nret, void *callerpc)
 
 	sp = newg->stackbase;
 	sp -= siz;
-	runtime·mcpy(sp, argp, narg);
+	runtime·memmove(sp, argp, narg);
 	if(thechar == '5') {
 		// caller's LR
 		sp -= sizeof(void*);
@@ -905,8 +917,8 @@ runtime·newproc1(byte *fn, byte *argp, int32 narg, int32 nret, void *callerpc)
 	newg->gopc = (uintptr)callerpc;
 
 	runtime·sched.gcount++;
-	runtime·goidgen++;
-	newg->goid = runtime·goidgen;
+	runtime·sched.goidgen++;
+	newg->goid = runtime·sched.goidgen;
 
 	newprocreadylocked(newg);
 	schedunlock();
@@ -929,7 +941,7 @@ runtime·deferproc(int32 siz, byte* fn, ...)
 		d->argp = (byte*)(&fn+2);  // skip caller's saved link register
 	else
 		d->argp = (byte*)(&fn+1);
-	runtime·mcpy(d->args, d->argp, d->siz);
+	runtime·memmove(d->args, d->argp, d->siz);
 
 	d->link = g->defer;
 	g->defer = d;
@@ -956,7 +968,7 @@ runtime·deferreturn(uintptr arg0)
 	argp = (byte*)&arg0;
 	if(d->argp != argp)
 		return;
-	runtime·mcpy(argp, d->args, d->siz);
+	runtime·memmove(argp, d->args, d->siz);
 	g->defer = d->link;
 	fn = d->fn;
 	runtime·free(d);
@@ -1355,11 +1367,11 @@ os·setenv_c(String k, String v)
 		return;
 
 	arg[0] = runtime·malloc(k.len + 1);
-	runtime·mcpy(arg[0], k.str, k.len);
+	runtime·memmove(arg[0], k.str, k.len);
 	arg[0][k.len] = 0;
 
 	arg[1] = runtime·malloc(v.len + 1);
-	runtime·mcpy(arg[1], v.str, v.len);
+	runtime·memmove(arg[1], v.str, v.len);
 	arg[1][v.len] = 0;
 
 	runtime·asmcgocall(libcgo_setenv, arg);

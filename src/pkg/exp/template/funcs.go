@@ -17,17 +17,20 @@ import (
 
 // FuncMap is the type of the map defining the mapping from names to functions.
 // Each function must have either a single return value, or two return values of
-// which the second has type os.Error.
+// which the second has type os.Error. If the second argument evaluates to non-nil
+// during execution, execution terminates and Execute returns an error.
 type FuncMap map[string]interface{}
 
 var funcs = map[string]reflect.Value{
-	"and":    reflect.ValueOf(and),
-	"html":   reflect.ValueOf(HTMLEscaper),
-	"index":  reflect.ValueOf(index),
-	"js":     reflect.ValueOf(JSEscaper),
-	"not":    reflect.ValueOf(not),
-	"or":     reflect.ValueOf(or),
-	"printf": reflect.ValueOf(fmt.Sprintf),
+	"and":     reflect.ValueOf(and),
+	"html":    reflect.ValueOf(HTMLEscaper),
+	"index":   reflect.ValueOf(index),
+	"js":      reflect.ValueOf(JSEscaper),
+	"not":     reflect.ValueOf(not),
+	"or":      reflect.ValueOf(or),
+	"print":   reflect.ValueOf(fmt.Sprint),
+	"printf":  reflect.ValueOf(fmt.Sprintf),
+	"println": reflect.ValueOf(fmt.Sprintln),
 }
 
 // addFuncs adds to values the functions in funcs, converting them to reflect.Values.
@@ -119,22 +122,39 @@ func index(item interface{}, indices ...interface{}) (interface{}, os.Error) {
 
 // Boolean logic.
 
-// and returns the Boolean AND of its arguments.
-func and(arg0 interface{}, args ...interface{}) (truth bool) {
-	truth, _ = isTrue(reflect.ValueOf(arg0))
-	for i := 0; truth && i < len(args); i++ {
-		truth, _ = isTrue(reflect.ValueOf(args[i]))
-	}
-	return
+func truth(a interface{}) bool {
+	t, _ := isTrue(reflect.ValueOf(a))
+	return t
 }
 
-// or returns the Boolean OR of its arguments.
-func or(arg0 interface{}, args ...interface{}) (truth bool) {
-	truth, _ = isTrue(reflect.ValueOf(arg0))
-	for i := 0; !truth && i < len(args); i++ {
-		truth, _ = isTrue(reflect.ValueOf(args[i]))
+// and computes the Boolean AND of its arguments, returning
+// the first false argument it encounters, or the last argument.
+func and(arg0 interface{}, args ...interface{}) interface{} {
+	if !truth(arg0) {
+		return arg0
 	}
-	return
+	for i := range args {
+		arg0 = args[i]
+		if !truth(arg0) {
+			break
+		}
+	}
+	return arg0
+}
+
+// or computes the Boolean OR of its arguments, returning
+// the first true argument it encounters, or the last argument.
+func or(arg0 interface{}, args ...interface{}) interface{} {
+	if truth(arg0) {
+		return arg0
+	}
+	for i := range args {
+		arg0 = args[i]
+		if truth(arg0) {
+			break
+		}
+	}
+	return arg0
 }
 
 // not returns the Boolean negation of its argument.
@@ -213,8 +233,9 @@ var (
 	jsBackslash = []byte(`\\`)
 	jsApos      = []byte(`\'`)
 	jsQuot      = []byte(`\"`)
+	jsLt        = []byte(`\x3C`)
+	jsGt        = []byte(`\x3E`)
 )
-
 
 // JSEscape writes to w the escaped JavaScript equivalent of the plain text data b.
 func JSEscape(w io.Writer, b []byte) {
@@ -222,14 +243,14 @@ func JSEscape(w io.Writer, b []byte) {
 	for i := 0; i < len(b); i++ {
 		c := b[i]
 
-		if ' ' <= c && c < utf8.RuneSelf && c != '\\' && c != '"' && c != '\'' {
+		if !jsIsSpecial(int(c)) {
 			// fast path: nothing to do
 			continue
 		}
 		w.Write(b[last:i])
 
 		if c < utf8.RuneSelf {
-			// Quotes and slashes get quoted.
+			// Quotes, slashes and angle brackets get quoted.
 			// Control characters get written as \u00XX.
 			switch c {
 			case '\\':
@@ -238,6 +259,10 @@ func JSEscape(w io.Writer, b []byte) {
 				w.Write(jsApos)
 			case '"':
 				w.Write(jsQuot)
+			case '<':
+				w.Write(jsLt)
+			case '>':
+				w.Write(jsGt)
 			default:
 				w.Write(jsLowUni)
 				t, b := c>>4, c&0x0f
@@ -273,7 +298,7 @@ func JSEscapeString(s string) string {
 
 func jsIsSpecial(rune int) bool {
 	switch rune {
-	case '\\', '\'', '"':
+	case '\\', '\'', '"', '<', '>':
 		return true
 	}
 	return rune < ' ' || utf8.RuneSelf <= rune

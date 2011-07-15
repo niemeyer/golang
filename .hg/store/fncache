@@ -4630,3 +4630,9 @@ data/src/pkg/go/build/cgotest/cgotest.c.i
 data/src/pkg/go/build/cgotest/cgotest.h.i
 data/src/pkg/archive/zip/writer.go.i
 data/src/cmd/gofix/sorthelpers_test.go.i
+data/src/pkg/http/testdata/style.css.i
+data/src/pkg/http/sniff.go.i
+data/test/fixedbugs/bug346.go.i
+data/src/pkg/json/encode_test.go.i
+data/src/pkg/json/tagkey_test.go.i
+data/src/cmd/godoc/zip.go.i

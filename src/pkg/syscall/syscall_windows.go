@@ -476,7 +476,7 @@ func Chmod(path string, mode uint32) (errno int) {
 //sys	WSACleanup() (errno int) [failretval==-1] = wsock32.WSACleanup
 //sys	WSAIoctl(s Handle, iocc uint32, inbuf *byte, cbif uint32, outbuf *byte, cbob uint32, cbbr *uint32, overlapped *Overlapped, completionRoutine uintptr) (errno int) [failretval==-1] = ws2_32.WSAIoctl
 //sys	socket(af int32, typ int32, protocol int32) (handle Handle, errno int) [failretval==InvalidHandle] = wsock32.socket
-//sys	setsockopt(s Handle, level int32, optname int32, optval *byte, optlen int32) (errno int) [failretval==-1] = wsock32.setsockopt
+//sys	Setsockopt(s Handle, level int32, optname int32, optval *byte, optlen int32) (errno int) [failretval==-1] = wsock32.setsockopt
 //sys	bind(s Handle, name uintptr, namelen int32) (errno int) [failretval==-1] = wsock32.bind
 //sys	connect(s Handle, name uintptr, namelen int32) (errno int) [failretval==-1] = wsock32.connect
 //sys	getsockname(s Handle, rsa *RawSockaddrAny, addrlen *int32) (errno int) [failretval==-1] = wsock32.getsockname
@@ -594,7 +594,7 @@ func Socket(domain, typ, proto int) (fd Handle, errno int) {
 
 func SetsockoptInt(fd Handle, level, opt int, value int) (errno int) {
 	v := int32(value)
-	return int(setsockopt(fd, int32(level), int32(opt), (*byte)(unsafe.Pointer(&v)), int32(unsafe.Sizeof(v))))
+	return int(Setsockopt(fd, int32(level), int32(opt), (*byte)(unsafe.Pointer(&v)), int32(unsafe.Sizeof(v))))
 }
 
 func Bind(fd Handle, sa Sockaddr) (errno int) {

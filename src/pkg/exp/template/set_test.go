@@ -38,7 +38,7 @@ var setParseTests = []setParseTest{
 
 func TestSetParse(t *testing.T) {
 	for _, test := range setParseTests {
-		set := NewSet()
+		set := new(Set)
 		err := set.Parse(test.input)
 		switch {
 		case err == nil && !test.ok:
@@ -72,28 +72,39 @@ func TestSetParse(t *testing.T) {
 	}
 }
 
-
 var setExecTests = []execTest{
 	{"empty", "", "", nil, true},
 	{"text", "some text", "some text", nil, true},
-	{"invoke text", `{{template "text" .SI}}`, "TEXT", tVal, true},
+	{"invoke x", `{{template "x" .SI}}`, "TEXT", tVal, true},
+	{"invoke x no args", `{{template "x"}}`, "TEXT", tVal, true},
 	{"invoke dot int", `{{template "dot" .I}}`, "17", tVal, true},
 	{"invoke dot []int", `{{template "dot" .SI}}`, "[3 4 5]", tVal, true},
 	{"invoke dotV", `{{template "dotV" .U}}`, "v", tVal, true},
 	{"invoke nested int", `{{template "nested" .I}}`, "17", tVal, true},
+
+	// User-defined function: test argument evaluator.
+	{"testFunc literal", `{{oneArg "joe"}}`, "oneArg=joe", tVal, true},
+	{"testFunc .", `{{oneArg .}}`, "oneArg=joe", "joe", true},
 }
 
-const setText = `
-	{{define "text"}}TEXT{{end}}
+const setText1 = `
+	{{define "x"}}TEXT{{end}}
 	{{define "dotV"}}{{.V}}{{end}}
+`
+
+const setText2 = `
 	{{define "dot"}}{{.}}{{end}}
 	{{define "nested"}}{{template "dot" .}}{{end}}
 `
 
 func TestSetExecute(t *testing.T) {
 	// Declare a set with a couple of templates first.
-	set := NewSet()
-	err := set.Parse(setText)
+	set := new(Set)
+	err := set.Parse(setText1)
+	if err != nil {
+		t.Fatalf("error parsing set: %s", err)
+	}
+	err = set.Parse(setText2)
 	if err != nil {
 		t.Fatalf("error parsing set: %s", err)
 	}

@@ -14,37 +14,65 @@ import (
 )
 
 // Set holds a set of related templates that can refer to one another by name.
+// The zero value represents an empty set.
 // A template may be a member of multiple sets.
 type Set struct {
 	tmpl  map[string]*Template
 	funcs map[string]reflect.Value
 }
 
-// NewSet allocates a new, empty template set.
-func NewSet() *Set {
-	return &Set{
-		tmpl:  make(map[string]*Template),
-		funcs: make(map[string]reflect.Value),
+func (s *Set) init() {
+	if s.tmpl == nil {
+		s.tmpl = make(map[string]*Template)
+		s.funcs = make(map[string]reflect.Value)
 	}
 }
 
-// Funcs adds to the set's function map the elements of the
-// argument map.   It panics if a value in the map is not a function
-// with appropriate return type.
+// Funcs adds the elements of the argument map to the set's function map.  It
+// panics if a value in the map is not a function with appropriate return
+// type.
 // The return value is the set, so calls can be chained.
 func (s *Set) Funcs(funcMap FuncMap) *Set {
+	s.init()
 	addFuncs(s.funcs, funcMap)
 	return s
 }
 
-// Add adds the argument templates to the set. It panics if the call
-// attempts to reuse a name defined in the template.
+// Add adds the argument templates to the set. It panics if two templates
+// with the same name are added.
 // The return value is the set, so calls can be chained.
 func (s *Set) Add(templates ...*Template) *Set {
+	s.init()
 	for _, t := range templates {
 		if _, ok := s.tmpl[t.name]; ok {
 			panic(fmt.Errorf("template: %q already defined in set", t.name))
 		}
+		s.tmpl[t.name] = t
+	}
+	return s
+}
+
+// AddSet adds the templates from the provided set to the to the receiver.
+// It panics if the call attempts to reuse a name defined in the set.
+// The return value is the set, so calls can be chained.
+func (s *Set) AddSet(set *Set) *Set {
+	s.init()
+	for _, t := range set.tmpl {
+		if _, ok := s.tmpl[t.name]; ok {
+			panic(fmt.Errorf("template: %q already defined in set", t.name))
+		}
+		s.tmpl[t.name] = t
+	}
+	return s
+}
+
+// Union adds the templates from the provided set to the to the receiver.
+// Unlike AddSet, it does not panic if a name is reused; instead the old
+// template is replaced.
+// The return value is the set, so calls can be chained.
+func (s *Set) Union(set *Set) *Set {
+	s.init()
+	for _, t := range set.tmpl {
 		s.tmpl[t.name] = t
 	}
 	return s
@@ -56,10 +84,9 @@ func (s *Set) Template(name string) *Template {
 	return s.tmpl[name]
 }
 
-// Execute looks for the named template in the set and then applies that
-// template to the specified data object, writing the output to wr.  Nested
-// template invocations will be resolved from the set.
-func (s *Set) Execute(name string, wr io.Writer, data interface{}) os.Error {
+// Execute applies the named template to the specified data object, writing
+// the output to wr.  Nested template invocations will be resolved from the set.
+func (s *Set) Execute(wr io.Writer, name string, data interface{}) os.Error {
 	tmpl := s.tmpl[name]
 	if tmpl == nil {
 		return fmt.Errorf("template: no template %q in set", name)
@@ -81,8 +108,12 @@ func (s *Set) recover(errp *os.Error) {
 	return
 }
 
-// Parse parses the file into a set of named templates.
+// Parse parses a string into a set of named templates.  Parse may be called
+// multiple times for a given set, adding the templates defined in the string
+// to the set.  If a template is redefined, the element in the set is
+// overwritten with the new definition.
 func (s *Set) Parse(text string) (err os.Error) {
+	s.init()
 	defer s.recover(&err)
 	lex := lex("set", text)
 	const context = "define clause"
