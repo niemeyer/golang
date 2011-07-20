@@ -559,7 +559,7 @@ doelf(void)
 
 	/* predefine strings we need for section headers */
 	shstrtab = lookup(".shstrtab", 0);
-	shstrtab->type = SSHSTRTAB;
+	shstrtab->type = SELFRODATA;
 	shstrtab->reachable = 1;
 
 	elfstr[ElfStrEmpty] = addstring(shstrtab, "");
@@ -629,7 +629,7 @@ doelf(void)
 		/* global offset table */
 		s = lookup(".got", 0);
 		s->reachable = 1;
-		s->type = SELFDATA;	// writable, so not SELFRODATA
+		s->type = SELFDATA;
 
 		/* hash */
 		s = lookup(".hash", 0);
@@ -638,7 +638,7 @@ doelf(void)
 
 		s = lookup(".got.plt", 0);
 		s->reachable = 1;
-		s->type = SELFDATA;	// writable, not SELFRODATA
+		s->type = SELFDATA;
 
 		s = lookup(".plt", 0);
 		s->reachable = 1;

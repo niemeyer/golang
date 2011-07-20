@@ -42,11 +42,11 @@ enum
 	SSYMTAB,
 	SPCLNTAB,
 	SELFRODATA,
+	SELFDATA,
 	SDATA,
 	SMACHO,	/* Mach-O __nl_symbol_ptr */
 	SMACHOGOT,
 	SWINDOWS,
-	SELFDATA,
 	SBSS,
 
 	SXREF,

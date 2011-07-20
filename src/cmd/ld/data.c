@@ -421,13 +421,11 @@ blk(Sym *allsym, int32 addr, int32 size)
 			break;
 
 	eaddr = addr+size;
-	print("Entering\n");
 	for(; sym != nil; sym = sym->next) {
 		if(sym->type&SSUB)
 			continue;
 		if(sym->value >= eaddr)
 			break;
-		print("sym->name=%s\n", sym->name);
 		if(sym->value < addr) {
 			diag("phase error: addr=%#llx but sym=%#llx type=%d", (vlong)addr, (vlong)sym->value, sym->type);
 			errorexit();
@@ -851,20 +849,30 @@ dodata(void)
 	datsize = rnd(datsize, PtrSize);
 
 	/* read-only dynamic ELF sections */
-	for(; s != nil && s->type < SDATA; s = s->next) {
+	for(; s != nil && s->type < SELFDATA; s = s->next) {
 		sect = addsection(&segtext, s->name, 04);
 		sect->vaddr = datsize;
 		s->type = SRODATA;
 		s->value = datsize;
-		sect->len = s->size;
 		datsize += rnd(s->size, PtrSize);
+		sect->len = datsize - sect->vaddr;
+	}
+
+	/* writable dynamic ELF sections */
+	datsize = 0;
+	for(; s != nil && s->type < SDATA; s = s->next) {
+		sect = addsection(&segdata, s->name, 06);
+		sect->vaddr = datsize;
+		s->type = SDATA;
+		s->value = datsize;
+		datsize += rnd(s->size, PtrSize);
+		sect->len = datsize - sect->vaddr;
 	}
 
 	/* data */
-	datsize = 0;
 	sect = addsection(&segdata, ".data", 06);
 	sect->vaddr = 0;
-	for(; s != nil && s->type < SELFDATA; s = s->next) {
+	for(; s != nil && s->type < SBSS; s = s->next) {
 		s->type = SDATA;
 		t = s->size;
 		if(t == 0 && s->name[0] != '.') {
@@ -887,16 +895,6 @@ dodata(void)
 		datsize += t;
 	}
 	sect->len = datsize - sect->vaddr;
-
-	/* writable dynamic ELF sections */
-	for(; s != nil && s->type < SBSS; s = s->next) {
-		sect = addsection(&segdata, s->name, 06);
-		sect->vaddr = datsize;
-		s->type = SDATA;
-		s->value = datsize;
-		datsize += rnd(s->size, PtrSize);
-		sect->len = datsize - sect->vaddr;
-	}
 
 	/* bss */
 	sect = addsection(&segdata, ".bss", 06);
@@ -974,11 +972,9 @@ address(void)
 	for(s=segtext.sect; s != nil; s=s->next) {
 		s->vaddr = va;
 		va += rnd(s->len, PtrSize);
-		print("s->name=%s s->vaddr=%llx s->len=%llx\n", s->name, s->vaddr, s->len);
 	}
 	segtext.len = va - INITTEXT;
 	segtext.filelen = segtext.len;
-	print("segtext.vaddr=%llx segtext.len=%llx segtext.filelen=%llx\n", segtext.vaddr, segtext.len, segtext.filelen);
 
 	va = rnd(va, INITRND);
 
@@ -990,31 +986,31 @@ address(void)
 		segdata.fileoff = segtext.fileoff + rnd(segtext.len, PEFILEALIGN);
 	if(HEADTYPE == Hplan9x32)
 		segdata.fileoff = segtext.fileoff + segtext.filelen;
+	data = nil;
 	for(s=segdata.sect; s != nil; s=s->next) {
 		s->vaddr = va;
 		va += s->len;
-		if(s->next != nil) // last is .bss
-			segdata.filelen += s->len;
+		segdata.filelen += s->len;
 		segdata.len = va - segdata.vaddr;
+		if(strcmp(s->name, ".data") == 0)
+			data = s;
 	}
+	segdata.filelen -= data->next->len; // deduct .bss
 
 	text = segtext.sect;
 	rodata = text->next;
 	symtab = rodata->next;
 	pclntab = symtab->next;
-	data = segdata.sect;
 
 	for(sym = datap; sym != nil; sym = sym->next) {
 		cursym = sym;
-		if(sym->type < SDATA) {
+		if(sym->type < SDATA)
 			sym->value += rodata->vaddr;
-			print("Adjusted s->name=%s to s->value=%llx\n", sym->name, sym->value);
-		} else
-			sym->value += data->vaddr;
+		else
+			sym->value += segdata.sect->vaddr;
 		for(sub = sym->sub; sub != nil; sub = sub->sub)
 			sub->value += sym->value;
 	}
-	print("symtab->vaddr=%llx\n", symtab->vaddr);
 	
 	xdefine("text", STEXT, text->vaddr);
 	xdefine("etext", STEXT, text->vaddr + text->len);
