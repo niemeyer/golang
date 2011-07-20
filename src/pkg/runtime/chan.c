@@ -97,7 +97,7 @@ runtime·makechan_c(Type *elem, int64 hint)
 	int32 n;
 	byte *by;
 
-	if(hint < 0 || (int32)hint != hint || hint > ((uintptr)-1) / elem->size)
+	if(hint < 0 || (int32)hint != hint || (elem->size > 0 && hint > ((uintptr)-1) / elem->size))
 		runtime·panicstring("makechan: size out of range");
 
 	if(elem->alg >= nelem(runtime·algarray)) {
@@ -1167,12 +1167,15 @@ loop:
 static void
 dequeueg(WaitQ *q, Hchan *c)
 {
-	SudoG **l, *sgp;
-	
-	for(l=&q->first; (sgp=*l) != nil; l=&sgp->link) {
+	SudoG **l, *sgp, *prevsgp;
+
+	prevsgp = nil;
+	for(l=&q->first; (sgp=*l) != nil; l=&sgp->link, prevsgp=sgp) {
 		if(sgp->g == g) {
 			*l = sgp->link;
 			freesg(c, sgp);
+			if(q->last == sgp)
+				q->last = prevsgp;
 			break;
 		}
 	}

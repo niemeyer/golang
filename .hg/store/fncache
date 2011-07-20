@@ -4636,3 +4636,10 @@ data/test/fixedbugs/bug346.go.i
 data/src/pkg/json/encode_test.go.i
 data/src/pkg/json/tagkey_test.go.i
 data/src/cmd/godoc/zip.go.i
+data/test/chan/zerosize.go.i
+data/src/pkg/runtime/proc.p.i
+data/src/pkg/syscall/sockcmsg_linux.go.i
+data/misc/cgo/test/exports.go.i
+data/src/cmd/godoc/httpzip.go.i
+data/test/chan/select6.go.i
+data/misc/dashboard/godashboard/cron.yaml.i

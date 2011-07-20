@@ -695,7 +695,7 @@ func (t *Template) action() (n node) {
 		return t.withControl()
 	}
 	t.backup()
-	defer t.popVars(len(t.vars))
+	// Do not pop variables; they persist until "end".
 	return newAction(t.lex.lineNumber(), t.pipeline("command"))
 }
 
@@ -824,7 +824,7 @@ func (t *Template) templateControl() node {
 	var pipe *pipeNode
 	if t.next().typ != itemRightDelim {
 		t.backup()
-		defer t.popVars(len(t.vars))
+		// Do not pop variables; they persist until "end".
 		pipe = t.pipeline("template")
 	}
 	return newTemplate(t.lex.lineNumber(), name, pipe)
