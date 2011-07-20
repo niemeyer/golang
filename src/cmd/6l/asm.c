@@ -591,6 +591,7 @@ doelf(void)
 		elfstr[ElfStrGnuVersion] = addstring(shstrtab, ".gnu.version");
 		elfstr[ElfStrGnuVersionR] = addstring(shstrtab, ".gnu.version_r");
 
+		/* interpreter string */
 		if(interpreter == nil) {
 			switch(HEADTYPE) {
 			case Hlinux:
@@ -601,7 +602,6 @@ doelf(void)
 				break;
 			}
 		}
-
 		s = lookup(".interp", 0);
 		s->type = SELFRODATA;
 		s->reachable = 1;
