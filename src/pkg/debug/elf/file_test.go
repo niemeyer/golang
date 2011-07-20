@@ -229,12 +229,12 @@ func TestNoSectionOverlaps(t *testing.T) {
 		sih := si.SectionHeader
 		for j, sj := range f.Sections {
 			sjh := sj.SectionHeader
-			if i == j || sjh.Type == SHT_NOBITS {
+			if i == j || sjh.Type == SHT_NOBITS || sih.Offset == sjh.Offset && sih.Size == 0 {
 				continue
 			}
-			if sih.Offset >= sjh.Offset && sih.Offset < sjh.Offset + sjh.Size {
-				t.Errorf("ld produced ELF with section %s within %s (0x%x <= 0x%x < 0x%x)",
-					sih.Name, sjh.Name, sjh.Offset, sih.Offset, sjh.Offset + sjh.Size)
+			if sih.Offset >= sjh.Offset && sih.Offset < sjh.Offset+sjh.Size {
+				t.Errorf("ld produced ELF with section %s within %s: 0x%x <= 0x%x..0x%x < 0x%x",
+					sih.Name, sjh.Name, sjh.Offset, sih.Offset, sih.Offset+sih.Size, sjh.Offset+sjh.Size)
 			}
 		}
 	}
