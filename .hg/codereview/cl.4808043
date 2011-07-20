@@ -1,4 +1,4 @@
-Mailed: False
+Mailed: True
 Description:
 	ld: remove overlap of ELF sections on dynamic binaries
 	
@@ -11,8 +11,20 @@ Description:
 	now owned by their respective sections.  This change makes strip
 	happy both with and without -s being provided at link time.
 	
+	A test was added in debug/elf to ensure there are no regressions
+	on this area in the future.
+	
 	Fixes issue 1242.
 	Fixes issue 2022.
 	
 	NOTE: Tested on Linux amd64/386/arm only.
 Files:
+	src/cmd/5l/asm.c
+	src/cmd/5l/span.c
+	src/cmd/6l/asm.c
+	src/cmd/8l/asm.c
+	src/cmd/ld/data.c
+	src/cmd/ld/elf.c
+	src/cmd/ld/lib.h
+	src/cmd/ld/pe.c
+	src/pkg/debug/elf/file_test.go
