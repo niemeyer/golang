@@ -366,7 +366,7 @@ elfdynhash(void)
 
 	nsym = nelfsym;
 	s = lookup(".hash", 0);
-	s->type = SELFRODATA;
+	s->type = SELFROSECT;
 	s->reachable = 1;
 
 	i = nsym;

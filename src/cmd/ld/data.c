@@ -840,7 +840,7 @@ dodata(void)
 	/* gopclntab */
 	sect = addsection(&segtext, ".gopclntab", 04);
 	sect->vaddr = datsize;
-	for(; s != nil && s->type < SELFRODATA; s = s->next) {
+	for(; s != nil && s->type < SELFROSECT; s = s->next) {
 		s->type = SRODATA;
 		s->value = datsize;
 		datsize += s->size;
@@ -848,8 +848,8 @@ dodata(void)
 	sect->len = datsize - sect->vaddr;
 	datsize = rnd(datsize, PtrSize);
 
-	/* read-only dynamic ELF sections */
-	for(; s != nil && s->type < SELFDATA; s = s->next) {
+	/* read-only ELF sections */
+	for(; s != nil && s->type < SELFSECT; s = s->next) {
 		sect = addsection(&segtext, s->name, 04);
 		sect->vaddr = datsize;
 		s->type = SRODATA;
@@ -858,7 +858,7 @@ dodata(void)
 		sect->len = datsize - sect->vaddr;
 	}
 
-	/* writable dynamic ELF sections */
+	/* writable ELF sections */
 	datsize = 0;
 	for(; s != nil && s->type < SDATA; s = s->next) {
 		sect = addsection(&segdata, s->name, 06);

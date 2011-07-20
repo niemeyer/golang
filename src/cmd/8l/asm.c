@@ -519,7 +519,7 @@ doelf(void)
 
 	/* predefine strings we need for section headers */
 	shstrtab = lookup(".shstrtab", 0);
-	shstrtab->type = SELFRODATA;
+	shstrtab->type = SELFROSECT;
 	shstrtab->reachable = 1;
 
 	elfstr[ElfStrEmpty] = addstring(shstrtab, "");
@@ -563,20 +563,20 @@ doelf(void)
 			}
 		}
 		s = lookup(".interp", 0);
-		s->type = SELFRODATA;
+		s->type = SELFROSECT;
 		s->reachable = 1;
 		addstring(s, interpreter);
 
 		/* dynamic symbol table - first entry all zeros */
 		s = lookup(".dynsym", 0);
-		s->type = SELFRODATA;
+		s->type = SELFROSECT;
 		s->reachable = 1;
 		s->size += ELF32SYMSIZE;
 
 		/* dynamic string table */
 		s = lookup(".dynstr", 0);
 		s->reachable = 1;
-		s->type = SELFRODATA;
+		s->type = SELFROSECT;
 		if(s->size == 0)
 			addstring(s, "");
 		dynstr = s;
@@ -584,45 +584,45 @@ doelf(void)
 		/* relocation table */
 		s = lookup(".rel", 0);
 		s->reachable = 1;
-		s->type = SELFRODATA;
+		s->type = SELFROSECT;
 
 		/* global offset table */
 		s = lookup(".got", 0);
 		s->reachable = 1;
-		s->type = SELFDATA;	// writable, so not SELFDATA
+		s->type = SELFSECT;
 		
 		/* hash */
 		s = lookup(".hash", 0);
 		s->reachable = 1;
-		s->type = SELFRODATA;
+		s->type = SELFROSECT;
 
 		/* got.plt */
 		s = lookup(".got.plt", 0);
 		s->reachable = 1;
-		s->type = SELFDATA;	// writable, so not SELFDATA
+		s->type = SELFSECT;
 		
 		s = lookup(".plt", 0);
 		s->reachable = 1;
-		s->type = SELFRODATA;
+		s->type = SELFROSECT;
 
 		s = lookup(".rel.plt", 0);
 		s->reachable = 1;
-		s->type = SELFRODATA;
+		s->type = SELFROSECT;
 		
 		s = lookup(".gnu.version", 0);
 		s->reachable = 1;
-		s->type = SELFRODATA;
+		s->type = SELFROSECT;
 		
 		s = lookup(".gnu.version_r", 0);
 		s->reachable = 1;
-		s->type = SELFRODATA;
+		s->type = SELFROSECT;
 
 		elfsetupplt();
 
 		/* define dynamic elf table */
 		s = lookup(".dynamic", 0);
 		s->reachable = 1;
-		s->type = SELFRODATA;
+		s->type = SELFROSECT;
 
 		/*
 		 * .dynamic table
@@ -1201,7 +1201,7 @@ genasmsym(void (*put)(Sym*, char*, int, vlong, vlong, int, Sym*))
 			case SCONST:
 			case SRODATA:
 			case SDATA:
-			case SELFRODATA:
+			case SELFROSECT:
 			case SMACHO:
 			case SMACHOGOT:
 			case STYPE:
