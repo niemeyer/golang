@@ -1,0 +1,18 @@
+Mailed: False
+Description:
+	ld: remove overlap of ELF sections on dynamic binaries
+	
+	The dynamic ELF sections were pointing to the proper data,
+	but that data was already owned by the rodata and text sections.
+	Some ELF references explicitly prohibit multiple sections from
+	owning the same data, and strip behaves accordingly.
+	
+	The data for these sections was moved out and their ranges are
+	now owned by their respective sections.  This change makes strip
+	happy both with and without -s being provided at link time.
+	
+	Fixes issue 1242.
+	Fixes issue 2022.
+	
+	NOTE: Tested on Linux amd64/386/arm only.
+Files:
