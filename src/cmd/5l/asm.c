@@ -215,7 +215,7 @@ doelf(void)
 		/* global offset table */
 		s = lookup(".got", 0);
 		s->reachable = 1;
-		s->type = SELFROSECT;
+		s->type = SELFSECT; // writable
 		
 		/* hash */
 		s = lookup(".hash", 0);
@@ -225,7 +225,7 @@ doelf(void)
 		/* got.plt */
 		s = lookup(".got.plt", 0);
 		s->reachable = 1;
-		s->type = SELFSECT;
+		s->type = SELFSECT; // writable
 		
 		s = lookup(".plt", 0);
 		s->reachable = 1;
@@ -277,7 +277,8 @@ datoff(vlong addr)
 void
 shsym(Elf64_Shdr *sh, Sym *s)
 {
-	vlong addr = symaddr(s);
+	vlong addr;
+	addr = symaddr(s);
 	if(sh->flags&SHF_ALLOC)
 		sh->addr = addr;
 	sh->off = datoff(addr);
@@ -637,6 +638,8 @@ asmb(void)
 		a += elfwritephdrs();
 		a += elfwriteshdrs();
 		cflush();
+		if(a > ELFRESERVE)	
+			diag("ELFRESERVE too small: %d > %d", a, ELFRESERVE);
 		break;
 	}
 	cflush();
