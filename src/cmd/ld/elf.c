@@ -307,27 +307,27 @@ elfwritedynentsymsize(Sym *s, int tag, Sym *t)
 int
 elfwriteinterp(void)
 {
-       int n;
-       
-       if(interp == nil)
-               return 0;
+	int n;
 
-       n = strlen(interp)+1;
-       cseek(ELFRESERVE-n);
-       cwrite(interp, n);
-       return n;
+	if(interp == nil)
+		return 0;
+
+	n = strlen(interp)+1;
+	cseek(ELFRESERVE-n);
+	cwrite(interp, n);
+	return n;
 }
 
 void
 elfinterp(ElfShdr *sh, uint64 startva, char *p)
 {
-       int n;
-       
-       interp = p;
-       n = strlen(interp)+1;
-       sh->addr = startva + ELFRESERVE - n;
-       sh->off = ELFRESERVE - n;
-       sh->size = n;
+	int n;
+
+	interp = p;
+	n = strlen(interp)+1;
+	sh->addr = startva + ELFRESERVE - n;
+	sh->off = ELFRESERVE - n;
+	sh->size = n;
 }
 
 extern int nelfsym;
