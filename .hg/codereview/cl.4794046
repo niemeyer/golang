@@ -2,3 +2,8 @@ Mailed: False
 Description:
 	ld: fix freebsd build reverting .interp move
 Files:
+	src/cmd/5l/asm.c
+	src/cmd/6l/asm.c
+	src/cmd/8l/asm.c
+	src/cmd/ld/data.c
+	src/cmd/ld/elf.c
