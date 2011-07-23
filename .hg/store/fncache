@@ -4672,3 +4672,8 @@ data/src/pkg/html/testdata/webkit/adoption02.dat.i
 data/src/pkg/html/testdata/webkit/tests23.dat.i
 data/src/pkg/html/testdata/webkit/isindex.dat.i
 data/src/pkg/html/testdata/webkit/tests20.dat.i
+data/src/pkg/archive/zip/zip_test.go.i
+data/src/pkg/exp/template/testdata/tmpl2.tmpl.i
+data/src/pkg/exp/template/testdata/file1.tmpl.i
+data/src/pkg/exp/template/testdata/tmpl1.tmpl.i
+data/src/pkg/exp/template/testdata/file2.tmpl.i

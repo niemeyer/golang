@@ -222,6 +222,8 @@ ldpe(Biobuf *f, char *pkg, int64 len, char *pn)
 				s->type = SRODATA;
 				break;
 			case IMAGE_SCN_CNT_UNINITIALIZED_DATA|IMAGE_SCN_MEM_READ|IMAGE_SCN_MEM_WRITE: //.bss
+				s->type = SBSS;
+				break;
 			case IMAGE_SCN_CNT_INITIALIZED_DATA|IMAGE_SCN_MEM_READ|IMAGE_SCN_MEM_WRITE: //.data
 				s->type = SDATA;
 				break;
@@ -327,6 +329,10 @@ ldpe(Biobuf *f, char *pkg, int64 len, char *pn)
 		if(sym->sectnum == 0) {// extern
 			if(s->type == SDYNIMPORT)
 				s->plt = -2; // flag for dynimport in PE object files.
+			if (s->type == SXREF && sym->value > 0) {// global data
+				s->type = SDATA; 
+				s->size = sym->value;
+			}
 			continue;
 		} else if (sym->sectnum > 0) {
 			sect = &obj->sect[sym->sectnum-1];
@@ -378,6 +384,8 @@ map(PeObj *obj, PeSect *sect)
 		return 0;
 
 	sect->base = mal(sect->sh.SizeOfRawData);
+	if(sect->sh.PointerToRawData == 0) // .bss don't has data in object file.
+		return 0;
 	werrstr("short read");
 	if(Bseek(obj->f, obj->base+sect->sh.PointerToRawData, 0) < 0 || 
 			Bread(obj->f, sect->base, sect->sh.SizeOfRawData) != sect->sh.SizeOfRawData)
