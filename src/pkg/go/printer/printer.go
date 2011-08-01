@@ -17,6 +17,7 @@ import (
 	"tabwriter"
 )
 
+
 const debug = false // enable for debugging
 
 
@@ -32,6 +33,7 @@ const (
 	unindent = whiteSpace('<')
 )
 
+
 var (
 	esc       = []byte{tabwriter.Escape}
 	htab      = []byte{'\t'}
@@ -40,12 +42,15 @@ var (
 	formfeeds = []byte("\f\f\f\f\f\f\f\f") // more than the max determined by nlines
 )
 
+
 // Special positions
 var noPos token.Position // use noPos when a position is needed but not known
 var infinity = 1 << 30
 
+
 // Use ignoreMultiLine if the multiLine information is not important.
 var ignoreMultiLine = new(bool)
+
 
 // A pmode value represents the current printer mode.
 type pmode int
@@ -55,6 +60,7 @@ const (
 	noExtraLinebreak
 )
 
+
 type printer struct {
 	// Configuration (does not change after initialization)
 	output io.Writer
@@ -63,6 +69,7 @@ type printer struct {
 	errors chan os.Error
 
 	// Current state
+	nesting int         // nesting level (0: top-level (package scope), >0: functions/decls.)
 	written int         // number of bytes written
 	indent  int         // current indentation
 	mode    pmode       // current printer mode
@@ -91,6 +98,7 @@ type printer struct {
 	nodeSizes map[ast.Node]int
 }
 
+
 func (p *printer) init(output io.Writer, cfg *Config, fset *token.FileSet, nodeSizes map[ast.Node]int) {
 	p.output = output
 	p.Config = *cfg
@@ -100,6 +108,7 @@ func (p *printer) init(output io.Writer, cfg *Config, fset *token.FileSet, nodeS
 	p.nodeSizes = nodeSizes
 }
 
+
 func (p *printer) internalError(msg ...interface{}) {
 	if debug {
 		fmt.Print(p.pos.String() + ": ")
@@ -107,6 +116,7 @@ func (p *printer) internalError(msg ...interface{}) {
 		panic("go/printer")
 	}
 }
+
 
 // escape escapes string s by bracketing it with tabwriter.Escape.
 // Escaped strings pass through tabwriter unchanged. (Note that
@@ -121,19 +131,25 @@ func (p *printer) escape(s string) string {
 	return p.litbuf.String()
 }
 
+
 // nlines returns the adjusted number of linebreaks given the desired number
-// of breaks n such that min <= result <= max.
+// of breaks n such that min <= result <= max where max depends on the current
+// nesting level.
 //
 func (p *printer) nlines(n, min int) int {
-	const max = 2 // max. number of newlines
-	switch {
-	case n < min:
+	if n < min {
 		return min
-	case n > max:
+	}
+	max := 3 // max. number of newlines at the top level (p.nesting == 0)
+	if p.nesting > 0 {
+		max = 2 // max. number of newlines everywhere else
+	}
+	if n > max {
 		return max
 	}
 	return n
 }
+
 
 // write0 writes raw (uninterpreted) data to p.output and handles errors.
 // write0 does not indent after newlines, and does not HTML-escape or update p.pos.
@@ -148,6 +164,7 @@ func (p *printer) write0(data []byte) {
 		}
 	}
 }
+
 
 // write interprets data and writes it to p.output. It inserts indentation
 // after a line break unless in a tabwriter escape sequence.
@@ -203,6 +220,7 @@ func (p *printer) write(data []byte) {
 	p.pos.Column += d
 }
 
+
 func (p *printer) writeNewlines(n int, useFF bool) {
 	if n > 0 {
 		n = p.nlines(n, 0)
@@ -213,6 +231,7 @@ func (p *printer) writeNewlines(n int, useFF bool) {
 		}
 	}
 }
+
 
 // writeItem writes data at position pos. data is the text corresponding to
 // a single lexical token, but may also be comment text. pos is the actual
@@ -241,6 +260,7 @@ func (p *printer) writeItem(pos token.Position, data string) {
 	p.write([]byte(data))
 	p.last = p.pos
 }
+
 
 // writeCommentPrefix writes the whitespace before a comment.
 // If there is any pending whitespace, it consumes as much of
@@ -348,6 +368,7 @@ func (p *printer) writeCommentPrefix(pos, next token.Position, prev *ast.Comment
 	}
 }
 
+
 // TODO(gri): It should be possible to convert the code below from using
 //            []byte to string and in the process eliminate some conversions.
 
@@ -377,6 +398,7 @@ func split(text []byte) [][]byte {
 	return lines
 }
 
+
 func isBlank(s []byte) bool {
 	for _, b := range s {
 		if b > ' ' {
@@ -386,6 +408,7 @@ func isBlank(s []byte) bool {
 	return true
 }
 
+
 func commonPrefix(a, b []byte) []byte {
 	i := 0
 	for i < len(a) && i < len(b) && a[i] == b[i] && (a[i] <= ' ' || a[i] == '*') {
@@ -393,6 +416,7 @@ func commonPrefix(a, b []byte) []byte {
 	}
 	return a[0:i]
 }
+
 
 func stripCommonPrefix(lines [][]byte) {
 	if len(lines) < 2 {
@@ -521,6 +545,7 @@ func stripCommonPrefix(lines [][]byte) {
 	}
 }
 
+
 func (p *printer) writeComment(comment *ast.Comment) {
 	text := comment.Text
 
@@ -549,6 +574,7 @@ func (p *printer) writeComment(comment *ast.Comment) {
 		}
 	}
 }
+
 
 // writeCommentSuffix writes a line break after a comment if indicated
 // and processes any leftover indentation information. If a line break
@@ -587,6 +613,7 @@ func (p *printer) writeCommentSuffix(needsLinebreak bool) (droppedFF bool) {
 	return
 }
 
+
 // intersperseComments consumes all comments that appear before the next token
 // tok and prints it together with the buffered whitespace (i.e., the whitespace
 // that needs to be written before the next token). A heuristic is used to mix
@@ -623,6 +650,7 @@ func (p *printer) intersperseComments(next token.Position, tok token.Token) (dro
 	p.internalError("intersperseComments called without pending comments")
 	return false
 }
+
 
 // whiteWhitespace writes the first n whitespace entries.
 func (p *printer) writeWhitespace(n int) {
@@ -673,6 +701,7 @@ func (p *printer) writeWhitespace(n int) {
 	p.wsbuf = p.wsbuf[0:i]
 }
 
+
 // ----------------------------------------------------------------------------
 // Printing interface
 
@@ -694,6 +723,7 @@ func mayCombine(prev token.Token, next byte) (b bool) {
 	}
 	return
 }
+
 
 // print prints a list of "items" (roughly corresponding to syntactic
 // tokens, but also including whitespace and formatting information).
@@ -782,12 +812,14 @@ func (p *printer) print(args ...interface{}) {
 	}
 }
 
+
 // commentBefore returns true iff the current comment occurs
 // before the next position in the source code.
 //
 func (p *printer) commentBefore(next token.Position) bool {
 	return p.cindex < len(p.comments) && p.fset.Position(p.comments[p.cindex].List[0].Pos()).Offset < next.Offset
 }
+
 
 // Flush prints any pending comments and whitespace occurring
 // textually before the position of the next token tok. Flush
@@ -806,6 +838,7 @@ func (p *printer) flush(next token.Position, tok token.Token) (droppedFF bool) {
 	return
 }
 
+
 // ----------------------------------------------------------------------------
 // Trimmer
 
@@ -821,6 +854,7 @@ type trimmer struct {
 	space  bytes.Buffer
 }
 
+
 // trimmer is implemented as a state machine.
 // It can be in one of the following states:
 const (
@@ -828,6 +862,7 @@ const (
 	inEscape        // inside text bracketed by tabwriter.Escapes
 	inText          // inside text
 )
+
 
 // Design note: It is tempting to eliminate extra blanks occurring in
 //              whitespace in this function as it could simplify some
@@ -906,6 +941,7 @@ func (p *trimmer) Write(data []byte) (n int, err os.Error) {
 	return
 }
 
+
 // ----------------------------------------------------------------------------
 // Public interface
 
@@ -916,11 +952,13 @@ const (
 	UseSpaces                  // use spaces instead of tabs for alignment
 )
 
+
 // A Config node controls the output of Fprint.
 type Config struct {
 	Mode     uint // default: 0
 	Tabwidth int  // default: 8
 }
+
 
 // fprint implements Fprint and takes a nodesSizes map for setting up the printer state.
 func (cfg *Config) fprint(output io.Writer, fset *token.FileSet, node interface{}, nodeSizes map[ast.Node]int) (int, os.Error) {
@@ -956,9 +994,11 @@ func (cfg *Config) fprint(output io.Writer, fset *token.FileSet, node interface{
 	go func() {
 		switch n := node.(type) {
 		case ast.Expr:
+			p.nesting = 1
 			p.useNodeComments = true
 			p.expr(n, ignoreMultiLine)
 		case ast.Stmt:
+			p.nesting = 1
 			p.useNodeComments = true
 			// A labeled statement will un-indent to position the
 			// label. Set indent to 1 so we don't get indent "underflow".
@@ -967,12 +1007,15 @@ func (cfg *Config) fprint(output io.Writer, fset *token.FileSet, node interface{
 			}
 			p.stmt(n, false, ignoreMultiLine)
 		case ast.Decl:
+			p.nesting = 1
 			p.useNodeComments = true
 			p.decl(n, ignoreMultiLine)
 		case ast.Spec:
+			p.nesting = 1
 			p.useNodeComments = true
 			p.spec(n, 1, false, ignoreMultiLine)
 		case *ast.File:
+			p.nesting = 0
 			p.comments = n.Comments
 			p.useNodeComments = n.Comments == nil
 			p.file(n)
@@ -993,6 +1036,7 @@ func (cfg *Config) fprint(output io.Writer, fset *token.FileSet, node interface{
 	return p.written, err
 }
 
+
 // Fprint "pretty-prints" an AST node to output and returns the number
 // of bytes written and an error (if any) for a given configuration cfg.
 // Position information is interpreted relative to the file set fset.
@@ -1002,6 +1046,7 @@ func (cfg *Config) fprint(output io.Writer, fset *token.FileSet, node interface{
 func (cfg *Config) Fprint(output io.Writer, fset *token.FileSet, node interface{}) (int, os.Error) {
 	return cfg.fprint(output, fset, node, make(map[ast.Node]int))
 }
+
 
 // Fprint "pretty-prints" an AST node to output.
 // It calls Config.Fprint with default settings.

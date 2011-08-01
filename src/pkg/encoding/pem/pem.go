@@ -97,7 +97,7 @@ func Decode(data []byte) (p *Block, rest []byte) {
 
 	for {
 		// This loop terminates because getLine's second result is
-		// always smaller than its argument.
+		// always smaller than it's argument.
 		if len(rest) == 0 {
 			return nil, data
 		}

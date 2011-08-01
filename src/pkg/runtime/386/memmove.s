@@ -27,6 +27,9 @@ TEXT runtime·memmove(SB), 7, $0
 	MOVL	to+0(FP), DI
 	MOVL	fr+4(FP), SI
 	MOVL	n+8(FP), BX
+	CMPL	BX, $0
+	JLT	fault
+
 /*
  * check and set for backwards
  */
@@ -84,3 +87,12 @@ back:
 	MOVL	to+0(FP),AX
 	RET
 
+/*
+ * if called with negative count,
+ * treat as error rather than
+ * rotating all of memory
+ */
+fault:
+	MOVL	$0,SI
+	MOVL	0(SI), AX
+	RET

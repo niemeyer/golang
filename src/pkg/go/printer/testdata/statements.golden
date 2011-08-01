@@ -30,6 +30,7 @@ func _() {
 	}
 }
 
+
 // Formatting of switch-statement headers.
 func _() {
 	switch {
@@ -54,6 +55,7 @@ func _() {
 		use(x)
 	}
 }
+
 
 // Formatting of switch statement bodies.
 func _() {
@@ -108,6 +110,7 @@ func _() {
 	}
 }
 
+
 // Formatting of selected select statements.
 func _() {
 	select {}
@@ -121,6 +124,7 @@ func _() {
 	case <-c:
 	}
 }
+
 
 // Formatting of for-statement headers.
 func _() {
@@ -159,6 +163,7 @@ func _() {
 		use(x)
 	}	// no parens printed
 }
+
 
 // Don't remove mandatory parentheses around composite literals in control clauses.
 func _() {
@@ -253,6 +258,7 @@ func _() {
 	}
 }
 
+
 // Extra empty lines inside functions. Do respect source code line
 // breaks between statement boundaries but print at most one empty
 // line at a time.
@@ -285,15 +291,18 @@ func _() {
 	}
 }
 
+
 // Formatting around labels.
 func _() {
 L:
 }
 
+
 func _() {
 	// this comment should be indented
 L:	// no semicolon needed
 }
+
 
 func _() {
 	switch 0 {
@@ -308,6 +317,7 @@ func _() {
 	}
 }
 
+
 func _() {
 	f()
 L1:
@@ -317,21 +327,25 @@ L2:
 L3:
 }
 
+
 func _() {
 	// this comment should be indented
 L:
 }
+
 
 func _() {
 L:
 	_ = 0
 }
 
+
 func _() {
 	// this comment should be indented
 L:
 	_ = 0
 }
+
 
 func _() {
 	for {
@@ -342,6 +356,7 @@ func _() {
 	}
 }
 
+
 func _() {
 	// this comment should be indented
 	for {
@@ -351,6 +366,7 @@ func _() {
 		_ = 0
 	}
 }
+
 
 func _() {
 	if true {
@@ -369,6 +385,7 @@ L:
 	_ = 0
 }
 
+
 func _() {
 	for {
 		goto L
@@ -377,6 +394,7 @@ L:
 
 	MoreCode()
 }
+
 
 func _() {
 	for {
@@ -390,6 +408,7 @@ L:	// A comment on the same line as the label, followed by a single empty line.
 	MoreCode()
 }
 
+
 func _() {
 	for {
 		goto L
@@ -399,6 +418,7 @@ L:
 	// There should be a single empty line before this comment.
 	MoreCode()
 }
+
 
 func _() {
 	for {

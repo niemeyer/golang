@@ -214,13 +214,12 @@ func RunBenchmarks(matchString func(pat, str string) (bool, os.Error), benchmark
 		for _, procs := range cpuList {
 			runtime.GOMAXPROCS(procs)
 			b := &B{benchmark: Benchmark}
+			r := b.run()
 			benchName := Benchmark.Name
 			if procs != 1 {
 				benchName = fmt.Sprintf("%s-%d", Benchmark.Name, procs)
 			}
-			print(fmt.Sprintf("%s\t", benchName))
-			r := b.run()
-			print(fmt.Sprintf("%v\n", r))
+			print(fmt.Sprintf("%s\t%v\n", benchName, r))
 			if p := runtime.GOMAXPROCS(-1); p != procs {
 				print(fmt.Sprintf("%s left GOMAXPROCS set to %d\n", benchName, p))
 			}

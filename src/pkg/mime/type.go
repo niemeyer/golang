@@ -19,7 +19,7 @@ var typeFiles = []string{
 }
 
 var mimeTypes = map[string]string{
-	".css":  "text/css; charset=utf-8",
+	".css":  "text/css",
 	".gif":  "image/gif",
 	".htm":  "text/html; charset=utf-8",
 	".html": "text/html; charset=utf-8",

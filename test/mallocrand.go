@@ -21,7 +21,6 @@ var footprint uint64
 var allocated uint64
 
 func bigger() {
-	runtime.UpdateMemStats()
 	if f := runtime.MemStats.Sys; footprint < f {
 		footprint = f
 		if *chatty {

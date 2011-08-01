@@ -106,6 +106,7 @@ func TestClose(t *testing.T) {
 	}
 }
 
+
 func testServerScript(t *testing.T, name string, serverScript [][]byte, config *Config) {
 	c, s := net.Pipe()
 	srv := Server(s, config)

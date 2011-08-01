@@ -13,6 +13,7 @@ type Visitor interface {
 	Visit(node Node) (w Visitor)
 }
 
+
 // Helper functions for common node lists. They may be empty.
 
 func walkIdentList(v Visitor, list []*Ident) {
@@ -21,11 +22,13 @@ func walkIdentList(v Visitor, list []*Ident) {
 	}
 }
 
+
 func walkExprList(v Visitor, list []Expr) {
 	for _, x := range list {
 		Walk(v, x)
 	}
 }
+
 
 func walkStmtList(v Visitor, list []Stmt) {
 	for _, x := range list {
@@ -33,11 +36,13 @@ func walkStmtList(v Visitor, list []Stmt) {
 	}
 }
 
+
 func walkDeclList(v Visitor, list []Decl) {
 	for _, x := range list {
 		Walk(v, x)
 	}
 }
+
 
 // TODO(gri): Investigate if providing a closure to Walk leads to
 //            simpler use (and may help eliminate Inspect in turn).
@@ -364,6 +369,7 @@ func Walk(v Visitor, node Node) {
 	v.Visit(nil)
 }
 
+
 type inspector func(Node) bool
 
 func (f inspector) Visit(node Node) Visitor {
@@ -372,6 +378,7 @@ func (f inspector) Visit(node Node) Visitor {
 	}
 	return nil
 }
+
 
 // Inspect traverses an AST in depth-first order: It starts by calling
 // f(node); node must not be nil. If f returns true, Inspect invokes f

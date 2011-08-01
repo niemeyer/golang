@@ -32,8 +32,7 @@ func main() {
 			}
 		}
 	}
-
-	runtime.UpdateMemStats()
+	
 	obj := runtime.MemStats.HeapObjects - st.HeapObjects
 	if obj > N/5 {
 		fmt.Println("too many objects left:", obj)

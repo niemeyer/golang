@@ -6,6 +6,7 @@ package typechecker
 
 import "go/ast"
 
+
 // A Type represents a Go type.
 type Type struct {
 	Form     Form
@@ -17,10 +18,12 @@ type Type struct {
 	Expr     ast.Expr    // corresponding AST expression
 }
 
+
 // NewType creates a new type of a given form.
 func NewType(form Form) *Type {
 	return &Type{Form: form, Scope: ast.NewScope(nil)}
 }
+
 
 // Form describes the form of a type.
 type Form int
@@ -42,6 +45,7 @@ const (
 	Tuple
 )
 
+
 var formStrings = [...]string{
 	BadType:    "badType",
 	Unresolved: "unresolved",
@@ -58,7 +62,9 @@ var formStrings = [...]string{
 	Tuple:      "tuple",
 }
 
+
 func (form Form) String() string { return formStrings[form] }
+
 
 // The list of basic type id's.
 const (
@@ -89,6 +95,7 @@ const (
 
 	// TODO(gri) ideal types are missing
 )
+
 
 var BasicTypes = map[uint]string{
 	Bool:    "bool",

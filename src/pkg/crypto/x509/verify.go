@@ -62,6 +62,7 @@ func (h HostnameError) String() string {
 	return "certificate is valid for " + valid + ", not " + h.Host
 }
 
+
 // UnknownAuthorityError results when the certificate issuer is unknown
 type UnknownAuthorityError struct {
 	cert *Certificate

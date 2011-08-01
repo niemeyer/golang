@@ -13,11 +13,13 @@ import (
 	"utf8"
 )
 
+
 // A StringReader delivers its data one string segment at a time via Read.
 type StringReader struct {
 	data []string
 	step int
 }
+
 
 func (r *StringReader) Read(p []byte) (n int, err os.Error) {
 	if r.step < len(r.data) {
@@ -29,6 +31,7 @@ func (r *StringReader) Read(p []byte) (n int, err os.Error) {
 	}
 	return
 }
+
 
 func readRuneSegments(t *testing.T, segments []string) {
 	got := ""
@@ -46,6 +49,7 @@ func readRuneSegments(t *testing.T, segments []string) {
 	}
 }
 
+
 var segmentList = [][]string{
 	{},
 	{""},
@@ -57,11 +61,13 @@ var segmentList = [][]string{
 	{"Hello", ", ", "", "World", "!"},
 }
 
+
 func TestNext(t *testing.T) {
 	for _, s := range segmentList {
 		readRuneSegments(t, s)
 	}
 }
+
 
 type token struct {
 	tok  int
@@ -228,6 +234,7 @@ var tokenList = []token{
 	{'(', "("},
 }
 
+
 func makeSource(pattern string) *bytes.Buffer {
 	var buf bytes.Buffer
 	for _, k := range tokenList {
@@ -235,6 +242,7 @@ func makeSource(pattern string) *bytes.Buffer {
 	}
 	return &buf
 }
+
 
 func checkTok(t *testing.T, s *Scanner, line, got, want int, text string) {
 	if got != want {
@@ -255,6 +263,7 @@ func checkTok(t *testing.T, s *Scanner, line, got, want int, text string) {
 	}
 }
 
+
 func countNewlines(s string) int {
 	n := 0
 	for _, ch := range s {
@@ -264,6 +273,7 @@ func countNewlines(s string) int {
 	}
 	return n
 }
+
 
 func testScan(t *testing.T, mode uint) {
 	s := new(Scanner).Init(makeSource(" \t%s\n"))
@@ -280,10 +290,12 @@ func testScan(t *testing.T, mode uint) {
 	checkTok(t, s, line, tok, EOF, "")
 }
 
+
 func TestScan(t *testing.T) {
 	testScan(t, GoTokens)
 	testScan(t, GoTokens&^SkipComments)
 }
+
 
 func TestPosition(t *testing.T) {
 	src := makeSource("\t\t\t\t%s\n")
@@ -311,6 +323,7 @@ func TestPosition(t *testing.T) {
 	}
 }
 
+
 func TestScanZeroMode(t *testing.T) {
 	src := makeSource("%s\n")
 	str := src.String()
@@ -332,6 +345,7 @@ func TestScanZeroMode(t *testing.T) {
 	}
 }
 
+
 func testScanSelectedMode(t *testing.T, mode uint, class int) {
 	src := makeSource("%s\n")
 	s := new(Scanner).Init(src)
@@ -348,6 +362,7 @@ func testScanSelectedMode(t *testing.T, mode uint, class int) {
 	}
 }
 
+
 func TestScanSelectedMask(t *testing.T) {
 	testScanSelectedMode(t, 0, 0)
 	testScanSelectedMode(t, ScanIdents, Ident)
@@ -359,6 +374,7 @@ func TestScanSelectedMask(t *testing.T) {
 	testScanSelectedMode(t, SkipComments, 0)
 	testScanSelectedMode(t, ScanComments, Comment)
 }
+
 
 func TestScanNext(t *testing.T) {
 	s := new(Scanner).Init(bytes.NewBufferString("if a == bcd /* comment */ {\n\ta += c\n} // line comment ending in eof"))
@@ -381,6 +397,7 @@ func TestScanNext(t *testing.T) {
 	}
 }
 
+
 func TestScanWhitespace(t *testing.T) {
 	var buf bytes.Buffer
 	var ws uint64
@@ -400,6 +417,7 @@ func TestScanWhitespace(t *testing.T) {
 		t.Errorf("tok = %s, want %s", TokenString(tok), TokenString(orig))
 	}
 }
+
 
 func testError(t *testing.T, src, msg string, tok int) {
 	s := new(Scanner).Init(bytes.NewBufferString(src))
@@ -425,6 +443,7 @@ func testError(t *testing.T, src, msg string, tok int) {
 	}
 }
 
+
 func TestError(t *testing.T) {
 	testError(t, "\x00", "illegal character NUL", 0)
 	testError(t, "\xff", "illegal UTF-8 encoding", utf8.RuneError)
@@ -440,12 +459,14 @@ func TestError(t *testing.T) {
 	testError(t, `"abc`+"\xff"+`def"`, "illegal UTF-8 encoding", String)
 }
 
+
 func checkPos(t *testing.T, got, want Position) {
 	if got.Offset != want.Offset || got.Line != want.Line || got.Column != want.Column {
 		t.Errorf("got offset, line, column = %d, %d, %d; want %d, %d, %d",
 			got.Offset, got.Line, got.Column, want.Offset, want.Line, want.Column)
 	}
 }
+
 
 func checkNextPos(t *testing.T, s *Scanner, offset, line, column, char int) {
 	if ch := s.Next(); ch != char {
@@ -454,6 +475,7 @@ func checkNextPos(t *testing.T, s *Scanner, offset, line, column, char int) {
 	want := Position{Offset: offset, Line: line, Column: column}
 	checkPos(t, s.Pos(), want)
 }
+
 
 func checkScanPos(t *testing.T, s *Scanner, offset, line, column, char int) {
 	want := Position{Offset: offset, Line: line, Column: column}
@@ -466,6 +488,7 @@ func checkScanPos(t *testing.T, s *Scanner, offset, line, column, char int) {
 	}
 	checkPos(t, s.Position, want)
 }
+
 
 func TestPos(t *testing.T) {
 	// corner case: empty source

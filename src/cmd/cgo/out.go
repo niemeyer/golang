@@ -412,7 +412,7 @@ func (p *Package) writeExports(fgo2, fc, fm *os.File) {
 				t := p.cgoType(atype)
 				if off%t.Align != 0 {
 					pad := t.Align - off%t.Align
-					ctype += fmt.Sprintf("\t\tchar __pad%d[%d];\n", npad, pad)
+					ctype += fmt.Sprintf("\t\tchar __pad%d[%d]\n", npad, pad)
 					off += pad
 					npad++
 				}
@@ -708,7 +708,7 @@ void
 ·_Cfunc_CString(String s, int8 *p)
 {
 	p = runtime·cmalloc(s.len+1);
-	runtime·memmove((byte*)p, s.str, s.len);
+	runtime·mcpy((byte*)p, s.str, s.len);
 	p[s.len] = 0;
 	FLUSH(&p);
 }

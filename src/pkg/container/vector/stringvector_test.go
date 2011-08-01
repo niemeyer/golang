@@ -9,6 +9,7 @@ package vector
 
 import "testing"
 
+
 func TestStrZeroLen(t *testing.T) {
 	a := new(StringVector)
 	if a.Len() != 0 {
@@ -26,6 +27,7 @@ func TestStrZeroLen(t *testing.T) {
 	}
 }
 
+
 func TestStrResize(t *testing.T) {
 	var a StringVector
 	checkSize(t, &a, 0, 0)
@@ -37,6 +39,7 @@ func TestStrResize(t *testing.T) {
 	checkSize(t, a.Resize(0, 100), 0, 100)
 	checkSize(t, a.Resize(11, 100), 11, 100)
 }
+
 
 func TestStrResize2(t *testing.T) {
 	var a StringVector
@@ -59,6 +62,7 @@ func TestStrResize2(t *testing.T) {
 	}
 }
 
+
 func checkStrZero(t *testing.T, a *StringVector, i int) {
 	for j := 0; j < i; j++ {
 		if a.At(j) == strzero {
@@ -78,6 +82,7 @@ func checkStrZero(t *testing.T, a *StringVector, i int) {
 	}
 }
 
+
 func TestStrTrailingElements(t *testing.T) {
 	var a StringVector
 	for i := 0; i < 10; i++ {
@@ -89,6 +94,7 @@ func TestStrTrailingElements(t *testing.T) {
 	checkSize(t, a.Resize(10, 0), 10, 16)
 	checkStrZero(t, &a, 5)
 }
+
 
 func TestStrAccess(t *testing.T) {
 	const n = 100
@@ -113,6 +119,7 @@ func TestStrAccess(t *testing.T) {
 		}
 	}
 }
+
 
 func TestStrInsertDeleteClear(t *testing.T) {
 	const n = 100
@@ -200,6 +207,7 @@ func TestStrInsertDeleteClear(t *testing.T) {
 	}
 }
 
+
 func verify_sliceStr(t *testing.T, x *StringVector, elt, i, j int) {
 	for k := i; k < j; k++ {
 		if elem2StrValue(x.At(k)) != int2StrValue(elt) {
@@ -215,6 +223,7 @@ func verify_sliceStr(t *testing.T, x *StringVector, elt, i, j int) {
 	}
 }
 
+
 func verify_patternStr(t *testing.T, x *StringVector, a, b, c int) {
 	n := a + b + c
 	if x.Len() != n {
@@ -228,6 +237,7 @@ func verify_patternStr(t *testing.T, x *StringVector, a, b, c int) {
 	verify_sliceStr(t, x, 0, a+b, n)
 }
 
+
 func make_vectorStr(elt, len int) *StringVector {
 	x := new(StringVector).Resize(len, 0)
 	for i := 0; i < len; i++ {
@@ -235,6 +245,7 @@ func make_vectorStr(elt, len int) *StringVector {
 	}
 	return x
 }
+
 
 func TestStrInsertVector(t *testing.T) {
 	// 1
@@ -258,6 +269,7 @@ func TestStrInsertVector(t *testing.T) {
 	a.InsertVector(8, b)
 	verify_patternStr(t, a, 8, 1000, 2)
 }
+
 
 func TestStrDo(t *testing.T) {
 	const n = 25
@@ -312,6 +324,7 @@ func TestStrDo(t *testing.T) {
 	}
 
 }
+
 
 func TestStrVectorCopy(t *testing.T) {
 	// verify Copy() returns a copy, not simply a slice of the original vector

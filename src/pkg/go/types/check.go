@@ -15,7 +15,9 @@ import (
 	"strconv"
 )
 
+
 const debug = false
+
 
 type checker struct {
 	fset *token.FileSet
@@ -23,11 +25,13 @@ type checker struct {
 	types map[ast.Expr]Type
 }
 
+
 func (c *checker) errorf(pos token.Pos, format string, args ...interface{}) string {
 	msg := fmt.Sprintf(format, args...)
 	c.Error(c.fset.Position(pos), msg)
 	return msg
 }
+
 
 // collectFields collects struct fields tok = token.STRUCT), interface methods
 // (tok = token.INTERFACE), and function arguments/results (tok = token.FUNC).
@@ -82,6 +86,7 @@ func (c *checker) collectFields(tok token.Token, list *ast.FieldList, cycleOk bo
 	}
 	return
 }
+
 
 // makeType makes a new type for an AST type specification x or returns
 // the type referred to by a type name x. If cycleOk is set, a type may
@@ -178,6 +183,7 @@ func (c *checker) makeType(x ast.Expr, cycleOk bool) (typ Type) {
 	panic(fmt.Sprintf("unreachable (%T)", x))
 }
 
+
 // checkObj type checks an object.
 func (c *checker) checkObj(obj *ast.Object, ref bool) {
 	if obj.Type != nil {
@@ -207,6 +213,7 @@ func (c *checker) checkObj(obj *ast.Object, ref bool) {
 		panic("unreachable")
 	}
 }
+
 
 // Check typechecks a package.
 // It augments the AST by assigning types to all ast.Objects and returns a map

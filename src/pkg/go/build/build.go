@@ -61,9 +61,7 @@ func Build(tree *Tree, pkg string, info *DirInfo) (*Script, os.Error) {
 	if len(info.CgoFiles) > 0 {
 		cgoFiles := b.abss(info.CgoFiles...)
 		s.addInput(cgoFiles...)
-		cgoCFiles := b.abss(info.CFiles...)
-		s.addInput(cgoCFiles...)
-		outGo, outObj := b.cgo(cgoFiles, cgoCFiles)
+		outGo, outObj := b.cgo(cgoFiles)
 		gofiles = append(gofiles, outGo...)
 		ofiles = append(ofiles, outObj...)
 		s.addIntermediate(outGo...)
@@ -184,7 +182,7 @@ func (s *Script) Clean() (err os.Error) {
 	return
 }
 
-// Nuke removes the Script's Intermediate and Output files.
+// Clean removes the Script's Intermediate and Output files.
 // It tries to remove every file and returns the first error it encounters.
 func (s *Script) Nuke() (err os.Error) {
 	// Reverse order so that directories get removed after the files they contain.
@@ -215,14 +213,6 @@ func (c *Cmd) String() string {
 
 // Run executes the Cmd.
 func (c *Cmd) Run() os.Error {
-	if c.Args[0] == "mkdir" {
-		for _, p := range c.Output {
-			if err := os.MkdirAll(p, 0777); err != nil {
-				return fmt.Errorf("command %q: %v", c, err)
-			}
-		}
-		return nil
-	}
 	out := new(bytes.Buffer)
 	cmd := exec.Command(c.Args[0], c.Args[1:]...)
 	cmd.Dir = c.Dir
@@ -372,7 +362,7 @@ func (b *build) gccArgs(args ...string) []string {
 
 var cgoRe = regexp.MustCompile(`[/\\:]`)
 
-func (b *build) cgo(cgofiles, cgocfiles []string) (outGo, outObj []string) {
+func (b *build) cgo(cgofiles []string) (outGo, outObj []string) {
 	// cgo
 	// TODO(adg): CGOPKGPATH
 	// TODO(adg): CGO_FLAGS
@@ -414,12 +404,6 @@ func (b *build) cgo(cgofiles, cgocfiles []string) (outGo, outObj []string) {
 		} else {
 			b.script.addIntermediate(ofile)
 		}
-	}
-	for _, cfile := range cgocfiles {
-		ofile := b.obj + cgoRe.ReplaceAllString(cfile[:len(cfile)-1], "_") + "o"
-		b.gccCompile(ofile, cfile)
-		linkobj = append(linkobj, ofile)
-		outObj = append(outObj, ofile)
 	}
 	dynObj := b.obj + "_cgo_.o"
 	b.gccLink(dynObj, linkobj...)

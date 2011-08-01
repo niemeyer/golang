@@ -37,6 +37,7 @@ func (r *halfReader) Read(p []byte) (int, os.Error) {
 	return r.r.Read(p[0 : (len(p)+1)/2])
 }
 
+
 // DataErrReader returns a Reader that returns the final
 // error with the last data read, instead of by itself with
 // zero bytes of data.

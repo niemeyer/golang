@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 )
 
+
 // If src != nil, readSource converts src to a []byte if possible;
 // otherwise it returns an error. If src == nil, readSource returns
 // the result of reading the file specified by filename.
@@ -48,13 +49,12 @@ func readSource(filename string, src interface{}) ([]byte, os.Error) {
 	return ioutil.ReadFile(filename)
 }
 
-func (p *parser) errors() os.Error {
-	mode := scanner.Sorted
-	if p.mode&SpuriousErrors == 0 {
-		mode = scanner.NoMultiples
-	}
-	return p.GetError(mode)
+
+func (p *parser) parseEOF() os.Error {
+	p.expect(token.EOF)
+	return p.GetError(scanner.Sorted)
 }
+
 
 // ParseExpr parses a Go expression and returns the corresponding
 // AST node. The fset, filename, and src arguments have the same interpretation
@@ -73,10 +73,9 @@ func ParseExpr(fset *token.FileSet, filename string, src interface{}) (ast.Expr,
 	if p.tok == token.SEMICOLON {
 		p.next() // consume automatically inserted semicolon, if any
 	}
-	p.expect(token.EOF)
-
-	return x, p.errors()
+	return x, p.parseEOF()
 }
+
 
 // ParseStmtList parses a list of Go statements and returns the list
 // of corresponding AST nodes. The fset, filename, and src arguments have the same
@@ -91,11 +90,9 @@ func ParseStmtList(fset *token.FileSet, filename string, src interface{}) ([]ast
 
 	var p parser
 	p.init(fset, filename, data, 0)
-	list := p.parseStmtList()
-	p.expect(token.EOF)
-
-	return list, p.errors()
+	return p.parseStmtList(), p.parseEOF()
 }
+
 
 // ParseDeclList parses a list of Go declarations and returns the list
 // of corresponding AST nodes. The fset, filename, and src arguments have the same
@@ -110,11 +107,9 @@ func ParseDeclList(fset *token.FileSet, filename string, src interface{}) ([]ast
 
 	var p parser
 	p.init(fset, filename, data, 0)
-	list := p.parseDeclList()
-	p.expect(token.EOF)
-
-	return list, p.errors()
+	return p.parseDeclList(), p.parseEOF()
 }
+
 
 // ParseFile parses the source code of a single Go source file and returns
 // the corresponding ast.File node. The source code may be provided via
@@ -144,10 +139,9 @@ func ParseFile(fset *token.FileSet, filename string, src interface{}, mode uint)
 
 	var p parser
 	p.init(fset, filename, data, mode)
-	file := p.parseFile() // parseFile reads to EOF
-
-	return file, p.errors()
+	return p.parseFile(), p.GetError(scanner.NoMultiples) // parseFile() reads to EOF
 }
+
 
 // ParseFiles calls ParseFile for each file in the filenames list and returns
 // a map of package name -> package AST with all the packages found. The mode
@@ -176,6 +170,7 @@ func ParseFiles(fset *token.FileSet, filenames []string, mode uint) (pkgs map[st
 	}
 	return
 }
+
 
 // ParseDir calls ParseFile for the files in the directory specified by path and
 // returns a map of package name -> package AST with all the packages found. If

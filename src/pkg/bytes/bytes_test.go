@@ -329,6 +329,7 @@ func TestExplode(t *testing.T) {
 	}
 }
 
+
 type SplitTest struct {
 	s   string
 	sep string
@@ -660,6 +661,7 @@ func TestRunes(t *testing.T) {
 		}
 	}
 }
+
 
 type TrimTest struct {
 	f               func([]byte, string) []byte

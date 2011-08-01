@@ -24,20 +24,18 @@ Usage:
 	gotype [flags] [path ...]
 
 The flags are:
-	-e
-		Print all (including spurious) errors.
 	-p pkgName
-		Process only those files in package pkgName.
+		process only those files in package pkgName.
 	-r
-		Recursively process subdirectories.
+		recursively process subdirectories.
 	-v
-		Verbose mode.
+		verbose mode.
 
 Debugging flags:
-	-ast
-		Print AST (disables concurrent parsing).
 	-trace
-		Print parse trace (disables concurrent parsing).
+		print parse trace (disables concurrent parsing).
+	-ast
+		print AST (disables concurrent parsing).
 
 
 Examples

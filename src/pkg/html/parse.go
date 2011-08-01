@@ -9,6 +9,29 @@ import (
 	"os"
 )
 
+// A NodeType is the type of a Node.
+type NodeType int
+
+const (
+	ErrorNode NodeType = iota
+	TextNode
+	DocumentNode
+	ElementNode
+	CommentNode
+)
+
+// A Node consists of a NodeType and some Data (tag name for element nodes,
+// content for text) and are part of a tree of Nodes. Element nodes may also
+// contain a slice of Attributes. Data is unescaped, so that it looks like
+// "a<b" rather than "a&lt;b".
+type Node struct {
+	Parent *Node
+	Child  []*Node
+	Type   NodeType
+	Data   string
+	Attr   []Attribute
+}
+
 // A parser implements the HTML5 parsing algorithm:
 // http://www.whatwg.org/specs/web-apps/current-work/multipage/tokenization.html#tree-construction
 type parser struct {
@@ -22,23 +45,38 @@ type parser struct {
 	hasSelfClosingToken bool
 	// doc is the document root element.
 	doc *Node
-	// The stack of open elements (section 11.2.3.2) and active formatting
-	// elements (section 11.2.3.3).
-	oe, afe nodeStack
-	// Element pointers (section 11.2.3.4).
+	// The stack of open elements (section 10.2.3.2).
+	stack []*Node
+	// Element pointers (section 10.2.3.4).
 	head, form *Node
-	// Other parsing state flags (section 11.2.3.5).
+	// Other parsing state flags (section 10.2.3.5).
 	scripting, framesetOK bool
 }
 
+// push pushes onto the stack of open elements.
+func (p *parser) push(n *Node) {
+	p.stack = append(p.stack, n)
+}
+
+// top returns the top of the stack of open elements.
+// This is also known as the current node.
 func (p *parser) top() *Node {
-	if n := p.oe.top(); n != nil {
-		return n
+	if n := len(p.stack); n > 0 {
+		return p.stack[n-1]
 	}
 	return p.doc
 }
 
-// stopTags for use in popUntil. These come from section 11.2.3.2.
+// pop pops the top of the stack of open elements.
+// It will panic if the stack is empty.
+func (p *parser) pop() *Node {
+	n := len(p.stack)
+	ret := p.stack[n-1]
+	p.stack = p.stack[:n-1]
+	return ret
+}
+
+// stopTags for use in popUntil. These come from section 10.2.3.2.
 var (
 	defaultScopeStopTags  = []string{"applet", "caption", "html", "table", "td", "th", "marquee", "object"}
 	listItemScopeStopTags = []string{"applet", "caption", "html", "table", "td", "th", "marquee", "object", "ol", "ul"}
@@ -64,11 +102,11 @@ var (
 // popUntil([]string{"html, "table"}, "table") would return true and leave:
 // ["html", "body", "font"]
 func (p *parser) popUntil(stopTags []string, matchTags ...string) bool {
-	for i := len(p.oe) - 1; i >= 0; i-- {
-		tag := p.oe[i].Data
+	for i := len(p.stack) - 1; i >= 0; i-- {
+		tag := p.stack[i].Data
 		for _, t := range matchTags {
 			if t == tag {
-				p.oe = p.oe[:i]
+				p.stack = p.stack[:i]
 				return true
 			}
 		}
@@ -84,9 +122,10 @@ func (p *parser) popUntil(stopTags []string, matchTags ...string) bool {
 // addChild adds a child node n to the top element, and pushes n if it is an
 // element node (text nodes are not part of the stack of open elements).
 func (p *parser) addChild(n *Node) {
-	p.top().Add(n)
+	m := p.top()
+	m.Child = append(m.Child, n)
 	if n.Type == ElementNode {
-		p.oe = append(p.oe, n)
+		p.push(n)
 	}
 }
 
@@ -109,50 +148,15 @@ func (p *parser) addElement(tag string, attr []Attribute) {
 	})
 }
 
-// Section 11.2.3.3.
+// Section 10.2.3.3.
 func (p *parser) addFormattingElement(tag string, attr []Attribute) {
 	p.addElement(tag, attr)
-	p.afe = append(p.afe, p.top())
 	// TODO.
 }
 
-// Section 11.2.3.3.
-func (p *parser) clearActiveFormattingElements() {
-	for {
-		n := p.afe.pop()
-		if len(p.afe) == 0 || n.Type == scopeMarkerNode {
-			return
-		}
-	}
-}
-
-// Section 11.2.3.3.
+// Section 10.2.3.3.
 func (p *parser) reconstructActiveFormattingElements() {
-	n := p.afe.top()
-	if n == nil {
-		return
-	}
-	if n.Type == scopeMarkerNode || p.oe.index(n) != -1 {
-		return
-	}
-	i := len(p.afe) - 1
-	for n.Type != scopeMarkerNode && p.oe.index(n) == -1 {
-		if i == 0 {
-			i = -1
-			break
-		}
-		i--
-		n = p.afe[i]
-	}
-	for {
-		i++
-		n = p.afe[i]
-		p.addChild(n.clone())
-		p.afe[i] = n
-		if i == len(p.afe)-1 {
-			break
-		}
-	}
+	// TODO.
 }
 
 // read reads the next token. This is usually from the tokenizer, but it may
@@ -176,12 +180,12 @@ func (p *parser) read() os.Error {
 	return nil
 }
 
-// Section 11.2.4.
+// Section 10.2.4.
 func (p *parser) acknowledgeSelfClosingTag() {
 	p.hasSelfClosingToken = false
 }
 
-// An insertion mode (section 11.2.3.1) is the state transition function from
+// An insertion mode (section 10.2.3.1) is the state transition function from
 // a particular state in the HTML5 parser's state machine. It updates the
 // parser's fields depending on parser.token (where ErrorToken means EOF). In
 // addition to returning the next insertionMode state, it also returns whether
@@ -190,7 +194,7 @@ type insertionMode func(*parser) (insertionMode, bool)
 
 // useTheRulesFor runs the delegate insertionMode over p, returning the actual
 // insertionMode unless the delegate caused a state transition.
-// Section 11.2.3.1, "using the rules for".
+// Section 10.2.3.1, "using the rules for".
 func useTheRulesFor(p *parser, actual, delegate insertionMode) (insertionMode, bool) {
 	im, consumed := delegate(p)
 	if im != delegate {
@@ -199,13 +203,13 @@ func useTheRulesFor(p *parser, actual, delegate insertionMode) (insertionMode, b
 	return actual, consumed
 }
 
-// Section 11.2.5.4.1.
+// Section 10.2.5.4.
 func initialIM(p *parser) (insertionMode, bool) {
 	// TODO: check p.tok for DOCTYPE.
 	return beforeHTMLIM, false
 }
 
-// Section 11.2.5.4.2.
+// Section 10.2.5.5.
 func beforeHTMLIM(p *parser) (insertionMode, bool) {
 	var (
 		add     bool
@@ -239,7 +243,7 @@ func beforeHTMLIM(p *parser) (insertionMode, bool) {
 	return beforeHeadIM, !implied
 }
 
-// Section 11.2.5.4.3.
+// Section 10.2.5.6.
 func beforeHeadIM(p *parser) (insertionMode, bool) {
 	var (
 		add     bool
@@ -276,7 +280,7 @@ func beforeHeadIM(p *parser) (insertionMode, bool) {
 	return inHeadIM, !implied
 }
 
-// Section 11.2.5.4.4.
+// Section 10.2.5.7.
 func inHeadIM(p *parser) (insertionMode, bool) {
 	var (
 		pop     bool
@@ -301,7 +305,7 @@ func inHeadIM(p *parser) (insertionMode, bool) {
 		// TODO.
 	}
 	if pop || implied {
-		n := p.oe.pop()
+		n := p.pop()
 		if n.Data != "head" {
 			panic("html: bad parser state")
 		}
@@ -310,7 +314,7 @@ func inHeadIM(p *parser) (insertionMode, bool) {
 	return inHeadIM, !implied
 }
 
-// Section 11.2.5.4.6.
+// Section 10.2.5.9.
 func afterHeadIM(p *parser) (insertionMode, bool) {
 	var (
 		add        bool
@@ -350,18 +354,17 @@ func afterHeadIM(p *parser) (insertionMode, bool) {
 	return inBodyIM, !implied
 }
 
-// Section 11.2.5.4.7.
+// Section 10.2.5.10.
 func inBodyIM(p *parser) (insertionMode, bool) {
 	var endP bool
 	switch p.tok.Type {
 	case TextToken:
-		p.reconstructActiveFormattingElements()
 		p.addText(p.tok.Data)
 		p.framesetOK = false
 	case StartTagToken:
 		switch p.tok.Data {
 		case "address", "article", "aside", "blockquote", "center", "details", "dir", "div", "dl", "fieldset", "figcaption", "figure", "footer", "header", "hgroup", "menu", "nav", "ol", "p", "section", "summary", "ul":
-			// TODO: Do the proper "does the stack of open elements has a p element in button scope" algorithm in section 11.2.3.2.
+			// TODO: Do the proper "does the stack of open elements has a p element in button scope" algorithm in section 10.2.3.2.
 			n := p.top()
 			if n.Type == ElementNode && n.Data == "p" {
 				endP = true
@@ -372,24 +375,16 @@ func inBodyIM(p *parser) (insertionMode, bool) {
 			// TODO: auto-insert </p> if necessary.
 			switch n := p.top(); n.Data {
 			case "h1", "h2", "h3", "h4", "h5", "h6":
-				p.oe.pop()
+				p.pop()
 			}
 			p.addElement(p.tok.Data, p.tok.Attr)
-		case "a":
-			if n := p.afe.forTag("a"); n != nil {
-				p.inBodyEndTagFormatting("a")
-				p.oe.remove(n)
-				p.afe.remove(n)
-			}
-			p.reconstructActiveFormattingElements()
-			p.addFormattingElement(p.tok.Data, p.tok.Attr)
 		case "b", "big", "code", "em", "font", "i", "s", "small", "strike", "strong", "tt", "u":
 			p.reconstructActiveFormattingElements()
 			p.addFormattingElement(p.tok.Data, p.tok.Attr)
 		case "area", "br", "embed", "img", "input", "keygen", "wbr":
 			p.reconstructActiveFormattingElements()
 			p.addElement(p.tok.Data, p.tok.Attr)
-			p.oe.pop()
+			p.pop()
 			p.acknowledgeSelfClosingTag()
 			p.framesetOK = false
 		case "table":
@@ -400,7 +395,7 @@ func inBodyIM(p *parser) (insertionMode, bool) {
 		case "hr":
 			// TODO: auto-insert </p> if necessary.
 			p.addElement(p.tok.Data, p.tok.Attr)
-			p.oe.pop()
+			p.pop()
 			p.acknowledgeSelfClosingTag()
 			p.framesetOK = false
 		default:
@@ -413,17 +408,21 @@ func inBodyIM(p *parser) (insertionMode, bool) {
 			// TODO: autoclose the stack of open elements.
 			return afterBodyIM, true
 		case "a", "b", "big", "code", "em", "font", "i", "nobr", "s", "small", "strike", "strong", "tt", "u":
-			p.inBodyEndTagFormatting(p.tok.Data)
+			// TODO: implement the "adoption agency" algorithm:
+			// http://www.whatwg.org/specs/web-apps/current-work/multipage/tokenization.html#adoptionAgency
+			if p.tok.Data == p.top().Data {
+				p.pop()
+			}
 		default:
 			// TODO: any other end tag
 			if p.tok.Data == p.top().Data {
-				p.oe.pop()
+				p.pop()
 			}
 		}
 	}
 	if endP {
 		// TODO: do the proper algorithm.
-		n := p.oe.pop()
+		n := p.pop()
 		if n.Type != ElementNode || n.Data != "p" {
 			panic("unreachable")
 		}
@@ -431,123 +430,7 @@ func inBodyIM(p *parser) (insertionMode, bool) {
 	return inBodyIM, !endP
 }
 
-func (p *parser) inBodyEndTagFormatting(tag string) {
-	// This is the "adoption agency" algorithm, described at
-	// http://www.whatwg.org/specs/web-apps/current-work/multipage/tokenization.html#adoptionAgency
-
-	// TODO: this is a fairly literal line-by-line translation of that algorithm.
-	// Once the code successfully parses the comprehensive test suite, we should
-	// refactor this code to be more idiomatic.
-
-	// Steps 1-3. The outer loop.
-	for i := 0; i < 8; i++ {
-		// Step 4. Find the formatting element.
-		var formattingElement *Node
-		for j := len(p.afe) - 1; j >= 0; j-- {
-			if p.afe[j].Type == scopeMarkerNode {
-				break
-			}
-			if p.afe[j].Data == tag {
-				formattingElement = p.afe[j]
-				break
-			}
-		}
-		if formattingElement == nil {
-			return
-		}
-		feIndex := p.oe.index(formattingElement)
-		if feIndex == -1 {
-			p.afe.remove(formattingElement)
-			return
-		}
-
-		// Steps 5-6. Find the furthest block.
-		var furthestBlock *Node
-		for _, e := range p.oe[feIndex:] {
-			if isSpecialElement[e.Data] {
-				furthestBlock = e
-				break
-			}
-		}
-		if furthestBlock == nil {
-			e := p.oe.pop()
-			for e != formattingElement {
-				e = p.oe.pop()
-			}
-			p.afe.remove(e)
-			return
-		}
-
-		// Steps 7-8. Find the common ancestor and bookmark node.
-		commonAncestor := p.oe[feIndex-1]
-		bookmark := p.afe.index(formattingElement)
-
-		// Step 9. The inner loop. Find the lastNode to reparent.
-		lastNode := furthestBlock
-		node := furthestBlock
-		x := p.oe.index(node)
-		// Steps 9.1-9.3.
-		for j := 0; j < 3; j++ {
-			// Step 9.4.
-			x--
-			node = p.oe[x]
-			// Step 9.5.
-			if p.afe.index(node) == -1 {
-				p.oe.remove(node)
-				continue
-			}
-			// Step 9.6.
-			if node == formattingElement {
-				break
-			}
-			// Step 9.7.
-			clone := node.clone()
-			p.afe[p.afe.index(node)] = clone
-			p.oe[p.oe.index(node)] = clone
-			node = clone
-			// Step 9.8.
-			if lastNode == furthestBlock {
-				bookmark = p.afe.index(node) + 1
-			}
-			// Step 9.9.
-			if lastNode.Parent != nil {
-				lastNode.Parent.Remove(lastNode)
-			}
-			node.Add(lastNode)
-			// Step 9.10.
-			lastNode = node
-		}
-
-		// Step 10. Reparent lastNode to the common ancestor,
-		// or for misnested table nodes, to the foster parent.
-		if lastNode.Parent != nil {
-			lastNode.Parent.Remove(lastNode)
-		}
-		switch commonAncestor.Data {
-		case "table", "tbody", "tfoot", "thead", "tr":
-			// TODO: fix up misnested table nodes; find the foster parent.
-			fallthrough
-		default:
-			commonAncestor.Add(lastNode)
-		}
-
-		// Steps 11-13. Reparent nodes from the furthest block's children
-		// to a clone of the formatting element.
-		clone := formattingElement.clone()
-		reparentChildren(clone, furthestBlock)
-		furthestBlock.Add(clone)
-
-		// Step 14. Fix up the list of active formatting elements.
-		p.afe.remove(formattingElement)
-		p.afe.insert(bookmark, clone)
-
-		// Step 15. Fix up the stack of open elements.
-		p.oe.remove(formattingElement)
-		p.oe.insert(p.oe.index(furthestBlock)+1, clone)
-	}
-}
-
-// Section 11.2.5.4.9.
+// Section 10.2.5.12.
 func inTableIM(p *parser) (insertionMode, bool) {
 	var (
 		add      bool
@@ -578,7 +461,7 @@ func inTableIM(p *parser) (insertionMode, bool) {
 		switch p.tok.Data {
 		case "table":
 			if p.popUntil(tableScopeStopTags, "table") {
-				// TODO: "reset the insertion mode appropriately" as per 11.2.3.1.
+				// TODO: "reset the insertion mode appropriately" as per 10.2.3.1.
 				return inBodyIM, false
 			}
 			// Ignore the token.
@@ -597,7 +480,7 @@ func inTableIM(p *parser) (insertionMode, bool) {
 	return inTableIM, true
 }
 
-// Section 11.2.5.4.13.
+// Section 10.2.5.16.
 func inTableBodyIM(p *parser) (insertionMode, bool) {
 	var (
 		add      bool
@@ -645,7 +528,7 @@ func inTableBodyIM(p *parser) (insertionMode, bool) {
 	return useTheRulesFor(p, inTableBodyIM, inTableIM)
 }
 
-// Section 11.2.5.4.14.
+// Section 10.2.5.17.
 func inRowIM(p *parser) (insertionMode, bool) {
 	switch p.tok.Type {
 	case ErrorToken:
@@ -657,7 +540,7 @@ func inRowIM(p *parser) (insertionMode, bool) {
 		case "td", "th":
 			// TODO: clear the stack back to a table row context.
 			p.addElement(p.tok.Data, p.tok.Attr)
-			p.afe = append(p.afe, &scopeMarker)
+			// TODO: insert a marker at the end of the list of active formatting elements.
 			return inCellIM, true
 		default:
 			// TODO.
@@ -684,7 +567,7 @@ func inRowIM(p *parser) (insertionMode, bool) {
 	return useTheRulesFor(p, inRowIM, inTableIM)
 }
 
-// Section 11.2.5.4.15.
+// Section 10.2.5.18.
 func inCellIM(p *parser) (insertionMode, bool) {
 	var (
 		closeTheCellAndReprocess bool
@@ -709,14 +592,14 @@ func inCellIM(p *parser) (insertionMode, bool) {
 	}
 	if closeTheCellAndReprocess {
 		if p.popUntil(tableScopeStopTags, "td") || p.popUntil(tableScopeStopTags, "th") {
-			p.clearActiveFormattingElements()
+			// TODO: clear the list of active formatting elements up to the last marker.
 			return inRowIM, false
 		}
 	}
 	return useTheRulesFor(p, inCellIM, inBodyIM)
 }
 
-// Section 11.2.5.4.18.
+// Section 10.2.5.22.
 func afterBodyIM(p *parser) (insertionMode, bool) {
 	switch p.tok.Type {
 	case ErrorToken:
@@ -737,7 +620,7 @@ func afterBodyIM(p *parser) (insertionMode, bool) {
 	return afterBodyIM, true
 }
 
-// Section 11.2.5.4.21.
+// Section 10.2.5.25.
 func afterAfterBodyIM(p *parser) (insertionMode, bool) {
 	switch p.tok.Type {
 	case ErrorToken:

@@ -12,6 +12,7 @@ import (
 	"strconv"
 )
 
+
 // TODO(gri) Consider changing the API so Const is an interface
 //           and operations on consts don't have to type switch.
 
@@ -27,16 +28,19 @@ type Const struct {
 	val interface{}
 }
 
+
 // Representation of complex values.
 type cmplx struct {
 	re, im *big.Rat
 }
+
 
 func assert(cond bool) {
 	if !cond {
 		panic("go/types internal error: assertion failed")
 	}
 }
+
 
 // MakeConst makes an ideal constant from a literal
 // token and the corresponding literal string.
@@ -71,11 +75,13 @@ func MakeConst(tok token.Token, lit string) Const {
 	panic("unreachable")
 }
 
+
 // MakeZero returns the zero constant for the given type.
 func MakeZero(typ *Type) Const {
 	// TODO(gri) fix this
 	return Const{0}
 }
+
 
 // Match attempts to match the internal constant representations of x and y.
 // If the attempt is successful, the result is the values of x and y,
@@ -126,6 +132,7 @@ func (x Const) Match(y Const) (u, v Const) {
 	return
 }
 
+
 // Convert attempts to convert the constant x to a given type.
 // If the attempt is successful, the result is the new constant;
 // otherwise the result is invalid.
@@ -140,6 +147,7 @@ func (x Const) Convert(typ *Type) Const {
 	}
 	return x
 }
+
 
 func (x Const) String() string {
 	switch x := x.val.(type) {
@@ -161,9 +169,11 @@ func (x Const) String() string {
 	panic("unreachable")
 }
 
+
 func (x Const) UnaryOp(op token.Token) Const {
 	panic("unimplemented")
 }
+
 
 func (x Const) BinaryOp(op token.Token, y Const) Const {
 	var z interface{}
@@ -184,6 +194,7 @@ func (x Const) BinaryOp(op token.Token, y Const) Const {
 	return Const{z}
 }
 
+
 func binaryBoolOp(x bool, op token.Token, y bool) interface{} {
 	switch op {
 	case token.EQL:
@@ -193,6 +204,7 @@ func binaryBoolOp(x bool, op token.Token, y bool) interface{} {
 	}
 	panic("unreachable")
 }
+
 
 func binaryIntOp(x *big.Int, op token.Token, y *big.Int) interface{} {
 	var z big.Int
@@ -235,6 +247,7 @@ func binaryIntOp(x *big.Int, op token.Token, y *big.Int) interface{} {
 	panic("unreachable")
 }
 
+
 func binaryFloatOp(x *big.Rat, op token.Token, y *big.Rat) interface{} {
 	var z big.Rat
 	switch op {
@@ -261,6 +274,7 @@ func binaryFloatOp(x *big.Rat, op token.Token, y *big.Rat) interface{} {
 	}
 	panic("unreachable")
 }
+
 
 func binaryCmplxOp(x cmplx, op token.Token, y cmplx) interface{} {
 	a, b := x.re, x.im
@@ -310,6 +324,7 @@ func binaryCmplxOp(x cmplx, op token.Token, y cmplx) interface{} {
 	}
 	panic("unreachable")
 }
+
 
 func binaryStringOp(x string, op token.Token, y string) interface{} {
 	switch op {

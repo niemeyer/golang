@@ -159,7 +159,7 @@ makepath(byte *buf, int32 nbuf, byte *path)
 			break;
 		if(p > buf && p[-1] != '/')
 			*p++ = '/';
-		runtime·memmove(p, q, len+1);
+		runtime·mcpy(p, q, len+1);
 		p += len;
 	}
 }

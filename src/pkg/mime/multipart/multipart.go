@@ -21,12 +21,15 @@ import (
 	"mime"
 	"net/textproto"
 	"os"
+	"regexp"
 )
 
 // TODO(bradfitz): inline these once the compiler can inline them in
 // read-only situation (such as bytes.HasSuffix)
 var lf = []byte("\n")
 var crlf = []byte("\r\n")
+
+var headerRegexp *regexp.Regexp = regexp.MustCompile("^([a-zA-Z0-9\\-]+): *([^\r\n]+)")
 
 var emptyParams = make(map[string]string)
 
@@ -57,6 +60,7 @@ func (p *Part) FormName() string {
 	}
 	return p.dispositionParams["name"]
 }
+
 
 // FileName returns the filename parameter of the Part's
 // Content-Disposition header.
@@ -102,12 +106,22 @@ func newPart(mr *Reader) (*Part, os.Error) {
 }
 
 func (bp *Part) populateHeaders() os.Error {
-	r := textproto.NewReader(bp.mr.bufReader)
-	header, err := r.ReadMIMEHeader()
-	if err == nil {
-		bp.Header = header
+	for {
+		lineBytes, err := bp.mr.bufReader.ReadSlice('\n')
+		if err != nil {
+			return err
+		}
+		line := string(lineBytes)
+		if line == "\n" || line == "\r\n" {
+			return nil
+		}
+		if matches := headerRegexp.FindStringSubmatch(line); len(matches) == 3 {
+			bp.Header.Add(matches[1], matches[2])
+			continue
+		}
+		return os.NewError("Unexpected header line found parsing multipart body")
 	}
-	return err
+	panic("unreachable")
 }
 
 // Read reads the body of a part, after its headers and before the

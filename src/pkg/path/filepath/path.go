@@ -38,19 +38,19 @@ const (
 // Getting Dot-Dot right,''
 // http://plan9.bell-labs.com/sys/doc/lexnames.html
 func Clean(path string) string {
-	vol := VolumeName(path)
-	path = path[len(vol):]
 	if path == "" {
-		return vol + "."
+		return "."
 	}
 
-	rooted := os.IsPathSeparator(path[0])
+	rooted := IsAbs(path)
 
 	// Invariants:
 	//	reading from path; r is index of next byte to process.
 	//	writing to buf; w is index of next byte to write.
 	//	dotdot is index in buf where .. must stop, either because
 	//		it is the leading slash or it is a leading ../../.. prefix.
+	prefix := volumeName(path)
+	path = path[len(prefix):]
 	n := len(path)
 	buf := []byte(path)
 	r, w, dotdot := 0, 0, 0
@@ -110,7 +110,7 @@ func Clean(path string) string {
 		w++
 	}
 
-	return FromSlash(vol + string(buf[0:w]))
+	return prefix + string(buf[0:w])
 }
 
 // ToSlash returns the result of replacing each separator character
@@ -140,8 +140,8 @@ func SplitList(path string) []string {
 }
 
 // Split splits path immediately following the final Separator,
-// separating it into a directory and file name component.
-// If there is no Separator in path, Split returns an empty dir
+// partitioning it into a directory and a file name components.
+// If there are no separators in path, Split returns an empty base
 // and file set to path.
 func Split(path string) (dir, file string) {
 	i := len(path) - 1

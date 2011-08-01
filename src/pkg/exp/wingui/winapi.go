@@ -9,7 +9,7 @@ import (
 	"unsafe"
 )
 
-func loadDll(fname string) syscall.Handle {
+func loadDll(fname string) uint32 {
 	h, e := syscall.LoadLibrary(fname)
 	if e != 0 {
 		abortf("LoadLibrary(%s) failed with err=%d.\n", fname, e)
@@ -17,7 +17,7 @@ func loadDll(fname string) syscall.Handle {
 	return h
 }
 
-func getSysProcAddr(m syscall.Handle, pname string) uintptr {
+func getSysProcAddr(m uint32, pname string) uintptr {
 	p, e := syscall.GetProcAddress(m, pname)
 	if e != 0 {
 		abortf("GetProcAddress(%s) failed with err=%d.\n", pname, e)

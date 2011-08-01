@@ -28,6 +28,7 @@ import (
 	"xml"
 )
 
+
 // Handler for /doc/codewalk/ and below.
 func codewalk(w http.ResponseWriter, r *http.Request) {
 	relpath := r.URL.Path[len("/doc/codewalk/"):]
@@ -70,12 +71,14 @@ func codewalk(w http.ResponseWriter, r *http.Request) {
 	servePage(w, "Codewalk: "+cw.Title, "", "", b)
 }
 
+
 // A Codewalk represents a single codewalk read from an XML file.
 type Codewalk struct {
 	Title string `xml:"attr"`
 	File  []string
 	Step  []*Codestep
 }
+
 
 // A Codestep is a single step in a codewalk.
 type Codestep struct {
@@ -94,6 +97,7 @@ type Codestep struct {
 	Data   []byte
 }
 
+
 // String method for printing in template.
 // Formats file address nicely.
 func (st *Codestep) String() string {
@@ -106,6 +110,7 @@ func (st *Codestep) String() string {
 	}
 	return s
 }
+
 
 // loadCodewalk reads a codewalk from the named XML file.
 func loadCodewalk(filename string) (*Codewalk, os.Error) {
@@ -168,6 +173,7 @@ func loadCodewalk(filename string) (*Codewalk, os.Error) {
 	return cw, nil
 }
 
+
 // codewalkDir serves the codewalk directory listing.
 // It scans the directory for subdirectories or files named *.xml
 // and prepares a table.
@@ -200,6 +206,7 @@ func codewalkDir(w http.ResponseWriter, r *http.Request, relpath, abspath string
 	b := applyTemplate(codewalkdirHTML, "codewalkdir", v)
 	servePage(w, "Codewalks", "", "", b)
 }
+
 
 // codewalkFileprint serves requests with ?fileprint=f&lo=lo&hi=hi.
 // The filename f has already been retrieved and is passed as an argument.
@@ -248,6 +255,7 @@ func codewalkFileprint(w http.ResponseWriter, r *http.Request, f string) {
 	template.HTMLEscape(w, data[hi:])
 	io.WriteString(w, "</pre>")
 }
+
 
 // addrToByte evaluates the given address starting at offset start in data.
 // It returns the lo and hi byte offset of the matched region within data.
@@ -343,6 +351,7 @@ func addrToByteRange(addr string, start int, data []byte) (lo, hi int, err os.Er
 	return lo, hi, nil
 }
 
+
 // addrNumber applies the given dir, n, and charOffset to the address lo, hi.
 // dir is '+' or '-', n is the count, and charOffset is true if the syntax
 // used was #n.  Applying +n (or +#n) means to advance n lines
@@ -428,6 +437,7 @@ func addrNumber(data []byte, lo, hi int, dir byte, n int, charOffset bool) (int,
 	return 0, 0, os.NewError("address out of range")
 }
 
+
 // addrRegexp searches for pattern in the given direction starting at lo, hi.
 // The direction dir is '+' (search forward from hi) or '-' (search backward from lo).
 // Backward searches are unimplemented.
@@ -455,6 +465,7 @@ func addrRegexp(data []byte, lo, hi int, dir byte, pattern string) (int, int, os
 	return m[0], m[1], nil
 }
 
+
 // lineToByte returns the byte index of the first byte of line n.
 // Line numbers begin at 1.
 func lineToByte(data []byte, n int) int {
@@ -471,6 +482,7 @@ func lineToByte(data []byte, n int) int {
 	}
 	return len(data)
 }
+
 
 // byteToLine returns the number of the line containing the byte at index i.
 func byteToLine(data []byte, i int) int {

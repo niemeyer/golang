@@ -80,10 +80,11 @@ main(int argc, char *argv[])
 	int c;
 
 	Binit(&bso, 1, OWRITE);
+	cout = -1;
 	listinit();
 	memset(debug, 0, sizeof(debug));
 	nerrors = 0;
-	outfile = nil;
+	outfile = "6.out";
 	HEADTYPE = -1;
 	INITTEXT = -1;
 	INITDAT = -1;
@@ -133,19 +134,10 @@ main(int argc, char *argv[])
 	if(argc != 1)
 		usage();
 
-	mywhatsys();	// get goos
+	libinit();
 
 	if(HEADTYPE == -1)
 		HEADTYPE = headtype(goos);
-
-	if(outfile == nil) {
-		if(HEADTYPE == Hwindows)
-			outfile = "6.out.exe";
-		else
-			outfile = "6.out";
-	}
-
-	libinit();
 
 	switch(HEADTYPE) {
 	default:
@@ -454,6 +446,7 @@ loop:
 		s = lookup(x, r);
 		if(x != name)
 			free(x);
+		name = nil;
 
 		if(debug['S'] && r == 0)
 			sig = 1729;
@@ -722,6 +715,7 @@ loop:
 		lastp = p;
 		goto loop;
 	}
+	goto loop;
 
 eof:
 	diag("truncated object file: %s", pn);

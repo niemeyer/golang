@@ -69,6 +69,11 @@ gomake clean
 gotest
 ) || exit $?
 
+(xcd pkg/exp/ogle
+gomake clean
+time gomake ogle
+) || exit $?
+
 (xcd ../doc/progs
 time ./run
 ) || exit $?

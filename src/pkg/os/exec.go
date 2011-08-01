@@ -13,11 +13,10 @@ import (
 type Process struct {
 	Pid    int
 	handle int
-	done   bool // process has been successfuly waited on
 }
 
 func newProcess(pid, handle int) *Process {
-	p := &Process{Pid: pid, handle: handle}
+	p := &Process{pid, handle}
 	runtime.SetFinalizer(p, (*Process).Release)
 	return p
 }
@@ -44,11 +43,6 @@ type ProcAttr struct {
 	// may not execute properly or even compile on some
 	// operating systems.
 	Sys *syscall.SysProcAttr
-}
-
-// A Signal can represent any operating system signal.
-type Signal interface {
-	String() string
 }
 
 // Getpid returns the process id of the caller.

@@ -48,6 +48,7 @@ func parseFiles(fset *token.FileSet, filenames []string) (pkgs map[string]*ast.P
 	return
 }
 
+
 func parseDir(fset *token.FileSet, path string, filter func(FileInfo) bool) (map[string]*ast.Package, os.Error) {
 	list, err := fs.ReadDir(path)
 	if err != nil {

@@ -14,8 +14,10 @@ import (
 	"reflect"
 )
 
+
 // A FieldFilter may be provided to Fprint to control the output.
 type FieldFilter func(name string, value reflect.Value) bool
+
 
 // NotNilFilter returns true for field values that are not nil;
 // it returns false otherwise.
@@ -26,6 +28,7 @@ func NotNilFilter(_ string, v reflect.Value) bool {
 	}
 	return true
 }
+
 
 // Fprint prints the (sub-)tree starting at AST node x to w.
 // If fset != nil, position information is interpreted relative
@@ -65,11 +68,13 @@ func Fprint(w io.Writer, fset *token.FileSet, x interface{}, f FieldFilter) (n i
 	return
 }
 
+
 // Print prints x to standard output, skipping nil fields.
 // Print(fset, x) is the same as Fprint(os.Stdout, fset, x, NotNilFilter).
 func Print(fset *token.FileSet, x interface{}) (int, os.Error) {
 	return Fprint(os.Stdout, fset, x, NotNilFilter)
 }
+
 
 type printer struct {
 	output  io.Writer
@@ -81,6 +86,7 @@ type printer struct {
 	last    byte                // the last byte processed by Write
 	line    int                 // current line number
 }
+
 
 var indent = []byte(".  ")
 
@@ -114,11 +120,13 @@ func (p *printer) Write(data []byte) (n int, err os.Error) {
 	return
 }
 
+
 // localError wraps locally caught os.Errors so we can distinguish
 // them from genuine panics which we don't want to return as errors.
 type localError struct {
 	err os.Error
 }
+
 
 // printf is a convenience wrapper that takes care of print errors.
 func (p *printer) printf(format string, args ...interface{}) {
@@ -128,6 +136,7 @@ func (p *printer) printf(format string, args ...interface{}) {
 		panic(localError{err})
 	}
 }
+
 
 // Implementation note: Print is written for AST nodes but could be
 // used to print arbitrary data structures; such a version should

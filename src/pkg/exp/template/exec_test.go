@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -17,7 +16,6 @@ import (
 // T has lots of interesting pieces to use to test execution.
 type T struct {
 	// Basics
-	True        bool
 	I           int
 	U16         uint16
 	X           string
@@ -44,16 +42,9 @@ type T struct {
 	PI  *int
 	PSI *[]int
 	NIL *int
-	// Template to test evaluation of templates.
-	Tmpl *Template
-}
-
-type U struct {
-	V string
 }
 
 var tVal = &T{
-	True:   true,
 	I:      17,
 	U16:    16,
 	X:      "x",
@@ -69,10 +60,9 @@ var tVal = &T{
 	Empty1: 3,
 	Empty2: "empty2",
 	Empty3: []int{7, 8},
-	Empty4: &U{"UinEmpty"},
+	Empty4: &U{"v"},
 	PI:     newInt(23),
 	PSI:    newIntSlice(21, 22, 23),
-	Tmpl:   New("x").MustParse("test template"), // "x" is the value of .X
 }
 
 // Helpers for creation.
@@ -91,7 +81,7 @@ func newIntSlice(n ...int) *[]int {
 
 // Simple methods with and without arguments.
 func (t *T) Method0() string {
-	return "M0"
+	return "resultOfMethod0"
 }
 
 func (t *T) Method1(a int) int {
@@ -130,20 +120,8 @@ func (t *T) EPERM(error bool) (bool, os.Error) {
 	return false, nil
 }
 
-// A few methods to test chaining.
-func (t *T) GetU() *U {
-	return t.U
-}
-
-func (u *U) TrueFalse(b bool) string {
-	if b {
-		return "true"
-	}
-	return ""
-}
-
-func typeOf(arg interface{}) string {
-	return fmt.Sprintf("%T", arg)
+type U struct {
+	V string
 }
 
 type execTest struct {
@@ -154,26 +132,10 @@ type execTest struct {
 	ok     bool
 }
 
-// bigInt and bigUint are hex string representing numbers either side
-// of the max int boundary.
-// We do it this way so the test doesn't depend on ints being 32 bits.
-var (
-	bigInt  = fmt.Sprintf("0x%x", int(1<<uint(reflect.TypeOf(0).Bits()-1)-1))
-	bigUint = fmt.Sprintf("0x%x", uint(1<<uint(reflect.TypeOf(0).Bits()-1)))
-)
-
 var execTests = []execTest{
 	// Trivial cases.
 	{"empty", "", "", nil, true},
 	{"text", "some text", "some text", nil, true},
-
-	// Ideal constants.
-	{"ideal int", "{{typeOf 3}}", "int", 0, true},
-	{"ideal float", "{{typeOf 1.0}}", "float64", 0, true},
-	{"ideal exp float", "{{typeOf 1e1}}", "float64", 0, true},
-	{"ideal complex", "{{typeOf 1i}}", "complex128", 0, true},
-	{"ideal int", "{{typeOf " + bigInt + "}}", "int", 0, true},
-	{"ideal too big", "{{typeOf " + bigUint + "}}", "", 0, false},
 
 	// Fields of structs.
 	{".X", "-{{.X}}-", "-x-", tVal, true},
@@ -193,46 +155,28 @@ var execTests = []execTest{
 		b string
 	}{7, "seven"}, true},
 
-	// Variables.
-	{"$ int", "{{$}}", "123", 123, true},
-	{"$.I", "{{$.I}}", "17", tVal, true},
-	{"$.U.V", "{{$.U.V}}", "v", tVal, true},
-	{"declare in action", "{{$x := $.U.V}}{{$x}}", "v", tVal, true},
-
 	// Pointers.
 	{"*int", "{{.PI}}", "23", tVal, true},
 	{"*[]int", "{{.PSI}}", "[21 22 23]", tVal, true},
 	{"*[]int[1]", "{{index .PSI 1}}", "22", tVal, true},
 	{"NIL", "{{.NIL}}", "<nil>", tVal, true},
 
-	// Empty interfaces holding values.
+	// Emtpy interfaces holding values.
 	{"empty nil", "{{.Empty0}}", "<no value>", tVal, true},
 	{"empty with int", "{{.Empty1}}", "3", tVal, true},
 	{"empty with string", "{{.Empty2}}", "empty2", tVal, true},
 	{"empty with slice", "{{.Empty3}}", "[7 8]", tVal, true},
-	{"empty with struct", "{{.Empty4}}", "{UinEmpty}", tVal, true},
-	{"empty with struct, field", "{{.Empty4.V}}", "UinEmpty", tVal, true},
+	{"empty with struct", "{{.Empty4}}", "{v}", tVal, true},
 
 	// Method calls.
-	{".Method0", "-{{.Method0}}-", "-M0-", tVal, true},
+	{".Method0", "-{{.Method0}}-", "-resultOfMethod0-", tVal, true},
 	{".Method1(1234)", "-{{.Method1 1234}}-", "-1234-", tVal, true},
 	{".Method1(.I)", "-{{.Method1 .I}}-", "-17-", tVal, true},
 	{".Method2(3, .X)", "-{{.Method2 3 .X}}-", "-Method2: 3 x-", tVal, true},
 	{".Method2(.U16, `str`)", "-{{.Method2 .U16 `str`}}-", "-Method2: 16 str-", tVal, true},
-	{".Method2(.U16, $x)", "{{if $x := .X}}-{{.Method2 .U16 $x}}{{end}}-", "-Method2: 16 x-", tVal, true},
-	{"method on var", "{{if $x := .}}-{{$x.Method2 .U16 $x.X}}{{end}}-", "-Method2: 16 x-", tVal, true},
-	{"method on chained var",
-		"{{range .MSIone}}{{if $.U.TrueFalse $.True}}{{$.U.TrueFalse $.True}}{{else}}WRONG{{end}}{{end}}",
-		"true", tVal, true},
-	{"chained method",
-		"{{range .MSIone}}{{if $.GetU.TrueFalse $.True}}{{$.U.TrueFalse $.True}}{{else}}WRONG{{end}}{{end}}",
-		"true", tVal, true},
-	{"chained method on variable",
-		"{{with $x := .}}{{with .SI}}{{$.GetU.TrueFalse $.True}}{{end}}{{end}}",
-		"true", tVal, true},
 
 	// Pipelines.
-	{"pipeline", "-{{.Method0 | .Method2 .U16}}-", "-Method2: 16 M0-", tVal, true},
+	{"pipeline", "-{{.Method0 | .Method2 .U16}}-", "-Method2: 16 resultOfMethod0-", tVal, true},
 
 	// If.
 	{"if true", "{{if true}}TRUE{{end}}", "TRUE", tVal, true},
@@ -249,23 +193,17 @@ var execTests = []execTest{
 	{"if slice", "{{if .SI}}NON-EMPTY{{else}}EMPTY{{end}}", "NON-EMPTY", tVal, true},
 	{"if emptymap", "{{if .MSIEmpty}}NON-EMPTY{{else}}EMPTY{{end}}", "EMPTY", tVal, true},
 	{"if map", "{{if .MSI}}NON-EMPTY{{else}}EMPTY{{end}}", "NON-EMPTY", tVal, true},
-	{"if $x with $y int", "{{if $x := true}}{{with $y := .I}}{{$x}},{{$y}}{{end}}{{end}}", "true,17", tVal, true},
-	{"if $x with $x int", "{{if $x := true}}{{with $x := .I}}{{$x}},{{end}}{{$x}}{{end}}", "17,true", tVal, true},
 
-	// Print etc.
-	{"print", `{{print "hello, print"}}`, "hello, print", tVal, true},
-	{"print", `{{print 1 2 3}}`, "1 2 3", tVal, true},
-	{"println", `{{println 1 2 3}}`, "1 2 3\n", tVal, true},
+	// Printf.
+	{"printf", `{{printf "hello, printf"}}`, "hello, printf", tVal, true},
 	{"printf int", `{{printf "%04x" 127}}`, "007f", tVal, true},
 	{"printf float", `{{printf "%g" 3.5}}`, "3.5", tVal, true},
 	{"printf complex", `{{printf "%g" 1+7i}}`, "(1+7i)", tVal, true},
 	{"printf string", `{{printf "%s" "hello"}}`, "hello", tVal, true},
-	{"printf function", `{{printf "%#q" zeroArgs}}`, "`zeroArgs`", tVal, true},
+	{"printf function", `{{printf "%#q" gopher}}`, "`gopher`", tVal, true},
 	{"printf field", `{{printf "%s" .U.V}}`, "v", tVal, true},
-	{"printf method", `{{printf "%s" .Method0}}`, "M0", tVal, true},
-	{"printf dot", `{{with .I}}{{printf "%d" .}}{{end}}`, "17", tVal, true},
-	{"printf var", `{{with $x := .I}}{{printf "%d" $x}}{{end}}`, "17", tVal, true},
-	{"printf lots", `{{printf "%d %s %g %s" 127 "hello" 7-3i .Method0}}`, "127 hello (7-3i) M0", tVal, true},
+	{"printf method", `{{printf "%s" .Method0}}`, "resultOfMethod0", tVal, true},
+	{"printf lots", `{{printf "%d %s %g %s" 127 "hello" 7-3i .Method0}}`, "127 hello (7-3i) resultOfMethod0", tVal, true},
 
 	// HTML.
 	{"html", `{{html "<script>alert(\"XSS\");</script>"}}`,
@@ -278,8 +216,8 @@ var execTests = []execTest{
 
 	// Booleans
 	{"not", "{{not true}} {{not false}}", "false true", nil, true},
-	{"and", "{{and false 0}} {{and 1 0}} {{and 0 true}} {{and 1 1}}", "false 0 0 1", nil, true},
-	{"or", "{{or 0 0}} {{or 1 0}} {{or 0 true}} {{or 1 1}}", "0 1 true 1", nil, true},
+	{"and", "{{and 0 0}} {{and 1 0}} {{and 0 1}} {{and 1 1}}", "false false false true", nil, true},
+	{"or", "{{or 0 0}} {{or 1 0}} {{or 0 1}} {{or 1 1}}", "false true true true", nil, true},
 	{"boolean if", "{{if and true 1 `hi`}}TRUE{{else}}FALSE{{end}}", "TRUE", tVal, true},
 	{"boolean if not", "{{if and true 1 `hi` | not}}TRUE{{else}}FALSE{{end}}", "FALSE", nil, true},
 
@@ -309,10 +247,7 @@ var execTests = []execTest{
 	{"with slice", "{{with .SI}}{{.}}{{else}}EMPTY{{end}}", "[3 4 5]", tVal, true},
 	{"with emptymap", "{{with .MSIEmpty}}{{.}}{{else}}EMPTY{{end}}", "EMPTY", tVal, true},
 	{"with map", "{{with .MSIone}}{{.}}{{else}}EMPTY{{end}}", "map[one:1]", tVal, true},
-	{"with empty interface, struct field", "{{with .Empty4}}{{.V}}{{end}}", "UinEmpty", tVal, true},
-	{"with $x int", "{{with $x := .I}}{{$x}}{{end}}", "17", tVal, true},
-	{"with $x struct.U.V", "{{with $x := $}}{{$x.U.V}}{{end}}", "v", tVal, true},
-	{"with variable and action", "{{with $x := $}}{{$y := $.U.V}}{{$y}}{{end}}", "v", tVal, true},
+	{"with empty interface, struct field", "{{with .Empty4}}{{.V}}{{end}}", "v", tVal, true},
 
 	// Range.
 	{"range []int", "{{range .SI}}-{{.}}-{{end}}", "-3--4--5-", tVal, true},
@@ -326,46 +261,28 @@ var execTests = []execTest{
 	{"range map else", "{{range .MSI | .MSort}}-{{.}}-{{else}}EMPTY{{end}}", "-one--three--two-", tVal, true},
 	{"range empty map else", "{{range .MSIEmpty}}-{{.}}-{{else}}EMPTY{{end}}", "EMPTY", tVal, true},
 	{"range empty interface", "{{range .Empty3}}-{{.}}-{{else}}EMPTY{{end}}", "-7--8-", tVal, true},
-	{"range $x SI", "{{range $x := .SI}}<{{$x}}>{{end}}", "<3><4><5>", tVal, true},
-	{"range $x $y SI", "{{range $x, $y := .SI}}<{{$x}}={{$y}}>{{end}}", "<0=3><1=4><2=5>", tVal, true},
-	{"range $x MSIone", "{{range $x := .MSIone}}<{{$x}}>{{end}}", "<1>", tVal, true},
-	{"range $x $y MSIone", "{{range $x, $y := .MSIone}}<{{$x}}={{$y}}>{{end}}", "<one=1>", tVal, true},
-	{"range $x PSI", "{{range $x := .PSI}}<{{$x}}>{{end}}", "<21><22><23>", tVal, true},
-	{"declare in range", "{{range $x := .PSI}}<{{$foo:=$x}}{{$x}}>{{end}}", "<21><22><23>", tVal, true},
-
-	// Cute examples.
-	{"or as if true", `{{or .SI "slice is empty"}}`, "[3 4 5]", tVal, true},
-	{"or as if false", `{{or .SIEmpty "slice is empty"}}`, "slice is empty", tVal, true},
 
 	// Error handling.
 	{"error method, error", "{{.EPERM true}}", "", tVal, false},
 	{"error method, no error", "{{.EPERM false}}", "false", tVal, true},
-
-	// Fixed bugs.
-	// Must separate dot and receiver; otherwise args are evaluated with dot set to variable.
-	{"bug0", "{{range .MSIone}}{{if $.Method1 .}}X{{end}}{{end}}", "X", tVal, true},
 }
 
-func zeroArgs() string {
-	return "zeroArgs"
-}
-
-func oneArg(a string) string {
-	return "oneArg=" + a
+func gopher() string {
+	return "gopher"
 }
 
 func testExecute(execTests []execTest, set *Set, t *testing.T) {
 	b := new(bytes.Buffer)
-	funcs := FuncMap{"zeroArgs": zeroArgs, "oneArg": oneArg, "typeOf": typeOf}
+	funcs := FuncMap{"gopher": gopher}
 	for _, test := range execTests {
 		tmpl := New(test.name).Funcs(funcs)
-		err := tmpl.ParseInSet(test.input, set)
+		err := tmpl.Parse(test.input)
 		if err != nil {
 			t.Errorf("%s: parse error: %s", test.name, err)
 			continue
 		}
 		b.Reset()
-		err = tmpl.Execute(b, test.data)
+		err = tmpl.ExecuteInSet(b, test.data, set)
 		switch {
 		case !test.ok && err == nil:
 			t.Errorf("%s: expected error; got none", test.name)
@@ -402,9 +319,6 @@ func TestExecuteError(t *testing.T) {
 	if err == nil {
 		t.Errorf("expected error; got none")
 	} else if !strings.Contains(err.String(), os.EPERM.String()) {
-		if *debug {
-			fmt.Printf("test execute error: %s\n", err)
-		}
 		t.Errorf("expected os.EPERM; got %s", err)
 	}
 }
@@ -418,93 +332,11 @@ func TestJSEscaping(t *testing.T) {
 		{`Go "jump" \`, `Go \"jump\" \\`},
 		{`Yukihiro says "今日は世界"`, `Yukihiro says \"今日は世界\"`},
 		{"unprintable \uFDFF", `unprintable \uFDFF`},
-		{`<html>`, `\x3Chtml\x3E`},
 	}
 	for _, tc := range testCases {
 		s := JSEscapeString(tc.in)
 		if s != tc.exp {
 			t.Errorf("JS escaping [%s] got [%s] want [%s]", tc.in, s, tc.exp)
 		}
-	}
-}
-
-// A nice example: walk a binary tree.
-
-type Tree struct {
-	Val         int
-	Left, Right *Tree
-}
-
-const treeTemplate = `
-	{{define "tree"}}
-	[
-		{{.Val}}
-		{{with .Left}}
-			{{template "tree" .}}
-		{{end}}
-		{{with .Right}}
-			{{template "tree" .}}
-		{{end}}
-	]
-	{{end}}
-`
-
-func TestTree(t *testing.T) {
-	var tree = &Tree{
-		1,
-		&Tree{
-			2, &Tree{
-				3,
-				&Tree{
-					4, nil, nil,
-				},
-				nil,
-			},
-			&Tree{
-				5,
-				&Tree{
-					6, nil, nil,
-				},
-				nil,
-			},
-		},
-		&Tree{
-			7,
-			&Tree{
-				8,
-				&Tree{
-					9, nil, nil,
-				},
-				nil,
-			},
-			&Tree{
-				10,
-				&Tree{
-					11, nil, nil,
-				},
-				nil,
-			},
-		},
-	}
-	set := new(Set)
-	err := set.Parse(treeTemplate)
-	if err != nil {
-		t.Fatal("parse error:", err)
-	}
-	var b bytes.Buffer
-	err = set.Execute(&b, "tree", tree)
-	if err != nil {
-		t.Fatal("exec error:", err)
-	}
-	stripSpace := func(r int) int {
-		if r == '\t' || r == '\n' {
-			return -1
-		}
-		return r
-	}
-	result := strings.Map(stripSpace, b.String())
-	const expect = "[1[2[3[4]][5[6]]][7[8[9]][10[11]]]]"
-	if result != expect {
-		t.Errorf("expected %q got %q", expect, result)
 	}
 }

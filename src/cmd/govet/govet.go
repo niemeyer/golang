@@ -348,6 +348,7 @@ FlagLoop:
 	return
 }
 
+
 // checkPrint checks a call to an unformatted print routine such as Println.
 // The skip argument records how many arguments to ignore; that is,
 // call.Args[skip] is the first argument to be printed.

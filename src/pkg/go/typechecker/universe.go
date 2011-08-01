@@ -11,12 +11,14 @@ import "go/ast"
 // The Universe scope contains all predeclared identifiers.
 var Universe *ast.Scope
 
+
 func def(obj *ast.Object) {
 	alt := Universe.Insert(obj)
 	if alt != nil {
 		panic("object declared twice")
 	}
 }
+
 
 func init() {
 	Universe = ast.NewScope(nil)

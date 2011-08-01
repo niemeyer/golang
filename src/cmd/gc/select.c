@@ -309,12 +309,7 @@ walkselect(Node *sel)
 				fatal("select %O", n->op);
 	
 			case OSEND:
-				// selectsend(sel *byte, hchan *chan any, elem *any) (selected bool);
-				n->left = safeexpr(n->left, &r->ninit);
-				n->right = localexpr(n->right, &r->ninit);
-				n->right = nod(OADDR, n->right, N);
-				n->right->etype = 1;  // pointer does not escape
-				typecheck(&n->right, Erv);
+				// selectsend(sel *byte, hchan *chan any, elem any) (selected bool);
 				r->ntest = mkcall1(chanfn("selectsend", 2, n->left->type), types[TBOOL],
 					&init, var, n->left, n->right);
 				break;

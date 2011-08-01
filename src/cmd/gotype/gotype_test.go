@@ -10,6 +10,7 @@ import (
 	"testing"
 )
 
+
 func runTest(t *testing.T, path, pkg string) {
 	exitCode = 0
 	*pkgName = pkg
@@ -26,6 +27,7 @@ func runTest(t *testing.T, path, pkg string) {
 	}
 }
 
+
 var tests = []struct {
 	path string
 	pkg  string
@@ -41,6 +43,7 @@ var tests = []struct {
 	{filepath.Join(runtime.GOROOT(), "src/pkg/go/parser"), "parser"},
 	{filepath.Join(runtime.GOROOT(), "src/pkg/go/types"), "types"},
 }
+
 
 func Test(t *testing.T) {
 	for _, test := range tests {

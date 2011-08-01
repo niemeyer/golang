@@ -7,6 +7,7 @@
 
 package vector
 
+
 func (p *StringVector) realloc(length, capacity int) (b []string) {
 	if capacity < initialSize {
 		capacity = initialSize
@@ -19,6 +20,7 @@ func (p *StringVector) realloc(length, capacity int) (b []string) {
 	*p = b
 	return
 }
+
 
 // Insert n elements at position i.
 func (p *StringVector) Expand(i, n int) {
@@ -49,8 +51,10 @@ func (p *StringVector) Expand(i, n int) {
 	*p = a
 }
 
+
 // Insert n elements at the end of a vector.
 func (p *StringVector) Extend(n int) { p.Expand(len(*p), n) }
+
 
 // Resize changes the length and capacity of a vector.
 // If the new length is shorter than the current length, Resize discards
@@ -76,23 +80,29 @@ func (p *StringVector) Resize(length, capacity int) *StringVector {
 	return p
 }
 
+
 // Len returns the number of elements in the vector.
 // Same as len(*p).
 func (p *StringVector) Len() int { return len(*p) }
+
 
 // Cap returns the capacity of the vector; that is, the
 // maximum length the vector can grow without resizing.
 // Same as cap(*p).
 func (p *StringVector) Cap() int { return cap(*p) }
 
+
 // At returns the i'th element of the vector.
 func (p *StringVector) At(i int) string { return (*p)[i] }
+
 
 // Set sets the i'th element of the vector to value x.
 func (p *StringVector) Set(i int, x string) { (*p)[i] = x }
 
+
 // Last returns the element in the vector of highest index.
 func (p *StringVector) Last() string { return (*p)[len(*p)-1] }
+
 
 // Copy makes a copy of the vector and returns it.
 func (p *StringVector) Copy() StringVector {
@@ -101,12 +111,14 @@ func (p *StringVector) Copy() StringVector {
 	return arr
 }
 
+
 // Insert inserts into the vector an element of value x before
 // the current element at index i.
 func (p *StringVector) Insert(i int, x string) {
 	p.Expand(i, 1)
 	(*p)[i] = x
 }
+
 
 // Delete deletes the i'th element of the vector.  The gap is closed so the old
 // element at index i+1 has index i afterwards.
@@ -120,6 +132,7 @@ func (p *StringVector) Delete(i int) {
 	*p = a[0 : n-1]
 }
 
+
 // InsertVector inserts into the vector the contents of the vector
 // x such that the 0th element of x appears at index i after insertion.
 func (p *StringVector) InsertVector(i int, x *StringVector) {
@@ -128,6 +141,7 @@ func (p *StringVector) InsertVector(i int, x *StringVector) {
 	p.Expand(i, len(b))
 	copy((*p)[i:i+len(b)], b)
 }
+
 
 // Cut deletes elements i through j-1, inclusive.
 func (p *StringVector) Cut(i, j int) {
@@ -144,6 +158,7 @@ func (p *StringVector) Cut(i, j int) {
 	*p = a[0:m]
 }
 
+
 // Slice returns a new sub-vector by slicing the old one to extract slice [i:j].
 // The elements are copied. The original vector is unchanged.
 func (p *StringVector) Slice(i, j int) *StringVector {
@@ -153,10 +168,12 @@ func (p *StringVector) Slice(i, j int) *StringVector {
 	return &s
 }
 
+
 // Convenience wrappers
 
 // Push appends x to the end of the vector.
 func (p *StringVector) Push(x string) { p.Insert(len(*p), x) }
+
 
 // Pop deletes the last element of the vector.
 func (p *StringVector) Pop() string {
@@ -170,14 +187,17 @@ func (p *StringVector) Pop() string {
 	return x
 }
 
+
 // AppendVector appends the entire vector x to the end of this vector.
 func (p *StringVector) AppendVector(x *StringVector) { p.InsertVector(len(*p), x) }
+
 
 // Swap exchanges the elements at indexes i and j.
 func (p *StringVector) Swap(i, j int) {
 	a := *p
 	a[i], a[j] = a[j], a[i]
 }
+
 
 // Do calls function f for each element of the vector, in order.
 // The behavior of Do is undefined if f changes *p.

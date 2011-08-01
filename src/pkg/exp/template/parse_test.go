@@ -29,8 +29,6 @@ var numberTests = []numberTest{
 	{"0", true, true, true, false, 0, 0, 0, 0},
 	{"-0", true, true, true, false, 0, 0, 0, 0}, // check that -0 is a uint.
 	{"73", true, true, true, false, 73, 73, 73, 0},
-	{"073", true, true, true, false, 073, 073, 073, 0},
-	{"0x73", true, true, true, false, 0x73, 0x73, 0x73, 0},
 	{"-73", true, false, true, false, -73, 0, -73, 0},
 	{"+73", true, false, true, false, 73, 0, 73, 0},
 	{"100", true, true, true, false, 100, 100, 100, 0},
@@ -41,7 +39,6 @@ var numberTests = []numberTest{
 	{"-1e19", false, false, true, false, 0, 0, -1e19, 0},
 	{"4i", false, false, false, true, 0, 0, 0, 4i},
 	{"-1.2+4.2i", false, false, false, true, 0, 0, 0, -1.2 + 4.2i},
-	{"073i", false, false, false, true, 0, 0, 0, 73i}, // not octal!
 	// complex with 0 imaginary are float (and maybe integer)
 	{"0i", true, true, true, true, 0, 0, 0, 0},
 	{"-1.2+0i", false, false, true, true, 0, 0, -1.2, -1.2},
@@ -51,23 +48,12 @@ var numberTests = []numberTest{
 	{"0123", true, true, true, false, 0123, 0123, 0123, 0},
 	{"-0x0", true, true, true, false, 0, 0, 0, 0},
 	{"0xdeadbeef", true, true, true, false, 0xdeadbeef, 0xdeadbeef, 0xdeadbeef, 0},
-	// character constants
-	{`'a'`, true, true, true, false, 'a', 'a', 'a', 0},
-	{`'\n'`, true, true, true, false, '\n', '\n', '\n', 0},
-	{`'\\'`, true, true, true, false, '\\', '\\', '\\', 0},
-	{`'\''`, true, true, true, false, '\'', '\'', '\'', 0},
-	{`'\xFF'`, true, true, true, false, 0xFF, 0xFF, 0xFF, 0},
-	{`'パ'`, true, true, true, false, 0x30d1, 0x30d1, 0x30d1, 0},
-	{`'\u30d1'`, true, true, true, false, 0x30d1, 0x30d1, 0x30d1, 0},
-	{`'\U000030d1'`, true, true, true, false, 0x30d1, 0x30d1, 0x30d1, 0},
 	// some broken syntax
 	{text: "+-2"},
 	{text: "0x123."},
 	{text: "1e."},
 	{text: "0xi."},
 	{text: "1+2."},
-	{text: "'x"},
-	{text: "'xx'"},
 }
 
 func TestNumberParse(t *testing.T) {
@@ -75,19 +61,11 @@ func TestNumberParse(t *testing.T) {
 		// If fmt.Sscan thinks it's complex, it's complex.  We can't trust the output
 		// because imaginary comes out as a number.
 		var c complex128
-		typ := itemNumber
-		if test.text[0] == '\'' {
-			typ = itemCharConstant
-		} else {
-			_, err := fmt.Sscan(test.text, &c)
-			if err == nil {
-				typ = itemComplex
-			}
-		}
-		n, err := newNumber(test.text, typ)
+		_, err := fmt.Sscan(test.text, &c)
+		n, err := newNumber(test.text, err == nil)
 		ok := test.isInt || test.isUint || test.isFloat || test.isComplex
 		if ok && err != nil {
-			t.Errorf("unexpected error for %q: %s", test.text, err)
+			t.Errorf("unexpected error for %q", test.text)
 			continue
 		}
 		if !ok && err == nil {
@@ -95,9 +73,6 @@ func TestNumberParse(t *testing.T) {
 			continue
 		}
 		if !ok {
-			if *debug {
-				fmt.Printf("%s\n\t%s\n", test.text, err)
-			}
 			continue
 		}
 		if n.isComplex != test.isComplex {
@@ -171,19 +146,9 @@ var parseTests = []parseTest{
 		`[(action: [(command: [F=[X]])])]`},
 	{"simple command", "{{printf}}", noError,
 		`[(action: [(command: [I=printf])])]`},
-	{"$ invocation", "{{$}}", noError,
-		"[(action: [(command: [V=[$]])])]"},
-	{"variable invocation", "{{with $x := 3}}{{$x 23}}{{end}}", noError,
-		"[({{with [V=[$x]] := [(command: [N=3])]}} [(action: [(command: [V=[$x] N=23])])])]"},
-	{"variable with fields", "{{$.I}}", noError,
-		"[(action: [(command: [V=[$ I]])])]"},
 	{"multi-word command", "{{printf `%d` 23}}", noError,
 		"[(action: [(command: [I=printf S=`%d` N=23])])]"},
 	{"pipeline", "{{.X|.Y}}", noError,
-		`[(action: [(command: [F=[X]]) (command: [F=[Y]])])]`},
-	{"pipeline with decl", "{{$x := .X|.Y}}", noError,
-		`[(action: [V=[$x]] := [(command: [F=[X]]) (command: [F=[Y]])])]`},
-	{"declaration", "{{.X|.Y}}", noError,
 		`[(action: [(command: [F=[X]]) (command: [F=[Y]])])]`},
 	{"simple if", "{{if .X}}hello{{end}}", noError,
 		`[({{if [(command: [F=[X]])]}} [(text: "hello")])]`},
@@ -201,31 +166,19 @@ var parseTests = []parseTest{
 		`[({{range [(command: [F=[X]]) (command: [F=[M]])]}} [(text: "true")] {{else}} [(text: "false")])]`},
 	{"range []int", "{{range .SI}}{{.}}{{end}}", noError,
 		`[({{range [(command: [F=[SI]])]}} [(action: [(command: [{{<.>}}])])])]`},
-	{"constants", "{{range .SI 1 -3.2i true false 'a'}}{{end}}", noError,
-		`[({{range [(command: [F=[SI] N=1 N=-3.2i B=true B=false N='a'])]}} [])]`},
-	{"template", "{{template `x`}}", noError,
-		`[{{template "x"}}]`},
-	{"template with arg", "{{template `x` .Y}}", noError,
-		`[{{template "x" [(command: [F=[Y]])]}}]`},
+	{"constants", "{{range .SI 1 -3.2i true false }}{{end}}", noError,
+		`[({{range [(command: [F=[SI] N=1 N=-3.2i B=true B=false])]}} [])]`},
+	{"template", "{{template `x` .Y}}", noError,
+		"[{{template S=`x` [(command: [F=[Y]])]}}]"},
 	{"with", "{{with .X}}hello{{end}}", noError,
 		`[({{with [(command: [F=[X]])]}} [(text: "hello")])]`},
 	{"with with else", "{{with .X}}hello{{else}}goodbye{{end}}", noError,
 		`[({{with [(command: [F=[X]])]}} [(text: "hello")] {{else}} [(text: "goodbye")])]`},
 	// Errors.
 	{"unclosed action", "hello{{range", hasError, ""},
-	{"unmatched end", "{{end}}", hasError, ""},
 	{"missing end", "hello{{range .x}}", hasError, ""},
 	{"missing end after else", "hello{{range .x}}{{else}}", hasError, ""},
 	{"undefined function", "hello{{undefined}}", hasError, ""},
-	{"undefined variable", "{{$x}}", hasError, ""},
-	{"variable undefined after end", "{{with $x := 4}}{{end}}{{$x}}", hasError, ""},
-	{"variable undefined in template", "{{template $v}}", hasError, ""},
-	{"declare with field", "{{with $x.Y := 4}}{{end}}", hasError, ""},
-	{"template with field ref", "{{template .X}}", hasError, ""},
-	{"template with var", "{{template $v}}", hasError, ""},
-	{"invalid punctuation", "{{printf 3, 4}}", hasError, ""},
-	{"multidecl outside range", "{{with $v, $u := 3}}{{end}}", hasError, ""},
-	{"too many decls in range", "{{range $u, $v, $w := 3}}{{end}}", hasError, ""},
 }
 
 func TestParse(t *testing.T) {

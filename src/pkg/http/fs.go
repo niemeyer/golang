@@ -222,8 +222,7 @@ func serveFile(w ResponseWriter, r *Request, fs FileSystem, name string, redirec
 
 // ServeFile replies to the request with the contents of the named file or directory.
 func ServeFile(w ResponseWriter, r *Request, name string) {
-	dir, file := filepath.Split(name)
-	serveFile(w, r, Dir(dir), file, false)
+	serveFile(w, r, Dir(name), "", false)
 }
 
 type fileHandler struct {
@@ -242,12 +241,7 @@ func FileServer(root FileSystem) Handler {
 }
 
 func (f *fileHandler) ServeHTTP(w ResponseWriter, r *Request) {
-	upath := r.URL.Path
-	if !strings.HasPrefix(upath, "/") {
-		upath = "/" + upath
-		r.URL.Path = upath
-	}
-	serveFile(w, r, f.root, path.Clean(upath), true)
+	serveFile(w, r, f.root, path.Clean(r.URL.Path), true)
 }
 
 // httpRange specifies the byte range to be sent to the client.

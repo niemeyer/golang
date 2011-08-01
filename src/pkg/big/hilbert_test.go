@@ -13,10 +13,12 @@ import (
 	"testing"
 )
 
+
 type matrix struct {
 	n, m int
 	a    []*Rat
 }
+
 
 func (a *matrix) at(i, j int) *Rat {
 	if !(0 <= i && i < a.n && 0 <= j && j < a.m) {
@@ -25,12 +27,14 @@ func (a *matrix) at(i, j int) *Rat {
 	return a.a[i*a.m+j]
 }
 
+
 func (a *matrix) set(i, j int, x *Rat) {
 	if !(0 <= i && i < a.n && 0 <= j && j < a.m) {
 		panic("index out of range")
 	}
 	a.a[i*a.m+j] = x
 }
+
 
 func newMatrix(n, m int) *matrix {
 	if !(0 <= n && 0 <= m) {
@@ -42,6 +46,7 @@ func newMatrix(n, m int) *matrix {
 	a.a = make([]*Rat, n*m)
 	return a
 }
+
 
 func newUnit(n int) *matrix {
 	a := newMatrix(n, n)
@@ -57,6 +62,7 @@ func newUnit(n int) *matrix {
 	return a
 }
 
+
 func newHilbert(n int) *matrix {
 	a := newMatrix(n, n)
 	for i := 0; i < n; i++ {
@@ -66,6 +72,7 @@ func newHilbert(n int) *matrix {
 	}
 	return a
 }
+
 
 func newInverseHilbert(n int) *matrix {
 	a := newMatrix(n, n)
@@ -91,6 +98,7 @@ func newInverseHilbert(n int) *matrix {
 	return a
 }
 
+
 func (a *matrix) mul(b *matrix) *matrix {
 	if a.m != b.n {
 		panic("illegal matrix multiply")
@@ -108,6 +116,7 @@ func (a *matrix) mul(b *matrix) *matrix {
 	return c
 }
 
+
 func (a *matrix) eql(b *matrix) bool {
 	if a.n != b.n || a.m != b.m {
 		return false
@@ -122,6 +131,7 @@ func (a *matrix) eql(b *matrix) bool {
 	return true
 }
 
+
 func (a *matrix) String() string {
 	s := ""
 	for i := 0; i < a.n; i++ {
@@ -132,6 +142,7 @@ func (a *matrix) String() string {
 	}
 	return s
 }
+
 
 func doHilbert(t *testing.T, n int) {
 	a := newHilbert(n)
@@ -149,9 +160,11 @@ func doHilbert(t *testing.T, n int) {
 	}
 }
 
+
 func TestHilbert(t *testing.T) {
 	doHilbert(t, 10)
 }
+
 
 func BenchmarkHilbert(b *testing.B) {
 	for i := 0; i < b.N; i++ {

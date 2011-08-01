@@ -34,6 +34,7 @@ enum
 	
 	/* order here is order in output file */
 	STEXT,
+	SELFDATA,
 	SMACHOPLT,
 	STYPE,
 	SSTRING,
@@ -41,8 +42,6 @@ enum
 	SRODATA,
 	SSYMTAB,
 	SPCLNTAB,
-	SELFROSECT,
-	SELFSECT,
 	SDATA,
 	SMACHO,	/* Mach-O __nl_symbol_ptr */
 	SMACHOGOT,
@@ -103,6 +102,7 @@ struct Section
 extern	char	symname[];
 extern	char	*libdir[];
 extern	int	nlibdir;
+extern	int	cout;
 
 EXTERN	char*	INITENTRY;
 EXTERN	char*	thestring;
@@ -169,6 +169,7 @@ void	mark(Sym *s);
 void	mkfwd(void);
 char*	expandpkg(char*, char*);
 void	deadcode(void);
+void	ewrite(int, void*, int);
 Reloc*	addrel(Sym*);
 void	codeblk(int32, int32);
 void	datblk(int32, int32);
@@ -278,29 +279,3 @@ int	headtype(char*);
 
 int	Yconv(Fmt*);
 #pragma	varargck	type	"Y"	Sym*
-
-// buffered output
-
-EXTERN	Biobuf	bso;
-
-EXTERN struct
-{
-	char	cbuf[MAXIO];	/* output buffer */
-} buf;
-
-EXTERN	int	cbc;
-EXTERN	char*	cbp;
-EXTERN	char*	cbpmax;
-
-#define	cput(c)\
-	{ *cbp++ = c;\
-	if(--cbc <= 0)\
-		cflush(); }
-
-void	cflush(void);
-vlong	cpos(void);
-void	cseek(vlong);
-void	cseekend(void);
-void	cwrite(void*, int);
-void	importcycles(void);
-int	Zconv(Fmt*);

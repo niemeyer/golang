@@ -308,13 +308,13 @@ int
 elfwriteinterp(void)
 {
 	int n;
-
+	
 	if(interp == nil)
 		return 0;
 
 	n = strlen(interp)+1;
-	cseek(ELFRESERVE-n);
-	cwrite(interp, n);
+	seek(cout, ELFRESERVE-n, 0);
+	ewrite(cout, interp, n);
 	return n;
 }
 
@@ -322,7 +322,7 @@ void
 elfinterp(ElfShdr *sh, uint64 startva, char *p)
 {
 	int n;
-
+	
 	interp = p;
 	n = strlen(interp)+1;
 	sh->addr = startva + ELFRESERVE - n;
@@ -393,7 +393,7 @@ elfdynhash(void)
 
 	nsym = nelfsym;
 	s = lookup(".hash", 0);
-	s->type = SELFROSECT;
+	s->type = SELFDATA;
 	s->reachable = 1;
 
 	i = nsym;
@@ -539,12 +539,6 @@ elfshbits(Section *sect)
 	return nil;
 
 found:
-	for(i=0; i<hdr.shnum; i++) {
-		sh = shdr[i];
-		if(sh->name == off)
-			return sh;
-	}
-
 	sh = newElfShdr(off);
 	if(sect->vaddr < sect->seg->vaddr + sect->seg->filelen)
 		sh->type = SHT_PROGBITS;

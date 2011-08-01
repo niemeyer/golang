@@ -10,7 +10,9 @@ import (
 	"go/token"
 )
 
+
 var fset = token.NewFileSet()
+
 
 func parse(t *testing.T, form string, fmap FormatterMap) Format {
 	f, err := Parse(fset, "", []byte(form), fmap)
@@ -20,6 +22,7 @@ func parse(t *testing.T, form string, fmap FormatterMap) Format {
 	}
 	return f
 }
+
 
 func verify(t *testing.T, f Format, expected string, args ...interface{}) {
 	if f == nil {
@@ -32,6 +35,7 @@ func verify(t *testing.T, f Format, expected string, args ...interface{}) {
 			result, expected)
 	}
 }
+
 
 func formatter(s *State, value interface{}, rule_name string) bool {
 	switch rule_name {
@@ -57,6 +61,7 @@ func formatter(s *State, value interface{}, rule_name string) bool {
 	panic("unreachable")
 	return false
 }
+
 
 func TestCustomFormatters(t *testing.T) {
 	fmap0 := FormatterMap{"/": formatter}
@@ -87,6 +92,7 @@ func TestCustomFormatters(t *testing.T) {
 	// TODO needs more tests
 }
 
+
 // ----------------------------------------------------------------------------
 // Formatting of basic and simple composite types
 
@@ -102,6 +108,7 @@ func check(t *testing.T, form, expected string, args ...interface{}) {
 			form, result, expected)
 	}
 }
+
 
 func TestBasicTypes(t *testing.T) {
 	check(t, ``, ``)
@@ -137,6 +144,7 @@ func TestBasicTypes(t *testing.T) {
 	check(t, `float64="%g"`, fs, float64(f))
 }
 
+
 func TestArrayTypes(t *testing.T) {
 	var a0 [10]int
 	check(t, `array="array";`, `array`, a0)
@@ -151,6 +159,7 @@ func TestArrayTypes(t *testing.T) {
 	check(t, `array={* / ", "}; interface=*; string="bar"; default="%v";`, `42, bar, 3.14`, a2)
 }
 
+
 func TestChanTypes(t *testing.T) {
 	var c0 chan int
 	check(t, `chan="chan"`, `chan`, c0)
@@ -161,6 +170,7 @@ func TestChanTypes(t *testing.T) {
 	// check(t, `chan=*`, `42`, c1);  // reflection support for chans incomplete
 }
 
+
 func TestFuncTypes(t *testing.T) {
 	var f0 func() int
 	check(t, `func="func"`, `func`, f0)
@@ -170,6 +180,7 @@ func TestFuncTypes(t *testing.T) {
 	// check(t, `func=*`, `42`, f1);  // reflection support for funcs incomplete
 }
 
+
 func TestMapTypes(t *testing.T) {
 	var m0 map[string]int
 	check(t, `map="map"`, `map`, m0)
@@ -178,6 +189,7 @@ func TestMapTypes(t *testing.T) {
 	check(t, `map="map"`, `map`, m1)
 	// check(t, `map=*`, ``, m1);  // reflection support for maps incomplete
 }
+
 
 func TestPointerTypes(t *testing.T) {
 	var p0 *int
@@ -191,6 +203,7 @@ func TestPointerTypes(t *testing.T) {
 	check(t, `ptr=*; int="%d"`, `99991`, p1)
 }
 
+
 func TestDefaultRule(t *testing.T) {
 	check(t, `default="%v"`, `42foo3.14`, 42, "foo", 3.14)
 	check(t, `default="%v"; int="%x"`, `abcdef`, 10, 11, 12, 13, 14, 15)
@@ -198,10 +211,12 @@ func TestDefaultRule(t *testing.T) {
 	check(t, `default="%x"; int=@:default`, `abcdef`, 10, 11, 12, 13, 14, 15)
 }
 
+
 func TestGlobalSeparatorRule(t *testing.T) {
 	check(t, `int="%d"; / ="-"`, `1-2-3-4`, 1, 2, 3, 4)
 	check(t, `int="%x%x"; / ="*"`, `aa*aa`, 10, 10)
 }
+
 
 // ----------------------------------------------------------------------------
 // Formatting of a struct
@@ -215,6 +230,7 @@ const F1 = `datafmt "datafmt";` +
 	`datafmt.T1 = "<" a ">";`
 
 func TestStruct1(t *testing.T) { check(t, F1, "<42>", T1{42}) }
+
 
 // ----------------------------------------------------------------------------
 // Formatting of a struct with an optional field (ptr)
@@ -239,6 +255,7 @@ func TestStruct2(t *testing.T) {
 	check(t, F2a, "bar-<17>-", T2{"bar", &T1{17}})
 	check(t, F2b, "fooempty", T2{"foo", nil})
 }
+
 
 // ----------------------------------------------------------------------------
 // Formatting of a struct with a repetitive field (slice)
@@ -267,6 +284,7 @@ func TestStruct3(t *testing.T) {
 	check(t, F3b, "bar", T3{"bar", nil})
 	check(t, F3b, "bal: 2-3-5", T3{"bal", []int{2, 3, 5}})
 }
+
 
 // ----------------------------------------------------------------------------
 // Formatting of a struct with alternative field
@@ -300,6 +318,7 @@ func TestStruct4(t *testing.T) {
 	check(t, F4b, "<2, 3, 7>", T4{nil, []int{2, 3, 7}})
 }
 
+
 // ----------------------------------------------------------------------------
 // Formatting a struct (documentation example)
 
@@ -319,6 +338,7 @@ func TestStructPoint(t *testing.T) {
 	check(t, FPoint, "---foo---{3, 0xf}", p)
 }
 
+
 // ----------------------------------------------------------------------------
 // Formatting a slice (documentation example)
 
@@ -326,5 +346,6 @@ const FSlice = `int = "%b";` +
 	`array = { * / ", " }`
 
 func TestSlice(t *testing.T) { check(t, FSlice, "10, 11, 101, 111", []int{2, 3, 5, 7}) }
+
 
 // TODO add more tests

@@ -35,12 +35,9 @@ func (i item) String() string {
 type itemType int
 
 const (
-	itemError        itemType = iota // error occurred; value is text of error
-	itemBool                         // boolean constant
-	itemChar                         // printable ASCII character; grab bag for comma etc.
-	itemCharConstant                 // character constant
-	itemComplex                      // complex constant (1+2i); imaginary is just a number
-	itemColonEquals                  // colon-equals (':=') introducing a declaration
+	itemError   itemType = iota // error occurred; value is text of error
+	itemBool                    // boolean constant
+	itemComplex                 // complex constant (1+2i); imaginary is just a number
 	itemEOF
 	itemField      // alphanumeric identifier, starting with '.', possibly chained ('.x.y')
 	itemIdentifier // alphanumeric identifier
@@ -51,7 +48,6 @@ const (
 	itemRightDelim // right action delimiter
 	itemString     // quoted string (includes quotes)
 	itemText       // plain text
-	itemVariable   // variable starting with '$', such as '$' or  '$1' or '$hello'.
 	// Keywords appear after all the rest.
 	itemKeyword  // used only to delimit the keywords
 	itemDot      // the cursor, spelled '.'.
@@ -66,22 +62,18 @@ const (
 
 // Make the types prettyprint.
 var itemName = map[itemType]string{
-	itemError:        "error",
-	itemBool:         "bool",
-	itemChar:         "char",
-	itemCharConstant: "charconst",
-	itemComplex:      "complex",
-	itemColonEquals:  ":=",
-	itemEOF:          "EOF",
-	itemField:        "field",
-	itemIdentifier:   "identifier",
-	itemLeftDelim:    "left delim",
-	itemNumber:       "number",
-	itemPipe:         "pipe",
-	itemRawString:    "raw string",
-	itemRightDelim:   "right delim",
-	itemString:       "string",
-	itemVariable:     "variable",
+	itemError:      "error",
+	itemBool:       "bool",
+	itemComplex:    "complex",
+	itemEOF:        "EOF",
+	itemField:      "field",
+	itemIdentifier: "identifier",
+	itemLeftDelim:  "left delim",
+	itemNumber:     "number",
+	itemPipe:       "pipe",
+	itemRawString:  "raw string",
+	itemRightDelim: "right delim",
+	itemString:     "string",
 	// keywords
 	itemDot:      ".",
 	itemDefine:   "define",
@@ -287,21 +279,12 @@ func lexInsideAction(l *lexer) stateFn {
 			return l.errorf("unclosed action")
 		case isSpace(r):
 			l.ignore()
-		case r == ':':
-			if l.next() != '=' {
-				return l.errorf("expected :=")
-			}
-			l.emit(itemColonEquals)
 		case r == '|':
 			l.emit(itemPipe)
 		case r == '"':
 			return lexQuote
 		case r == '`':
 			return lexRawQuote
-		case r == '$':
-			return lexIdentifier
-		case r == '\'':
-			return lexChar
 		case r == '.':
 			// special look-ahead for ".field" so we don't break l.backup().
 			if l.pos < len(l.input) {
@@ -317,9 +300,6 @@ func lexInsideAction(l *lexer) stateFn {
 		case isAlphaNumeric(r):
 			l.backup()
 			return lexIdentifier
-		case r <= unicode.MaxASCII && unicode.IsPrint(r):
-			l.emit(itemChar)
-			return lexInsideAction
 		default:
 			return l.errorf("unrecognized character in action: %#U", r)
 		}
@@ -334,7 +314,7 @@ Loop:
 		switch r := l.next(); {
 		case isAlphaNumeric(r):
 			// absorb.
-		case r == '.' && (l.input[l.start] == '.' || l.input[l.start] == '$'):
+		case r == '.' && l.input[l.start] == '.':
 			// field chaining; absorb into one token.
 		default:
 			l.backup()
@@ -344,8 +324,6 @@ Loop:
 				l.emit(key[word])
 			case word[0] == '.':
 				l.emit(itemField)
-			case word[0] == '$':
-				l.emit(itemVariable)
 			case word == "true", word == "false":
 				l.emit(itemBool)
 			default:
@@ -354,27 +332,6 @@ Loop:
 			break Loop
 		}
 	}
-	return lexInsideAction
-}
-
-// lexChar scans a character constant. The initial quote is already
-// scanned.  Syntax checking is done by the parse.
-func lexChar(l *lexer) stateFn {
-Loop:
-	for {
-		switch l.next() {
-		case '\\':
-			if r := l.next(); r != eof && r != '\n' {
-				break
-			}
-			fallthrough
-		case eof, '\n':
-			return l.errorf("unterminated character constant")
-		case '\'':
-			break Loop
-		}
-	}
-	l.emit(itemCharConstant)
 	return lexInsideAction
 }
 

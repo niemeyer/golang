@@ -28,6 +28,7 @@ type parser struct {
 	rules map[string]expr   // RuleName -> Expression
 }
 
+
 func (p *parser) next() {
 	p.pos, p.tok, p.lit = p.scanner.Scan()
 	switch p.tok {
@@ -38,6 +39,7 @@ func (p *parser) next() {
 	}
 }
 
+
 func (p *parser) init(fset *token.FileSet, filename string, src []byte) {
 	p.ErrorVector.Reset()
 	p.file = fset.AddFile(filename, fset.Base(), len(src))
@@ -47,9 +49,11 @@ func (p *parser) init(fset *token.FileSet, filename string, src []byte) {
 	p.rules = make(map[string]expr)
 }
 
+
 func (p *parser) error(pos token.Pos, msg string) {
 	p.Error(p.file.Position(pos), msg)
 }
+
 
 func (p *parser) errorExpected(pos token.Pos, msg string) {
 	msg = "expected " + msg
@@ -64,6 +68,7 @@ func (p *parser) errorExpected(pos token.Pos, msg string) {
 	p.error(pos, msg)
 }
 
+
 func (p *parser) expect(tok token.Token) token.Pos {
 	pos := p.pos
 	if p.tok != tok {
@@ -73,11 +78,13 @@ func (p *parser) expect(tok token.Token) token.Pos {
 	return pos
 }
 
+
 func (p *parser) parseIdentifier() string {
 	name := p.lit
 	p.expect(token.IDENT)
 	return name
 }
+
 
 func (p *parser) parseTypeName() (string, bool) {
 	pos := p.pos
@@ -94,6 +101,7 @@ func (p *parser) parseTypeName() (string, bool) {
 	}
 	return name, isIdent
 }
+
 
 // Parses a rule name and returns it. If the rule name is
 // a package-qualified type name, the package name is resolved.
@@ -118,6 +126,7 @@ func (p *parser) parseRuleName() (string, bool) {
 	return name, isIdent
 }
 
+
 func (p *parser) parseString() string {
 	s := ""
 	if p.tok == token.STRING {
@@ -132,6 +141,7 @@ func (p *parser) parseString() string {
 	}
 	return s
 }
+
 
 func (p *parser) parseLiteral() literal {
 	s := []byte(p.parseString())
@@ -166,6 +176,7 @@ func (p *parser) parseLiteral() literal {
 	return lit
 }
 
+
 func (p *parser) parseField() expr {
 	var fname string
 	switch p.tok {
@@ -192,6 +203,7 @@ func (p *parser) parseField() expr {
 
 	return &field{fname, ruleName}
 }
+
 
 func (p *parser) parseOperand() (x expr) {
 	switch p.tok {
@@ -230,6 +242,7 @@ func (p *parser) parseOperand() (x expr) {
 	return x
 }
 
+
 func (p *parser) parseSequence() expr {
 	var list vector.Vector
 
@@ -252,6 +265,7 @@ func (p *parser) parseSequence() expr {
 	}
 	return seq
 }
+
 
 func (p *parser) parseExpression() expr {
 	var list vector.Vector
@@ -282,6 +296,7 @@ func (p *parser) parseExpression() expr {
 	}
 	return alt
 }
+
 
 func (p *parser) parseFormat() {
 	for p.tok != token.EOF {
@@ -328,6 +343,7 @@ func (p *parser) parseFormat() {
 	p.expect(token.EOF)
 }
 
+
 func remap(p *parser, name string) string {
 	i := strings.Index(name, ".")
 	if i >= 0 {
@@ -342,6 +358,7 @@ func remap(p *parser, name string) string {
 	}
 	return name
 }
+
 
 // Parse parses a set of format productions from source src. Custom
 // formatters may be provided via a map of formatter functions. If

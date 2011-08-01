@@ -17,15 +17,18 @@ import (
 	"os"
 )
 
+
 // TODO(gri) don't report errors for objects/types that are marked as bad.
 
 
 const debug = true // set for debugging output
 
+
 // An importer takes an import path and returns the data describing the
 // respective package's exported interface. The data format is TBD.
 //
 type Importer func(path string) ([]byte, os.Error)
+
 
 // CheckPackage typechecks a package and augments the AST by setting
 // *ast.Object, *ast.Type, and *ast.Scope fields accordingly. If an
@@ -43,6 +46,7 @@ func CheckPackage(fset *token.FileSet, pkg *ast.Package, importer Importer) os.E
 	return tc.GetError(scanner.Sorted)
 }
 
+
 // CheckFile typechecks a single file, but otherwise behaves like
 // CheckPackage. If the complete package consists of more than just
 // one file, the file may not typecheck without errors.
@@ -52,6 +56,7 @@ func CheckFile(fset *token.FileSet, file *ast.File, importer Importer) os.Error 
 	pkg := &ast.Package{file.Name.Name, nil, nil, map[string]*ast.File{fset.Position(file.Name.NamePos).Filename: file}}
 	return CheckPackage(fset, pkg, importer)
 }
+
 
 // ----------------------------------------------------------------------------
 // Typechecker state
@@ -66,15 +71,18 @@ type typechecker struct {
 	iota     int                  // current value of iota
 }
 
+
 func (tc *typechecker) Errorf(pos token.Pos, format string, args ...interface{}) {
 	tc.Error(tc.fset.Position(pos), fmt.Sprintf(format, args...))
 }
+
 
 func assert(pred bool) {
 	if !pred {
 		panic("internal error")
 	}
 }
+
 
 /*
 Typechecking is done in several phases:
@@ -150,6 +158,7 @@ func (tc *typechecker) checkPackage(pkg *ast.Package) {
 	pkg.Scope = tc.topScope
 }
 
+
 func (tc *typechecker) declGlobal(global ast.Decl) {
 	switch d := global.(type) {
 	case *ast.BadDecl:
@@ -209,6 +218,7 @@ func (tc *typechecker) declGlobal(global ast.Decl) {
 	}
 }
 
+
 // If x is of the form *T, deref returns T, otherwise it returns x.
 func deref(x ast.Expr) ast.Expr {
 	if p, isPtr := x.(*ast.StarExpr); isPtr {
@@ -216,6 +226,7 @@ func deref(x ast.Expr) ast.Expr {
 	}
 	return x
 }
+
 
 func (tc *typechecker) bindMethod(method *ast.FuncDecl) {
 	// a method is declared in the receiver base type's scope
@@ -247,6 +258,7 @@ func (tc *typechecker) bindMethod(method *ast.FuncDecl) {
 	}
 	tc.declInScope(scope, ast.Fun, method.Name, method, 0)
 }
+
 
 func (tc *typechecker) resolve(obj *ast.Object) {
 	// check for declaration cycles
@@ -306,6 +318,7 @@ func (tc *typechecker) resolve(obj *ast.Object) {
 	}
 }
 
+
 func (tc *typechecker) checkBlock(body []ast.Stmt, ftype *Type) {
 	tc.openScope()
 	defer tc.closeScope()
@@ -325,6 +338,7 @@ func (tc *typechecker) checkBlock(body []ast.Stmt, ftype *Type) {
 	}
 }
 
+
 // ----------------------------------------------------------------------------
 // Types
 
@@ -335,6 +349,7 @@ func unparen(x ast.Expr) ast.Expr {
 	}
 	return x
 }
+
 
 func (tc *typechecker) declFields(scope *ast.Scope, fields *ast.FieldList, ref bool) (n uint) {
 	if fields != nil {
@@ -350,6 +365,7 @@ func (tc *typechecker) declFields(scope *ast.Scope, fields *ast.FieldList, ref b
 	return n
 }
 
+
 func (tc *typechecker) declSignature(typ *Type, recv, params, results *ast.FieldList) {
 	assert((typ.Form == Method) == (recv != nil))
 	typ.Params = ast.NewScope(nil)
@@ -357,6 +373,7 @@ func (tc *typechecker) declSignature(typ *Type, recv, params, results *ast.Field
 	tc.declFields(typ.Params, params, true)
 	typ.N = tc.declFields(typ.Params, results, true)
 }
+
 
 func (tc *typechecker) typeFor(def *Type, x ast.Expr, ref bool) (typ *Type) {
 	x = unparen(x)
@@ -455,14 +472,17 @@ func (tc *typechecker) typeFor(def *Type, x ast.Expr, ref bool) (typ *Type) {
 	return
 }
 
+
 // ----------------------------------------------------------------------------
 // TODO(gri) implement these place holders
 
 func (tc *typechecker) declConst(*ast.Object) {
 }
 
+
 func (tc *typechecker) declVar(*ast.Object) {
 }
+
 
 func (tc *typechecker) checkStmt(ast.Stmt) {
 }

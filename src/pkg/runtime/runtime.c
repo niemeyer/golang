@@ -116,6 +116,17 @@ runtime·panicstring(int8 *s)
 	runtime·panic(err);
 }
 
+void
+runtime·mcpy(byte *t, byte *f, uint32 n)
+{
+	while(n > 0) {
+		*t = *f;
+		t++;
+		f++;
+		n--;
+	}
+}
+
 int32
 runtime·mcmp(byte *s1, byte *s2, uint32 n)
 {
@@ -205,6 +216,20 @@ runtime·goenvs_unix(void)
 	os·Envs.array = (byte*)s;
 	os·Envs.len = n;
 	os·Envs.cap = n;
+}
+
+// Atomic add and return new value.
+uint32
+runtime·xadd(uint32 volatile *val, int32 delta)
+{
+	uint32 oval, nval;
+
+	for(;;){
+		oval = *val;
+		nval = oval + delta;
+		if(runtime·cas(val, oval, nval))
+			return nval;
+	}
 }
 
 byte*
@@ -381,11 +406,18 @@ memprint(uint32 s, void *a)
 static void
 memcopy(uint32 s, void *a, void *b)
 {
-	if(b == nil) {
-		runtime·memclr(a,s);
+	byte *ba, *bb;
+	uint32 i;
+
+	ba = a;
+	bb = b;
+	if(bb == nil) {
+		for(i=0; i<s; i++)
+			ba[i] = 0;
 		return;
 	}
-	runtime·memmove(a,b,s);
+	for(i=0; i<s; i++)
+		ba[i] = bb[i];
 }
 
 static uint32
@@ -555,17 +587,4 @@ runtime·FuncForPC(uintptr pc, void *retf)
 {
 	retf = runtime·findfunc(pc);
 	FLUSH(&retf);
-}
-
-uint32
-runtime·fastrand1(void)
-{
-	uint32 x;
-
-	x = m->fastrand;
-	x += x;
-	if(x & 0x80000000L)
-		x ^= 0x88888eefUL;
-	m->fastrand = x;
-	return x;
 }

@@ -11,13 +11,8 @@ func IsAbs(path string) bool {
 	return strings.HasPrefix(path, "/") || strings.HasPrefix(path, "#")
 }
 
-// VolumeName returns the leading volume name on Windows.
+// volumeName returns the leading volume name on Windows.
 // It returns "" elsewhere
-func VolumeName(path string) string {
+func volumeName(path string) string {
 	return ""
-}
-
-// HasPrefix tests whether the path p begins with prefix.
-func HasPrefix(p, prefix string) bool {
-	return strings.HasPrefix(p, prefix)
 }

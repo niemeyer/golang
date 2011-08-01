@@ -5,103 +5,40 @@
 # This is the server part of the package dashboard.
 # It must be run by App Engine.
 
-from google.appengine.api import mail
 from google.appengine.api import memcache
-from google.appengine.api import taskqueue
-from google.appengine.api import urlfetch
-from google.appengine.api import users
 from google.appengine.ext import db
 from google.appengine.ext import webapp
 from google.appengine.ext.webapp import template
 from google.appengine.ext.webapp.util import run_wsgi_app
+from google.appengine.api import users
+from google.appengine.api import mail
+from google.appengine.api import urlfetch
 import datetime
 import logging
 import os
 import re
-import sets
 import urllib2
+import sets
 
 # local imports
-from auth import auth
 import toutf8
 import const
+from auth import auth
 
 template.register_template_library('toutf8')
 
 # Storage model for package info recorded on server.
+# Just path, count, and time of last install.
 class Package(db.Model):
     path = db.StringProperty()
-    web_url = db.StringProperty()           # derived from path
-    count = db.IntegerProperty()            # grand total
-    week_count = db.IntegerProperty()       # rolling weekly count
-    day_count = db.TextProperty(default='') # daily count
+    web_url = db.StringProperty()  # derived from path
+    count = db.IntegerProperty()
     last_install = db.DateTimeProperty()
 
     # data contributed by gobuilder
     info = db.StringProperty()  
     ok = db.BooleanProperty()
     last_ok = db.DateTimeProperty()
-
-    def get_day_count(self):
-        counts = {}
-        if not self.day_count:
-            return counts
-        for d in str(self.day_count).split('\n'):
-            date, count = d.split(' ')
-            counts[date] = int(count)
-        return counts
-
-    def set_day_count(self, count):
-        days = []
-        for day, count in count.items():
-            days.append('%s %d' % (day, count))
-        days.sort(reverse=True)
-        days = days[:28]
-        self.day_count = '\n'.join(days)
-
-    def inc(self):
-        count = self.get_day_count()
-        today = str(datetime.date.today())
-        count[today] = count.get(today, 0) + 1
-        self.set_day_count(count)
-        self.update_week_count(count)
-        self.count += 1
-
-    def update_week_count(self, count=None):
-        if count is None:
-            count = self.get_day_count()
-        total = 0
-        today = datetime.date.today()
-        for i in range(7):
-            day = str(today - datetime.timedelta(days=i))
-            if day in count:
-                total += count[day]
-        self.week_count = total
-
-
-# PackageDaily kicks off the daily package maintenance cron job
-# and serves the associated task queue.
-class PackageDaily(webapp.RequestHandler):
-
-    def get(self):
-        # queue a task to update each package with a week_count > 0
-        keys = Package.all(keys_only=True).filter('week_count >', 0)
-        for key in keys:
-            taskqueue.add(url='/package/daily', params={'key': key.name()})
-
-    def post(self):
-        # update a single package (in a task queue)
-        def update(key):
-            p = Package.get_by_key_name(key)
-            if not p:
-                return
-            p.update_week_count()
-            p.put()
-        key = self.request.get('key')
-        if not key:
-            return
-        db.run_in_transaction(update, key)
- 
 
 class Project(db.Model):
     name = db.StringProperty(indexed=True)
@@ -112,9 +49,8 @@ class Project(db.Model):
     tags = db.ListProperty(str)
     approved = db.BooleanProperty(indexed=True)
 
-
 re_bitbucket = re.compile(r'^(bitbucket\.org/[a-z0-9A-Z_.\-]+/[a-zA-Z0-9_.\-]+)(/[a-z0-9A-Z_.\-/]+)?$')
-re_googlecode = re.compile(r'^[a-z0-9\-]+\.googlecode\.com/(svn|hg|git)(/[a-z0-9A-Z_.\-/]+)?$')
+re_googlecode = re.compile(r'^[a-z0-9\-]+\.googlecode\.com/(svn|hg)(/[a-z0-9A-Z_.\-/]+)?$')
 re_github = re.compile(r'^github\.com/[a-z0-9A-Z_.\-]+(/[a-z0-9A-Z_.\-]+)+$')
 re_launchpad = re.compile(r'^launchpad\.net/([a-z0-9A-Z_.\-]+(/[a-z0-9A-Z_.\-]+)?|~[a-z0-9A-Z_.\-]+/(\+junk|[a-z0-9A-Z_.\-]+)/[a-z0-9A-Z_.\-]+)(/[a-z0-9A-Z_.\-/]+)?$')
 
@@ -130,7 +66,7 @@ def vc_to_web(path):
     elif re_googlecode.match(path):
         m = re_googlecode.match(path)
         check_url = 'http://'+path
-        if not m.group(2):  # append / after bare '/hg' or '/git'
+        if not m.group(2):  # append / after bare '/hg'
             check_url += '/'
         web = 'http://code.google.com/p/' + path[:path.index('.')]
     elif re_launchpad.match(path):
@@ -145,17 +81,6 @@ re_github_web = re.compile(r'github\.com/([a-z0-9A-Z_.\-]+)/([a-z0-9A-Z_.\-]+)')
 re_launchpad_web = re.compile(r'launchpad\.net/([a-z0-9A-Z_.\-]+(/[a-z0-9A-Z_.\-]+)?|~[a-z0-9A-Z_.\-]+/(\+junk|[a-z0-9A-Z_.\-]+)/[a-z0-9A-Z_.\-]+)(/[a-z0-9A-Z_.\-/]+)?')
 re_striphttp = re.compile(r'https?://(www\.)?')
 
-def find_googlecode_vcs(path):
-    # Perform http request to path/hg or path/git to check if they're
-    # using mercurial or git.  Otherwise, assume svn.
-    for vcs in ['git', 'hg']:
-        try:
-            response = urlfetch.fetch('http://'+path+vcs, deadline=1)
-            if response.status_code == 200:
-                return vcs
-        except: pass
-    return 'svn'
-
 def web_to_vc(url):
     url = re_striphttp.sub('', url)
     m = re_bitbucket_web.match(url)
@@ -167,7 +92,13 @@ def web_to_vc(url):
     m = re_googlecode_web.match(url)
     if m:
         path = m.group(1)+'.googlecode.com/'
-        vcs = find_googlecode_vcs(path)
+        # perform http request to path/hg to check if they're using mercurial
+        vcs = 'svn'
+        try:
+            response = urlfetch.fetch('http://'+path+'hg', deadline=1)
+            if response.status_code == 200:
+                vcs = 'hg'
+        except: pass
         return path + vcs
     m = re_launchpad_web.match(url)
     if m:
@@ -184,30 +115,29 @@ class PackagePage(webapp.RequestHandler):
 
         html = memcache.get('view-package')
         if not html:
-            tdata = {}
-
-            q = Package.all().filter('week_count >', 0)
-            q.order('-week_count')
-            tdata['by_week_count'] = q.fetch(50)
-
             q = Package.all()
             q.order('-last_install')
-            tdata['by_time'] = q.fetch(20)
+            by_time = q.fetch(100)
 
             q = Package.all()
             q.order('-count')
-            tdata['by_count'] = q.fetch(100)
+            by_count = q.fetch(100)
 
+            self.response.headers['Content-Type'] = 'text/html; charset=utf-8'
             path = os.path.join(os.path.dirname(__file__), 'package.html')
-            html = template.render(path, tdata)
+            html = template.render(
+                path, 
+                {"by_time": by_time, "by_count": by_count}
+            )
             memcache.set('view-package', html, time=CacheTimeout)
 
-        self.response.headers['Content-Type'] = 'text/html; charset=utf-8'
         self.response.out.write(html)
 
     def json(self):
         json = memcache.get('view-package-json')
         if not json:
+            self.response.set_status(200)
+            self.response.headers['Content-Type'] = 'text/plain; charset=utf-8'
             q = Package.all()
             s = '{"packages": ['
             sep = ''
@@ -217,8 +147,6 @@ class PackagePage(webapp.RequestHandler):
             s += '\n]}\n'
             json = s
             memcache.set('view-package-json', json, time=CacheTimeout)
-        self.response.set_status(200)
-        self.response.headers['Content-Type'] = 'text/plain; charset=utf-8'
         self.response.out.write(json)
 
     def can_get_url(self, url):
@@ -253,15 +181,14 @@ class PackagePage(webapp.RequestHandler):
                 return False
             p = Package(key_name = key, path = path, count = 0, web_url = web)
 
+        # is this the builder updating package metadata?
         if auth(self.request):
-            # builder updating package metadata
             p.info = self.request.get('info')
             p.ok = self.request.get('ok') == "true"
             if p.ok:
                 p.last_ok = datetime.datetime.utcnow()
         else:
-            # goinstall reporting an install
-            p.inc()
+            p.count += 1
             p.last_install = datetime.datetime.utcnow()
 
         # update package object
@@ -270,7 +197,7 @@ class PackagePage(webapp.RequestHandler):
 
     def post(self):
         path = self.request.get('path')
-        ok = db.run_in_transaction(self.record_pkg, path)
+        ok = db.run_in_transaction(self.record_pkg,  path)
         if ok:
             self.response.set_status(200)
             self.response.out.write('ok')
@@ -420,7 +347,6 @@ class ProjectPage(webapp.RequestHandler):
 def main():
     app = webapp.WSGIApplication([
         ('/package', PackagePage),
-        ('/package/daily', PackageDaily),
         ('/project.*', ProjectPage),
         ], debug=True)
     run_wsgi_app(app)

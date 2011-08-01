@@ -170,6 +170,7 @@ func BenchmarkIndex(b *testing.B) {
 	}
 }
 
+
 type ExplodeTest struct {
 	s string
 	n int
@@ -323,6 +324,7 @@ func TestFieldsFunc(t *testing.T) {
 		}
 	}
 }
+
 
 // Test case for any function which accepts and returns a single string.
 type StringTest struct {

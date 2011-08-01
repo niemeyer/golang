@@ -178,6 +178,7 @@ func TestPartialRead(t *testing.T) {
 	}
 }
 
+
 func TestIncrementalRead(t *testing.T) {
 	test := gnuTarTest
 	f, err := os.Open(test.file)

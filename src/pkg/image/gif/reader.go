@@ -28,9 +28,7 @@ const (
 	fColorMapFollows = 1 << 7
 
 	// Image fields.
-	ifLocalColorTable = 1 << 7
-	ifInterlace       = 1 << 6
-	ifPixelSizeMask   = 7
+	ifInterlace = 1 << 6
 
 	// Graphic control flags.
 	gcTransparentColorSet = 1 << 0
@@ -192,9 +190,7 @@ Loop:
 			}
 
 			// Undo the interlacing if necessary.
-			if d.imageFields&ifInterlace != 0 {
-				uninterlace(m)
-			}
+			d.uninterlace(m)
 
 			d.image = append(d.image, m)
 			d.delay = append(d.delay, d.delayTime)
@@ -240,9 +236,6 @@ func (d *decoder) readColorMap() (image.PalettedColorModel, os.Error) {
 		return nil, fmt.Errorf("gif: can't handle %d bits per pixel", d.pixelSize)
 	}
 	numColors := 1 << d.pixelSize
-	if d.imageFields&ifLocalColorTable != 0 {
-		numColors = 1 << ((d.imageFields & ifPixelSizeMask) + 1)
-	}
 	numValues := 3 * numColors
 	_, err := io.ReadFull(d.r, d.tmp[0:numValues])
 	if err != nil {
@@ -329,15 +322,15 @@ func (d *decoder) newImageFromDescriptor() (*image.Paletted, os.Error) {
 	if _, err := io.ReadFull(d.r, d.tmp[0:9]); err != nil {
 		return nil, fmt.Errorf("gif: can't read image descriptor: %s", err)
 	}
-	left := int(d.tmp[0]) + int(d.tmp[1])<<8
-	top := int(d.tmp[2]) + int(d.tmp[3])<<8
+	// TODO: This code (throughout) ignores the top and left values,
+	// and assumes (in interlacing, for example) that the images'
+	// widths and heights are all the same.
+	_ = int(d.tmp[0]) + int(d.tmp[1])<<8 // TODO: honor left value
+	_ = int(d.tmp[2]) + int(d.tmp[3])<<8 // TODO: honor top value
 	width := int(d.tmp[4]) + int(d.tmp[5])<<8
 	height := int(d.tmp[6]) + int(d.tmp[7])<<8
 	d.imageFields = d.tmp[8]
-	m := image.NewPaletted(width, height, nil)
-	// Overwrite the rectangle to take account of left and top.
-	m.Rect = image.Rect(left, top, left+width, top+height)
-	return m, nil
+	return image.NewPaletted(width, height, nil), nil
 }
 
 func (d *decoder) readBlock() (int, os.Error) {
@@ -361,11 +354,13 @@ var interlacing = []interlaceScan{
 	{2, 1}, // Group 4 : Every 2nd. row, starting with row 1.
 }
 
-// uninterlace rearranges the pixels in m to account for interlaced input.
-func uninterlace(m *image.Paletted) {
+func (d *decoder) uninterlace(m *image.Paletted) {
+	if d.imageFields&ifInterlace == 0 {
+		return
+	}
 	var nPix []uint8
-	dx := m.Bounds().Dx()
-	dy := m.Bounds().Dy()
+	dx := d.width
+	dy := d.height
 	nPix = make([]uint8, dx*dy)
 	offset := 0 // steps through the input by sequential scan lines.
 	for _, pass := range interlacing {

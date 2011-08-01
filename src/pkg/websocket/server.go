@@ -154,6 +154,7 @@ func (f Handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	f(ws)
 }
 
+
 /*
 Draft75Handler is an interface to a WebSocket based on the
 (soon obsolete) draft-hixie-thewebsocketprotocol-75.

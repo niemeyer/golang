@@ -635,6 +635,7 @@ type dnsMsg struct {
 	extra    []dnsRR
 }
 
+
 func (dns *dnsMsg) Pack() (msg []byte, ok bool) {
 	var dh dnsHeader
 

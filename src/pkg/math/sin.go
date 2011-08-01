@@ -4,6 +4,7 @@
 
 package math
 
+
 /*
 	Floating-point sine and cosine.
 

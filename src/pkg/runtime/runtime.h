@@ -57,7 +57,6 @@ typedef	struct	String		String;
 typedef	struct	Usema		Usema;
 typedef	struct	SigTab		SigTab;
 typedef	struct	MCache		MCache;
-typedef struct	FixAlloc	FixAlloc;
 typedef	struct	Iface		Iface;
 typedef	struct	Itab		Itab;
 typedef	struct	Eface		Eface;
@@ -230,15 +229,12 @@ struct	M
 	int32	waitnextg;
 	int32	dying;
 	int32	profilehz;
-	uint32	fastrand;
-	uint64	ncgocall;
 	Note	havenextg;
 	G*	nextg;
 	M*	alllink;	// on allm
 	M*	schedlink;
 	uint32	machport;	// Return address for Mach IPC (OS X)
 	MCache	*mcache;
-	FixAlloc	*stackalloc;
 	G*	lockedg;
 	G*	idleg;
 	uint32	freglo[16];	// D[i] lsb and F[i]
@@ -372,6 +368,7 @@ extern	Alg	runtime·algarray[Amax];
 extern	String	runtime·emptystring;
 G*	runtime·allg;
 M*	runtime·allm;
+int32	runtime·goidgen;
 extern	int32	runtime·gomaxprocs;
 extern	uint32	runtime·panicking;
 extern	int32	runtime·gcwaiting;		// gc is waiting to run
@@ -407,6 +404,7 @@ uint32	runtime·rnd(uint32, uint32);
 void	runtime·prints(int8*);
 void	runtime·printf(int8*, ...);
 byte*	runtime·mchr(byte*, byte, byte*);
+void	runtime·mcpy(byte*, byte*, uint32);
 int32	runtime·mcmp(byte*, byte*, uint32);
 void	runtime·memmove(void*, void*, uint32);
 void*	runtime·mal(uintptr);
@@ -426,9 +424,7 @@ bool	runtime·casp(void**, void*, void*);
 // Don't confuse with XADD x86 instruction,
 // this one is actually 'addx', that is, add-and-fetch.
 uint32	runtime·xadd(uint32 volatile*, int32);
-uint32	runtime·atomicload(uint32 volatile*);
-void*	runtime·atomicloadp(void* volatile*);
-void	runtime·atomicstorep(void* volatile*, void*);
+uint32  runtime·atomicload(uint32 volatile*);
 void	runtime·jmpdefer(byte*, void*);
 void	runtime·exit1(int32);
 void	runtime·ready(G*);
@@ -458,7 +454,6 @@ void	runtime·runpanic(Panic*);
 void*	runtime·getcallersp(void*);
 int32	runtime·mcount(void);
 void	runtime·mcall(void(*)(G*));
-uint32	runtime·fastrand1(void);
 
 void	runtime·exit(int32);
 void	runtime·breakpoint(void);

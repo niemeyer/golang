@@ -113,6 +113,7 @@ func (s *resultSrv) Run() {
 	}
 }
 
+
 // ioSrv executes net io requests.
 type ioSrv struct {
 	submchan chan anOpIface // submit io requests
@@ -154,7 +155,7 @@ func (s *ioSrv) ExecIO(oi anOpIface, deadline_delta int64) (n int, err os.Error)
 	case 0:
 		// IO completed immediately, but we need to get our completion message anyway.
 	case syscall.ERROR_IO_PENDING:
-		// IO started, and we have to wait for its completion.
+		// IO started, and we have to wait for it's completion.
 	default:
 		return 0, &OpError{oi.Name(), o.fd.net, o.fd.laddr, os.Errno(e)}
 	}
@@ -492,7 +493,7 @@ func (fd *netFD) accept(toAddr func(syscall.Sockaddr) Addr) (nfd *netFD, err os.
 	}
 
 	// Inherit properties of the listening socket.
-	e = syscall.Setsockopt(s, syscall.SOL_SOCKET, syscall.SO_UPDATE_ACCEPT_CONTEXT, (*byte)(unsafe.Pointer(&fd.sysfd)), int32(unsafe.Sizeof(fd.sysfd)))
+	e = syscall.SetsockoptInt(s, syscall.SOL_SOCKET, syscall.SO_UPDATE_ACCEPT_CONTEXT, int(fd.sysfd))
 	if e != 0 {
 		closesocket(s)
 		return nil, err

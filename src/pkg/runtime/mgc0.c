@@ -484,7 +484,6 @@ sweep(void)
 			// Mark freed; restore block boundary bit.
 			*bitp = (*bitp & ~(bitMask<<shift)) | (bitBlockBoundary<<shift);
 
-			c = m->mcache;
 			if(s->sizeclass == 0) {
 				// Free large span.
 				runtime·unmarkspan(p, 1<<PageShift);
@@ -492,13 +491,14 @@ sweep(void)
 				runtime·MHeap_Free(&runtime·mheap, s, 1);
 			} else {
 				// Free small object.
+				c = m->mcache;
 				if(size > sizeof(uintptr))
 					((uintptr*)p)[1] = 1;	// mark as "needs to be zeroed"
-				c->local_by_size[s->sizeclass].nfree++;
+				mstats.by_size[s->sizeclass].nfree++;
 				runtime·MCache_Free(c, p, s->sizeclass, size);
 			}
-			c->local_alloc -= size;
-			c->local_nfree++;
+			mstats.alloc -= size;
+			mstats.nfree++;
 		}
 	}
 }
@@ -533,26 +533,14 @@ cachestats(void)
 {
 	M *m;
 	MCache *c;
-	int32 i;
-	uint64 stacks_inuse;
-	uint64 stacks_sys;
 
-	stacks_inuse = 0;
-	stacks_sys = 0;
 	for(m=runtime·allm; m; m=m->alllink) {
-		runtime·purgecachedstats(m);
-		stacks_inuse += m->stackalloc->inuse;
-		stacks_sys += m->stackalloc->sys;
 		c = m->mcache;
-		for(i=0; i<nelem(c->local_by_size); i++) {
-			mstats.by_size[i].nmalloc += c->local_by_size[i].nmalloc;
-			c->local_by_size[i].nmalloc = 0;
-			mstats.by_size[i].nfree += c->local_by_size[i].nfree;
-			c->local_by_size[i].nfree = 0;
-		}
+		mstats.heap_alloc += c->local_alloc;
+		c->local_alloc = 0;
+		mstats.heap_objects += c->local_objects;
+		c->local_objects = 0;
 	}
-	mstats.stacks_inuse = stacks_inuse;
-	mstats.stacks_sys = stacks_sys;
 }
 
 void
@@ -615,7 +603,6 @@ runtime·gc(int32 force)
 	sweep();
 	t2 = runtime·nanotime();
 	stealcache();
-	cachestats();
 
 	mstats.next_gc = mstats.heap_alloc+mstats.heap_alloc*gcpercent/100;
 	m->gcing = 0;
@@ -661,22 +648,6 @@ runtime·gc(int32 force)
 	
 	if(gctrace > 1 && !force)
 		runtime·gc(1);
-}
-
-void
-runtime·UpdateMemStats(void)
-{
-	// Have to acquire gcsema to stop the world,
-	// because stoptheworld can only be used by
-	// one goroutine at a time, and there might be
-	// a pending garbage collection already calling it.
-	runtime·semacquire(&gcsema);
-	m->gcing = 1;
-	runtime·stoptheworld();
-	cachestats();
-	m->gcing = 0;
-	runtime·semrelease(&gcsema);
-	runtime·starttheworld();
 }
 
 static void

@@ -9,6 +9,7 @@ package vector
 
 import "testing"
 
+
 func TestZeroLen(t *testing.T) {
 	a := new(Vector)
 	if a.Len() != 0 {
@@ -26,6 +27,7 @@ func TestZeroLen(t *testing.T) {
 	}
 }
 
+
 func TestResize(t *testing.T) {
 	var a Vector
 	checkSize(t, &a, 0, 0)
@@ -37,6 +39,7 @@ func TestResize(t *testing.T) {
 	checkSize(t, a.Resize(0, 100), 0, 100)
 	checkSize(t, a.Resize(11, 100), 11, 100)
 }
+
 
 func TestResize2(t *testing.T) {
 	var a Vector
@@ -59,6 +62,7 @@ func TestResize2(t *testing.T) {
 	}
 }
 
+
 func checkZero(t *testing.T, a *Vector, i int) {
 	for j := 0; j < i; j++ {
 		if a.At(j) == zero {
@@ -78,6 +82,7 @@ func checkZero(t *testing.T, a *Vector, i int) {
 	}
 }
 
+
 func TestTrailingElements(t *testing.T) {
 	var a Vector
 	for i := 0; i < 10; i++ {
@@ -89,6 +94,7 @@ func TestTrailingElements(t *testing.T) {
 	checkSize(t, a.Resize(10, 0), 10, 16)
 	checkZero(t, &a, 5)
 }
+
 
 func TestAccess(t *testing.T) {
 	const n = 100
@@ -113,6 +119,7 @@ func TestAccess(t *testing.T) {
 		}
 	}
 }
+
 
 func TestInsertDeleteClear(t *testing.T) {
 	const n = 100
@@ -200,6 +207,7 @@ func TestInsertDeleteClear(t *testing.T) {
 	}
 }
 
+
 func verify_slice(t *testing.T, x *Vector, elt, i, j int) {
 	for k := i; k < j; k++ {
 		if elem2Value(x.At(k)) != int2Value(elt) {
@@ -215,6 +223,7 @@ func verify_slice(t *testing.T, x *Vector, elt, i, j int) {
 	}
 }
 
+
 func verify_pattern(t *testing.T, x *Vector, a, b, c int) {
 	n := a + b + c
 	if x.Len() != n {
@@ -228,6 +237,7 @@ func verify_pattern(t *testing.T, x *Vector, a, b, c int) {
 	verify_slice(t, x, 0, a+b, n)
 }
 
+
 func make_vector(elt, len int) *Vector {
 	x := new(Vector).Resize(len, 0)
 	for i := 0; i < len; i++ {
@@ -235,6 +245,7 @@ func make_vector(elt, len int) *Vector {
 	}
 	return x
 }
+
 
 func TestInsertVector(t *testing.T) {
 	// 1
@@ -258,6 +269,7 @@ func TestInsertVector(t *testing.T) {
 	a.InsertVector(8, b)
 	verify_pattern(t, a, 8, 1000, 2)
 }
+
 
 func TestDo(t *testing.T) {
 	const n = 25
@@ -312,6 +324,7 @@ func TestDo(t *testing.T) {
 	}
 
 }
+
 
 func TestVectorCopy(t *testing.T) {
 	// verify Copy() returns a copy, not simply a slice of the original vector

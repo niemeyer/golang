@@ -12,6 +12,7 @@ import (
 	"go/token"
 )
 
+
 // A Scope maintains the set of named language entities declared
 // in the scope and a link to the immediately surrounding (outer)
 // scope.
@@ -21,11 +22,13 @@ type Scope struct {
 	Objects map[string]*Object
 }
 
+
 // NewScope creates a new scope nested in the outer scope.
 func NewScope(outer *Scope) *Scope {
 	const n = 4 // initial scope capacity
 	return &Scope{outer, make(map[string]*Object, n)}
 }
+
 
 // Lookup returns the object with the given name if it is
 // found in scope s, otherwise it returns nil. Outer scopes
@@ -34,6 +37,7 @@ func NewScope(outer *Scope) *Scope {
 func (s *Scope) Lookup(name string) *Object {
 	return s.Objects[name]
 }
+
 
 // Insert attempts to insert a named object obj into the scope s.
 // If the scope already contains an object alt with the same name,
@@ -46,6 +50,7 @@ func (s *Scope) Insert(obj *Object) (alt *Object) {
 	}
 	return
 }
+
 
 // Debugging support
 func (s *Scope) String() string {
@@ -60,6 +65,7 @@ func (s *Scope) String() string {
 	fmt.Fprintf(&buf, "}\n")
 	return buf.String()
 }
+
 
 // ----------------------------------------------------------------------------
 // Objects
@@ -85,10 +91,12 @@ type Object struct {
 	Type interface{} // place holder for type information; may be nil
 }
 
+
 // NewObj creates a new object of a given kind and name.
 func NewObj(kind ObjKind, name string) *Object {
 	return &Object{Kind: kind, Name: name}
 }
+
 
 // Pos computes the source position of the declaration of an object name.
 // The result may be an invalid position if it cannot be computed
@@ -129,6 +137,7 @@ func (obj *Object) Pos() token.Pos {
 	return token.NoPos
 }
 
+
 // ObKind describes what an object represents.
 type ObjKind int
 
@@ -143,6 +152,7 @@ const (
 	Lbl                // label
 )
 
+
 var objKindStrings = [...]string{
 	Bad: "bad",
 	Pkg: "package",
@@ -152,5 +162,6 @@ var objKindStrings = [...]string{
 	Fun: "func",
 	Lbl: "label",
 }
+
 
 func (kind ObjKind) String() string { return objKindStrings[kind] }

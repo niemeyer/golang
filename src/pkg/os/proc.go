@@ -11,6 +11,7 @@ import "syscall"
 var Args []string // provided by runtime
 var Envs []string // provided by runtime
 
+
 // Getuid returns the numeric user id of the caller.
 func Getuid() int { return syscall.Getuid() }
 

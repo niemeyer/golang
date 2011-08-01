@@ -84,6 +84,7 @@ main(int argc, char *argv[])
 	char *p;
 
 	Binit(&bso, 1, OWRITE);
+	cout = -1;
 	listinit();
 	nerrors = 0;
 	outfile = "5.out";
@@ -145,8 +146,17 @@ main(int argc, char *argv[])
 
 	libinit();
 
-	if(HEADTYPE == -1)
+	if(!debug['9'] && !debug['U'] && !debug['B'])
+		debug[DEFAULT] = 1;
+	if(HEADTYPE == -1) {
+		if(debug['U'])
+			HEADTYPE = Hnoheader;
+		if(debug['B'])
+			HEADTYPE = Hrisc;
+		if(debug['9'])
+			HEADTYPE = Hplan9x32;
 		HEADTYPE = Hlinux;
+	}
 	switch(HEADTYPE) {
 	default:
 		diag("unknown -H option");
@@ -337,6 +347,7 @@ zaddr(Biobuf *f, Adr *a, Sym *h[])
 
 	case D_REGREG:
 		a->offset = Bgetc(f);
+		c++;
 		break;
 
 	case D_CONST2:
@@ -352,6 +363,7 @@ zaddr(Biobuf *f, Adr *a, Sym *h[])
 	case D_SCONST:
 		a->sval = mal(NSNAME);
 		Bread(f, a->sval, NSNAME);
+		c += NSNAME;
 		break;
 
 	case D_FCONST:
@@ -450,6 +462,7 @@ loop:
 		s = lookup(x, r);
 		if(x != name)
 			free(x);
+		name = nil;
 
 		if(sig != 0){
 			if(s->sig != 0 && s->sig != sig)

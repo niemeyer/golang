@@ -14,6 +14,7 @@ type File struct {
 	fd      int
 	name    string
 	dirinfo *dirInfo // nil unless directory being read
+	nepipe  int      // number of consecutive EPIPE in Write
 }
 
 // Fd returns the integer Unix file descriptor referencing the open file.
@@ -43,6 +44,7 @@ type dirInfo struct {
 
 func epipecheck(file *File, e syscall.Error) {
 }
+
 
 // DevNull is the name of the operating system's ``null device.''
 // On Unix-like systems, it is "/dev/null"; on Windows, "NUL".
@@ -271,6 +273,20 @@ func Chmod(name string, mode uint32) Error {
 	return nil
 }
 
+// ChownPlan9 changes the uid and gid strings of the named file.
+func ChownPlan9(name, uid, gid string) Error {
+	var d Dir
+	d.Null()
+
+	d.Uid = uid
+	d.Gid = gid
+
+	if e := syscall.Wstat(name, pdir(nil, &d)); iserror(e) {
+		return &PathError{"chown_plan9", name, e}
+	}
+	return nil
+}
+
 // Chtimes changes the access and modification times of the named
 // file, similar to the Unix utime() or utimes() functions.
 //
@@ -302,6 +318,7 @@ func Pipe() (r *File, w *File, err Error) {
 
 	return NewFile(p[0], "|0"), NewFile(p[1], "|1"), nil
 }
+
 
 // not supported on Plan 9
 

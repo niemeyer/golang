@@ -10,6 +10,7 @@ const (
 	O_SYNC     = 0x00000
 	O_ASYNC    = 0x00000
 
+
 	S_IFMT   = 0x1f000
 	S_IFIFO  = 0x1000
 	S_IFCHR  = 0x2000

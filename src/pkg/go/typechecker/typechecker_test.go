@@ -41,6 +41,7 @@ import (
 	"testing"
 )
 
+
 const testDir = "./testdata" // location of test packages
 
 var fset = token.NewFileSet()
@@ -49,6 +50,7 @@ var (
 	pkgPat = flag.String("pkg", ".*", "regular expression to select test packages by package name")
 	trace  = flag.Bool("trace", false, "print package names")
 )
+
 
 // ERROR comments must be of the form /* ERROR "rx" */ and rx is
 // a regular expression that matches the expected error message.
@@ -89,9 +91,11 @@ func expectedErrors(t *testing.T, pkg *ast.Package) (list scanner.ErrorList) {
 	return
 }
 
+
 func testFilter(f *os.FileInfo) bool {
 	return strings.HasSuffix(f.Name, ".src") && f.Name[0] != '.'
 }
+
 
 func checkError(t *testing.T, expected, found *scanner.Error) {
 	rx, err := regexp.Compile(expected.Msg)
@@ -115,6 +119,7 @@ func checkError(t *testing.T, expected, found *scanner.Error) {
 		t.Errorf("%s: %q does not match %q", expected.Pos, expected.Msg, found.Msg)
 	}
 }
+
 
 func TestTypeCheck(t *testing.T) {
 	flag.Parse()

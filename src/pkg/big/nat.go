@@ -24,6 +24,7 @@ import (
 	"rand"
 )
 
+
 // An unsigned integer x of the form
 //
 //   x = x[n-1]*_B^(n-1) + x[n-2]*_B^(n-2) + ... + x[1]*_B + x[0]
@@ -44,11 +45,13 @@ var (
 	natTen = nat{10}
 )
 
+
 func (z nat) clear() {
 	for i := range z {
 		z[i] = 0
 	}
 }
+
 
 func (z nat) norm() nat {
 	i := len(z)
@@ -57,6 +60,7 @@ func (z nat) norm() nat {
 	}
 	return z[0:i]
 }
+
 
 func (z nat) make(n int) nat {
 	if n <= cap(z) {
@@ -68,6 +72,7 @@ func (z nat) make(n int) nat {
 	return make(nat, n, n+e)
 }
 
+
 func (z nat) setWord(x Word) nat {
 	if x == 0 {
 		return z.make(0)
@@ -76,6 +81,7 @@ func (z nat) setWord(x Word) nat {
 	z[0] = x
 	return z
 }
+
 
 func (z nat) setUint64(x uint64) nat {
 	// single-digit values
@@ -99,11 +105,13 @@ func (z nat) setUint64(x uint64) nat {
 	return z
 }
 
+
 func (z nat) set(x nat) nat {
 	z = z.make(len(x))
 	copy(z, x)
 	return z
 }
+
 
 func (z nat) add(x, y nat) nat {
 	m := len(x)
@@ -130,6 +138,7 @@ func (z nat) add(x, y nat) nat {
 
 	return z.norm()
 }
+
 
 func (z nat) sub(x, y nat) nat {
 	m := len(x)
@@ -159,6 +168,7 @@ func (z nat) sub(x, y nat) nat {
 	return z.norm()
 }
 
+
 func (x nat) cmp(y nat) (r int) {
 	m := len(x)
 	n := len(y)
@@ -186,6 +196,7 @@ func (x nat) cmp(y nat) (r int) {
 	return
 }
 
+
 func (z nat) mulAddWW(x nat, y, r Word) nat {
 	m := len(x)
 	if m == 0 || y == 0 {
@@ -199,6 +210,7 @@ func (z nat) mulAddWW(x nat, y, r Word) nat {
 	return z.norm()
 }
 
+
 // basicMul multiplies x and y and leaves the result in z.
 // The (non-normalized) result is placed in z[0 : len(x) + len(y)].
 func basicMul(z, x, y nat) {
@@ -210,6 +222,7 @@ func basicMul(z, x, y nat) {
 	}
 }
 
+
 // Fast version of z[0:n+n>>1].add(z[0:n+n>>1], x[0:n]) w/o bounds checks.
 // Factored out for readability - do not use outside karatsuba.
 func karatsubaAdd(z, x nat, n int) {
@@ -218,12 +231,14 @@ func karatsubaAdd(z, x nat, n int) {
 	}
 }
 
+
 // Like karatsubaAdd, but does subtract.
 func karatsubaSub(z, x nat, n int) {
 	if c := subVV(z[0:n], z, x); c != 0 {
 		subVW(z[n:n+n>>1], z[n:], c)
 	}
 }
+
 
 // Operands that are shorter than karatsubaThreshold are multiplied using
 // "grade school" multiplication; for longer operands the Karatsuba algorithm
@@ -329,10 +344,12 @@ func karatsuba(z, x, y nat) {
 	}
 }
 
+
 // alias returns true if x and y share the same base array.
 func alias(x, y nat) bool {
 	return cap(x) > 0 && cap(y) > 0 && &x[0:cap(x)][cap(x)-1] == &y[0:cap(y)][cap(y)-1]
 }
+
 
 // addAt implements z += x*(1<<(_W*i)); z must be long enough.
 // (we don't use nat.add because we need z to stay the same
@@ -348,12 +365,14 @@ func addAt(z, x nat, i int) {
 	}
 }
 
+
 func max(x, y int) int {
 	if x > y {
 		return x
 	}
 	return y
 }
+
 
 // karatsubaLen computes an approximation to the maximum k <= n such that
 // k = p<<i for a number p <= karatsubaThreshold and an i >= 0. Thus, the
@@ -367,6 +386,7 @@ func karatsubaLen(n int) int {
 	}
 	return n << i
 }
+
 
 func (z nat) mul(x, y nat) nat {
 	m := len(x)
@@ -435,6 +455,7 @@ func (z nat) mul(x, y nat) nat {
 	return z.norm()
 }
 
+
 // mulRange computes the product of all the unsigned integers in the
 // range [a, b] inclusively. If a > b (empty range), the result is 1.
 func (z nat) mulRange(a, b uint64) nat {
@@ -452,6 +473,7 @@ func (z nat) mulRange(a, b uint64) nat {
 	m := (a + b) / 2
 	return z.mul(nat(nil).mulRange(a, m), nat(nil).mulRange(m+1, b))
 }
+
 
 // q = (x-r)/y, with 0 <= r < y
 func (z nat) divW(x nat, y Word) (q nat, r Word) {
@@ -472,6 +494,7 @@ func (z nat) divW(x nat, y Word) (q nat, r Word) {
 	q = z.norm()
 	return
 }
+
 
 func (z nat) div(z2, u, v nat) (q, r nat) {
 	if len(v) == 0 {
@@ -499,6 +522,7 @@ func (z nat) div(z2, u, v nat) (q, r nat) {
 	q, r = z.divLarge(z2, u, v)
 	return
 }
+
 
 // q = (uIn-r)/v, with 0 <= r < y
 // Uses z as storage for q, and u as storage for r if possible.
@@ -578,6 +602,7 @@ func (z nat) divLarge(u, uIn, v nat) (q, r nat) {
 	return q, r
 }
 
+
 // Length of x in bits. x must be normalized.
 func (x nat) bitLen() int {
 	if i := len(x) - 1; i >= 0 {
@@ -585,6 +610,7 @@ func (x nat) bitLen() int {
 	}
 	return 0
 }
+
 
 // MaxBase is the largest number base accepted for string conversions.
 const MaxBase = 'z' - 'a' + 10 + 1 // = hexValue('z') + 1
@@ -602,6 +628,7 @@ func hexValue(ch int) Word {
 	}
 	return Word(d)
 }
+
 
 // scan sets z to the natural number corresponding to the longest possible prefix
 // read from r representing an unsigned integer in a given conversion base.
@@ -700,17 +727,20 @@ func (z nat) scan(r io.RuneScanner, base int) (nat, int, os.Error) {
 	return z.norm(), int(b), nil
 }
 
+
 // Character sets for string conversion.
 const (
 	lowercaseDigits = "0123456789abcdefghijklmnopqrstuvwxyz"
 	uppercaseDigits = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 )
 
+
 // decimalString returns a decimal representation of x.
 // It calls x.string with the charset "0123456789".
 func (x nat) decimalString() string {
 	return x.string(lowercaseDigits[0:10])
 }
+
 
 // string converts x to a string using digits from a charset; a digit with
 // value d is represented by charset[d]. The conversion base is determined
@@ -833,6 +863,7 @@ func (x nat) string(charset string) string {
 	return string(s[i:])
 }
 
+
 const deBruijn32 = 0x077CB531
 
 var deBruijn32Lookup = []byte{
@@ -848,6 +879,7 @@ var deBruijn64Lookup = []byte{
 	63, 55, 48, 27, 60, 41, 37, 16, 46, 35, 44, 21, 52, 32, 23, 11,
 	54, 26, 40, 15, 34, 20, 31, 10, 25, 14, 19, 9, 13, 8, 7, 6,
 }
+
 
 // trailingZeroBits returns the number of consecutive zero bits on the right
 // side of the given Word.
@@ -873,6 +905,7 @@ func trailingZeroBits(x Word) int {
 	return 0
 }
 
+
 // z = x << s
 func (z nat) shl(x nat, s uint) nat {
 	m := len(x)
@@ -889,6 +922,7 @@ func (z nat) shl(x nat, s uint) nat {
 	return z.norm()
 }
 
+
 // z = x >> s
 func (z nat) shr(x nat, s uint) nat {
 	m := len(x)
@@ -903,6 +937,7 @@ func (z nat) shr(x nat, s uint) nat {
 
 	return z.norm()
 }
+
 
 func (z nat) setBit(x nat, i uint, b uint) nat {
 	j := int(i / _W)
@@ -931,6 +966,7 @@ func (z nat) setBit(x nat, i uint, b uint) nat {
 	panic("set bit is not 0 or 1")
 }
 
+
 func (z nat) bit(i uint) uint {
 	j := int(i / _W)
 	if j >= len(z) {
@@ -938,6 +974,7 @@ func (z nat) bit(i uint) uint {
 	}
 	return uint(z[j] >> (i % _W) & 1)
 }
+
 
 func (z nat) and(x, y nat) nat {
 	m := len(x)
@@ -955,6 +992,7 @@ func (z nat) and(x, y nat) nat {
 	return z.norm()
 }
 
+
 func (z nat) andNot(x, y nat) nat {
 	m := len(x)
 	n := len(y)
@@ -971,6 +1009,7 @@ func (z nat) andNot(x, y nat) nat {
 
 	return z.norm()
 }
+
 
 func (z nat) or(x, y nat) nat {
 	m := len(x)
@@ -991,6 +1030,7 @@ func (z nat) or(x, y nat) nat {
 	return z.norm()
 }
 
+
 func (z nat) xor(x, y nat) nat {
 	m := len(x)
 	n := len(y)
@@ -1010,10 +1050,12 @@ func (z nat) xor(x, y nat) nat {
 	return z.norm()
 }
 
+
 // greaterThan returns true iff (x1<<_W + x2) > (y1<<_W + y2)
 func greaterThan(x1, x2, y1, y2 Word) bool {
 	return x1 > y1 || x1 == y1 && x2 > y2
 }
+
 
 // modW returns x % d.
 func (x nat) modW(d Word) (r Word) {
@@ -1022,6 +1064,7 @@ func (x nat) modW(d Word) (r Word) {
 	q = q.make(len(x))
 	return divWVW(q, 0, x, d)
 }
+
 
 // powersOfTwoDecompose finds q and k with x = q * 1<<k and q is odd, or q and k are 0.
 func (x nat) powersOfTwoDecompose() (q nat, k int) {
@@ -1045,6 +1088,7 @@ func (x nat) powersOfTwoDecompose() (q nat, k int) {
 	k = i*_W + n
 	return
 }
+
 
 // random creates a random integer in [0..limit), using the space in z if
 // possible. n is the bit length of limit.
@@ -1075,6 +1119,7 @@ func (z nat) random(rand *rand.Rand, limit nat, n int) nat {
 
 	return z.norm()
 }
+
 
 // If m != nil, expNN calculates x**y mod m. Otherwise it calculates x**y. It
 // reuses the storage of z if possible.
@@ -1143,6 +1188,7 @@ func (z nat) expNN(x, y, m nat) nat {
 
 	return z
 }
+
 
 // probablyPrime performs reps Miller-Rabin tests to check whether n is prime.
 // If it returns true, n is prime with probability 1 - 1/4^reps.
@@ -1226,6 +1272,7 @@ NextRandom:
 	return true
 }
 
+
 // bytes writes the value of z into buf using big-endian encoding.
 // len(buf) must be >= len(z)*_S. The value of z is encoded in the
 // slice buf[i:]. The number i of unused bytes at the beginning of
@@ -1246,6 +1293,7 @@ func (z nat) bytes(buf []byte) (i int) {
 
 	return
 }
+
 
 // setBytes interprets buf as the bytes of a big-endian unsigned
 // integer, sets z to that value, and returns z.

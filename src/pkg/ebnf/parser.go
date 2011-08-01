@@ -11,6 +11,7 @@ import (
 	"strconv"
 )
 
+
 type parser struct {
 	fset *token.FileSet
 	scanner.ErrorVector
@@ -19,6 +20,7 @@ type parser struct {
 	tok     token.Token // one token look-ahead
 	lit     string      // token literal
 }
+
 
 func (p *parser) next() {
 	p.pos, p.tok, p.lit = p.scanner.Scan()
@@ -29,9 +31,11 @@ func (p *parser) next() {
 	}
 }
 
+
 func (p *parser) error(pos token.Pos, msg string) {
 	p.Error(p.fset.Position(pos), msg)
 }
+
 
 func (p *parser) errorExpected(pos token.Pos, msg string) {
 	msg = "expected " + msg
@@ -46,6 +50,7 @@ func (p *parser) errorExpected(pos token.Pos, msg string) {
 	p.error(pos, msg)
 }
 
+
 func (p *parser) expect(tok token.Token) token.Pos {
 	pos := p.pos
 	if p.tok != tok {
@@ -55,12 +60,14 @@ func (p *parser) expect(tok token.Token) token.Pos {
 	return pos
 }
 
+
 func (p *parser) parseIdentifier() *Name {
 	pos := p.pos
 	name := p.lit
 	p.expect(token.IDENT)
 	return &Name{pos, name}
 }
+
 
 func (p *parser) parseToken() *Token {
 	pos := p.pos
@@ -76,6 +83,7 @@ func (p *parser) parseToken() *Token {
 	}
 	return &Token{pos, value}
 }
+
 
 // ParseTerm returns nil if no term was found.
 func (p *parser) parseTerm() (x Expression) {
@@ -113,6 +121,7 @@ func (p *parser) parseTerm() (x Expression) {
 	return x
 }
 
+
 func (p *parser) parseSequence() Expression {
 	var list Sequence
 
@@ -131,6 +140,7 @@ func (p *parser) parseSequence() Expression {
 
 	return list
 }
+
 
 func (p *parser) parseExpression() Expression {
 	var list Alternative
@@ -152,6 +162,7 @@ func (p *parser) parseExpression() Expression {
 	return list
 }
 
+
 func (p *parser) parseProduction() *Production {
 	name := p.parseIdentifier()
 	p.expect(token.ASSIGN)
@@ -162,6 +173,7 @@ func (p *parser) parseProduction() *Production {
 	p.expect(token.PERIOD)
 	return &Production{name, expr}
 }
+
 
 func (p *parser) parse(fset *token.FileSet, filename string, src []byte) Grammar {
 	// initialize parser
@@ -183,6 +195,7 @@ func (p *parser) parse(fset *token.FileSet, filename string, src []byte) Grammar
 
 	return grammar
 }
+
 
 // Parse parses a set of EBNF productions from source src.
 // It returns a set of productions. Errors are reported

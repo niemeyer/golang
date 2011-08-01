@@ -62,7 +62,7 @@ func (state *encoderState) encodeUint(x uint64) {
 	var n, m int
 	m = uint64Size
 	for n = 1; x > 0; n++ {
-		state.buf[m] = uint8(x)
+		state.buf[m] = uint8(x & 0xFF)
 		x >>= 8
 		m--
 	}
@@ -557,9 +557,7 @@ func (enc *Encoder) encOpFor(rt reflect.Type, inProgress map[reflect.Type]*encOp
 				// the iteration.
 				v := reflect.ValueOf(unsafe.Unreflect(t, unsafe.Pointer(p)))
 				mv := reflect.Indirect(v)
-				// We send zero-length (but non-nil) maps because the
-				// receiver might want to use the map.  (Maps don't use append.)
-				if !state.sendZero && mv.IsNil() {
+				if !state.sendZero && mv.Len() == 0 {
 					return
 				}
 				state.update(i)

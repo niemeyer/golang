@@ -199,8 +199,8 @@ func (d *decoder) processDQT(n int) os.Error {
 // makeImg allocates and initializes the destination image.
 func (d *decoder) makeImg(h0, v0, mxx, myy int) {
 	if d.nComp == nGrayComponent {
-		m := image.NewGray(8*mxx, 8*myy)
-		d.img1 = m.SubImage(image.Rect(0, 0, d.width, d.height)).(*image.Gray)
+		d.img1 = image.NewGray(8*mxx, 8*myy)
+		d.img1.Rect = image.Rect(0, 0, d.width, d.height)
 		return
 	}
 	var subsampleRatio ycbcr.SubsampleRatio
@@ -319,7 +319,16 @@ func (d *decoder) processSOS(n int) os.Error {
 
 					// Perform the inverse DCT and store the MCU component to the image.
 					if d.nComp == nGrayComponent {
-						idct(d.img1.Pix[8*(my*d.img1.Stride+mx):], d.img1.Stride, &b)
+						idct(d.tmp[:64], 8, &b)
+						// Convert from []uint8 to []image.GrayColor.
+						p := d.img1.Pix[8*(my*d.img1.Stride+mx):]
+						for y := 0; y < 8; y++ {
+							dst := p[y*d.img1.Stride:]
+							src := d.tmp[8*y:]
+							for x := 0; x < 8; x++ {
+								dst[x] = image.GrayColor{src[x]}
+							}
+						}
 					} else {
 						switch i {
 						case 0:

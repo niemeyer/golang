@@ -20,49 +20,36 @@ type Template struct {
 	name  string
 	root  *listNode
 	funcs map[string]reflect.Value
-	set   *Set // can be nil.
 	// Parsing only; cleared after parse.
-	parseSet  *Set // for function lookup during parse.
-	lex       *lexer
-	token     [2]item // two-token lookahead for parser.
-	peekCount int
-	vars      []string // variables defined at the moment.
-}
-
-// Name returns the name of the template.
-func (t *Template) Name() string {
-	return t.name
+	set      *Set
+	lex      *lexer
+	token    item // token lookahead for parser
+	havePeek bool
 }
 
 // next returns the next token.
 func (t *Template) next() item {
-	if t.peekCount > 0 {
-		t.peekCount--
+	if t.havePeek {
+		t.havePeek = false
 	} else {
-		t.token[0] = t.lex.nextItem()
+		t.token = t.lex.nextItem()
 	}
-	return t.token[t.peekCount]
+	return t.token
 }
 
 // backup backs the input stream up one token.
 func (t *Template) backup() {
-	t.peekCount++
-}
-
-// backup2 backs the input stream up two tokens
-func (t *Template) backup2(t1 item) {
-	t.token[1] = t1
-	t.peekCount = 2
+	t.havePeek = true
 }
 
 // peek returns but does not consume the next token.
 func (t *Template) peek() item {
-	if t.peekCount > 0 {
-		return t.token[t.peekCount-1]
+	if t.havePeek {
+		return t.token
 	}
-	t.peekCount = 1
-	t.token[0] = t.lex.nextItem()
-	return t.token[0]
+	t.token = t.lex.nextItem()
+	t.havePeek = true
+	return t.token
 }
 
 // A node is an element in the parse tree. The interface is trivial.
@@ -89,11 +76,9 @@ const (
 	nodeIf
 	nodeList
 	nodeNumber
-	nodePipe
 	nodeRange
 	nodeString
 	nodeTemplate
-	nodeVariable
 	nodeWith
 )
 
@@ -137,42 +122,23 @@ func (t *textNode) String() string {
 	return fmt.Sprintf("(text: %q)", t.text)
 }
 
-// pipeNode holds a pipeline with optional declaration
-type pipeNode struct {
-	nodeType
-	line int
-	decl []*variableNode
-	cmds []*commandNode
-}
-
-func newPipeline(line int, decl []*variableNode) *pipeNode {
-	return &pipeNode{nodeType: nodePipe, line: line, decl: decl}
-}
-
-func (p *pipeNode) append(command *commandNode) {
-	p.cmds = append(p.cmds, command)
-}
-
-func (p *pipeNode) String() string {
-	if p.decl != nil {
-		return fmt.Sprintf("%v := %v", p.decl, p.cmds)
-	}
-	return fmt.Sprintf("%v", p.cmds)
-}
-
 // actionNode holds an action (something bounded by delimiters).
 type actionNode struct {
 	nodeType
-	line int
-	pipe *pipeNode
+	line     int
+	pipeline []*commandNode
 }
 
-func newAction(line int, pipe *pipeNode) *actionNode {
-	return &actionNode{nodeType: nodeAction, line: line, pipe: pipe}
+func newAction(line int, pipeline []*commandNode) *actionNode {
+	return &actionNode{nodeType: nodeAction, line: line, pipeline: pipeline}
+}
+
+func (a *actionNode) append(command *commandNode) {
+	a.pipeline = append(a.pipeline, command)
 }
 
 func (a *actionNode) String() string {
-	return fmt.Sprintf("(action: %v)", a.pipe)
+	return fmt.Sprintf("(action: %v)", a.pipeline)
 }
 
 // commandNode holds a command (a pipeline inside an evaluating action).
@@ -205,20 +171,6 @@ func newIdentifier(ident string) *identifierNode {
 
 func (i *identifierNode) String() string {
 	return fmt.Sprintf("I=%s", i.ident)
-}
-
-// variableNode holds a variable.
-type variableNode struct {
-	nodeType
-	ident []string
-}
-
-func newVariable(ident string) *variableNode {
-	return &variableNode{nodeType: nodeVariable, ident: strings.Split(ident, ".")}
-}
-
-func (v *variableNode) String() string {
-	return fmt.Sprintf("V=%s", v.ident)
 }
 
 // dotNode holds the special identifier '.'. It is represented by a nil pointer.
@@ -285,25 +237,9 @@ type numberNode struct {
 	text       string
 }
 
-func newNumber(text string, typ itemType) (*numberNode, os.Error) {
+func newNumber(text string, isComplex bool) (*numberNode, os.Error) {
 	n := &numberNode{nodeType: nodeNumber, text: text}
-	switch typ {
-	case itemCharConstant:
-		rune, _, tail, err := strconv.UnquoteChar(text[1:], text[0])
-		if err != nil {
-			return nil, err
-		}
-		if tail != "'" {
-			return nil, fmt.Errorf("malformed character constant: %s", text)
-		}
-		n.int64 = int64(rune)
-		n.isInt = true
-		n.uint64 = uint64(rune)
-		n.isUint = true
-		n.float64 = float64(rune) // odd but those are the rules.
-		n.isFloat = true
-		return n, nil
-	case itemComplex:
+	if isComplex {
 		// fmt.Sscan can parse the pair, so let it do the work.
 		if _, err := fmt.Sscan(text, &n.complex128); err != nil {
 			return nil, err
@@ -434,84 +370,82 @@ func (e *elseNode) String() string {
 	return "{{else}}"
 }
 // ifNode represents an {{if}} action and its commands.
-// TODO: what should evaluation look like? is a pipe enough?
+// TODO: what should evaluation look like? is a pipeline enough?
 type ifNode struct {
 	nodeType
 	line     int
-	pipe     *pipeNode
+	pipeline []*commandNode
 	list     *listNode
 	elseList *listNode
 }
 
-func newIf(line int, pipe *pipeNode, list, elseList *listNode) *ifNode {
-	return &ifNode{nodeType: nodeIf, line: line, pipe: pipe, list: list, elseList: elseList}
+func newIf(line int, pipeline []*commandNode, list, elseList *listNode) *ifNode {
+	return &ifNode{nodeType: nodeIf, line: line, pipeline: pipeline, list: list, elseList: elseList}
 }
 
 func (i *ifNode) String() string {
 	if i.elseList != nil {
-		return fmt.Sprintf("({{if %s}} %s {{else}} %s)", i.pipe, i.list, i.elseList)
+		return fmt.Sprintf("({{if %s}} %s {{else}} %s)", i.pipeline, i.list, i.elseList)
 	}
-	return fmt.Sprintf("({{if %s}} %s)", i.pipe, i.list)
+	return fmt.Sprintf("({{if %s}} %s)", i.pipeline, i.list)
 }
 
 // rangeNode represents a {{range}} action and its commands.
 type rangeNode struct {
 	nodeType
 	line     int
-	pipe     *pipeNode
+	pipeline []*commandNode
 	list     *listNode
 	elseList *listNode
 }
 
-func newRange(line int, pipe *pipeNode, list, elseList *listNode) *rangeNode {
-	return &rangeNode{nodeType: nodeRange, line: line, pipe: pipe, list: list, elseList: elseList}
+func newRange(line int, pipeline []*commandNode, list, elseList *listNode) *rangeNode {
+	return &rangeNode{nodeType: nodeRange, line: line, pipeline: pipeline, list: list, elseList: elseList}
 }
 
 func (r *rangeNode) String() string {
 	if r.elseList != nil {
-		return fmt.Sprintf("({{range %s}} %s {{else}} %s)", r.pipe, r.list, r.elseList)
+		return fmt.Sprintf("({{range %s}} %s {{else}} %s)", r.pipeline, r.list, r.elseList)
 	}
-	return fmt.Sprintf("({{range %s}} %s)", r.pipe, r.list)
+	return fmt.Sprintf("({{range %s}} %s)", r.pipeline, r.list)
 }
 
 // templateNode represents a {{template}} action.
 type templateNode struct {
 	nodeType
-	line int
-	name string
-	pipe *pipeNode
+	line     int
+	name     node
+	pipeline []*commandNode
 }
 
-func newTemplate(line int, name string, pipe *pipeNode) *templateNode {
-	return &templateNode{nodeType: nodeTemplate, line: line, name: name, pipe: pipe}
+func newTemplate(line int, name node, pipeline []*commandNode) *templateNode {
+	return &templateNode{nodeType: nodeTemplate, line: line, name: name, pipeline: pipeline}
 }
 
 func (t *templateNode) String() string {
-	if t.pipe == nil {
-		return fmt.Sprintf("{{template %q}}", t.name)
-	}
-	return fmt.Sprintf("{{template %q %s}}", t.name, t.pipe)
+	return fmt.Sprintf("{{template %s %s}}", t.name, t.pipeline)
 }
 
 // withNode represents a {{with}} action and its commands.
 type withNode struct {
 	nodeType
 	line     int
-	pipe     *pipeNode
+	pipeline []*commandNode
 	list     *listNode
 	elseList *listNode
 }
 
-func newWith(line int, pipe *pipeNode, list, elseList *listNode) *withNode {
-	return &withNode{nodeType: nodeWith, line: line, pipe: pipe, list: list, elseList: elseList}
+func newWith(line int, pipeline []*commandNode, list, elseList *listNode) *withNode {
+	return &withNode{nodeType: nodeWith, line: line, pipeline: pipeline, list: list, elseList: elseList}
 }
 
 func (w *withNode) String() string {
 	if w.elseList != nil {
-		return fmt.Sprintf("({{with %s}} %s {{else}} %s)", w.pipe, w.list, w.elseList)
+		return fmt.Sprintf("({{with %s}} %s {{else}} %s)", w.pipeline, w.list, w.elseList)
 	}
-	return fmt.Sprintf("({{with %s}} %s)", w.pipe, w.list)
+	return fmt.Sprintf("({{with %s}} %s)", w.pipeline, w.list)
 }
+
 
 // Parsing.
 
@@ -523,9 +457,9 @@ func New(name string) *Template {
 	}
 }
 
-// Funcs adds the elements of the argument map to the template's function
-// map.  It panics if a value in the map is not a function with appropriate
-// return type.
+// Funcs adds to the template's function map the elements of the
+// argument map.   It panics if a value in the map is not a function
+// with appropriate return type.
 // The return value is the template, so calls can be chained.
 func (t *Template) Funcs(funcMap FuncMap) *Template {
 	addFuncs(t.funcs, funcMap)
@@ -575,16 +509,13 @@ func (t *Template) recover(errp *os.Error) {
 // startParse starts the template parsing from the lexer.
 func (t *Template) startParse(set *Set, lex *lexer) {
 	t.root = nil
+	t.set = set
 	t.lex = lex
-	t.vars = []string{"$"}
-	t.parseSet = set
 }
 
 // stopParse terminates parsing.
 func (t *Template) stopParse() {
-	t.lex = nil
-	t.vars = nil
-	t.parseSet = nil
+	t.set, t.lex = nil, nil
 }
 
 // atEOF returns true if, possibly after spaces, we're at EOF.
@@ -608,40 +539,27 @@ func (t *Template) atEOF() bool {
 	return false
 }
 
-// Parse parses the template definition string to construct an internal
-// representation of the template for execution.
+// Parse parses the template definition string to construct an internal representation
+// of the template for execution.
 func (t *Template) Parse(s string) (err os.Error) {
+	t.startParse(nil, lex(t.name, s))
 	defer t.recover(&err)
-	t.startParse(t.set, lex(t.name, s))
 	t.parse(true)
 	t.stopParse()
 	return
 }
 
-// ParseInSet parses the template definition string to construct an internal
-// representation of the template for execution. It also adds the template
-// to the set.
-// Function bindings are checked against those in the set.
+// ParseInSet parses the template definition string to construct an internal representation
+// of the template for execution. Function bindings are checked against those in the set.
 func (t *Template) ParseInSet(s string, set *Set) (err os.Error) {
-	defer t.recover(&err)
 	t.startParse(set, lex(t.name, s))
+	defer t.recover(&err)
 	t.parse(true)
 	t.stopParse()
-	t.addToSet(set)
-	return nil
+	return
 }
 
-// addToSet adds the template to the set, verifying it's not being double-assigned.
-func (t *Template) addToSet(set *Set) {
-	if set == nil || t.set == set {
-		return
-	}
-	// If double-assigned, Add will panic and we will turn that into an error.
-	set.Add(t)
-}
-
-// parse is the helper for Parse.
-// It triggers an error if we expect EOF but don't reach it.
+// parse is the helper for Parse. It triggers an error if we expect EOF but don't reach it.
 func (t *Template) parse(toEOF bool) (next node) {
 	t.root, next = t.itemList(true)
 	if toEOF && next != nil {
@@ -705,51 +623,23 @@ func (t *Template) action() (n node) {
 		return t.withControl()
 	}
 	t.backup()
-	// Do not pop variables; they persist until "end".
 	return newAction(t.lex.lineNumber(), t.pipeline("command"))
 }
 
 // Pipeline:
 //	field or command
 //	pipeline "|" pipeline
-func (t *Template) pipeline(context string) (pipe *pipeNode) {
-	var decl []*variableNode
-	// Are there declarations?
-	for {
-		if v := t.peek(); v.typ == itemVariable {
-			t.next()
-			if next := t.peek(); next.typ == itemColonEquals || next.typ == itemChar {
-				t.next()
-				variable := newVariable(v.val)
-				if len(variable.ident) != 1 {
-					t.errorf("illegal variable in declaration: %s", v.val)
-				}
-				decl = append(decl, variable)
-				t.vars = append(t.vars, v.val)
-				if next.typ == itemChar && next.val == "," {
-					if context == "range" && len(decl) < 2 {
-						continue
-					}
-					t.errorf("too many declarations in %s", context)
-				}
-			} else {
-				t.backup2(v)
-			}
-		}
-		break
-	}
-	pipe = newPipeline(t.lex.lineNumber(), decl)
+func (t *Template) pipeline(context string) (pipe []*commandNode) {
 	for {
 		switch token := t.next(); token.typ {
 		case itemRightDelim:
-			if len(pipe.cmds) == 0 {
+			if len(pipe) == 0 {
 				t.errorf("missing value for %s", context)
 			}
 			return
-		case itemBool, itemCharConstant, itemComplex, itemDot, itemField, itemIdentifier,
-			itemVariable, itemNumber, itemRawString, itemString:
+		case itemBool, itemComplex, itemDot, itemField, itemIdentifier, itemNumber, itemRawString, itemString:
 			t.backup()
-			pipe.append(t.command())
+			pipe = append(pipe, t.command())
 		default:
 			t.unexpected(token, context)
 		}
@@ -757,9 +647,8 @@ func (t *Template) pipeline(context string) (pipe *pipeNode) {
 	return
 }
 
-func (t *Template) parseControl(context string) (lineNum int, pipe *pipeNode, list, elseList *listNode) {
+func (t *Template) parseControl(context string) (lineNum int, pipe []*commandNode, list, elseList *listNode) {
 	lineNum = t.lex.lineNumber()
-	defer t.popVars(len(t.vars))
 	pipe = t.pipeline(context)
 	var next node
 	list, next = t.itemList(false)
@@ -799,6 +688,7 @@ func (t *Template) withControl() node {
 	return newWith(t.parseControl("with"))
 }
 
+
 // End:
 //	{{end}}
 // End keyword is past.
@@ -820,24 +710,28 @@ func (t *Template) elseControl() node {
 // Template keyword is past.  The name must be something that can evaluate
 // to a string.
 func (t *Template) templateControl() node {
-	var name string
+	var name node
 	switch token := t.next(); token.typ {
+	case itemIdentifier:
+		if _, ok := findFunction(token.val, t, t.set); !ok {
+			t.errorf("function %q not defined", token.val)
+		}
+		name = newIdentifier(token.val)
+	case itemDot:
+		name = newDot()
+	case itemField:
+		name = newField(token.val)
 	case itemString, itemRawString:
 		s, err := strconv.Unquote(token.val)
 		if err != nil {
 			t.error(err)
 		}
-		name = s
+		name = newString(s)
 	default:
 		t.unexpected(token, "template invocation")
 	}
-	var pipe *pipeNode
-	if t.next().typ != itemRightDelim {
-		t.backup()
-		// Do not pop variables; they persist until "end".
-		pipe = t.pipeline("template")
-	}
-	return newTemplate(t.lex.lineNumber(), name, pipe)
+	pipeline := t.pipeline("template")
+	return newTemplate(t.lex.lineNumber(), name, pipeline)
 }
 
 // command:
@@ -856,20 +750,18 @@ Loop:
 		case itemError:
 			t.errorf("%s", token.val)
 		case itemIdentifier:
-			if _, ok := findFunction(token.val, t, t.parseSet); !ok {
+			if _, ok := findFunction(token.val, t, t.set); !ok {
 				t.errorf("function %q not defined", token.val)
 			}
 			cmd.append(newIdentifier(token.val))
 		case itemDot:
 			cmd.append(newDot())
-		case itemVariable:
-			cmd.append(t.useVar(token.val))
 		case itemField:
 			cmd.append(newField(token.val))
 		case itemBool:
 			cmd.append(newBool(token.val == "true"))
-		case itemCharConstant, itemComplex, itemNumber:
-			number, err := newNumber(token.val, token.typ)
+		case itemComplex, itemNumber:
+			number, err := newNumber(token.val, token.typ == itemComplex)
 			if err != nil {
 				t.error(err)
 			}
@@ -888,22 +780,4 @@ Loop:
 		t.errorf("empty command")
 	}
 	return cmd
-}
-
-// popVars trims the variable list to the specified length
-func (t *Template) popVars(n int) {
-	t.vars = t.vars[:n]
-}
-
-// useVar returns a node for a variable reference. It errors if the
-// variable is not defined.
-func (t *Template) useVar(name string) node {
-	v := newVariable(name)
-	for _, varName := range t.vars {
-		if varName == v.ident[0] {
-			return v
-		}
-	}
-	t.errorf("undefined variable %q", v.ident[0])
-	return nil
 }

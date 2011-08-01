@@ -2,18 +2,17 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package sort_test
+package sort
 
-import (
-	. "sort"
-	"testing"
-)
+import "testing"
+
 
 func f(a []int, x int) func(int) bool {
 	return func(i int) bool {
 		return a[i] >= x
 	}
 }
+
 
 var data = []int{0: -10, 1: -5, 2: 0, 3: 1, 4: 2, 5: 3, 6: 5, 7: 7, 8: 11, 9: 100, 10: 100, 11: 100, 12: 1000, 13: 10000}
 
@@ -47,6 +46,7 @@ var tests = []struct {
 	{"overflow", 2e9, func(i int) bool { return false }, 2e9},
 }
 
+
 func TestSearch(t *testing.T) {
 	for _, e := range tests {
 		i := Search(e.n, e.f)
@@ -55,6 +55,7 @@ func TestSearch(t *testing.T) {
 		}
 	}
 }
+
 
 // log2 computes the binary logarithm of x, rounded up to the next integer.
 // (log2(0) == 0, log2(1) == 0, log2(2) == 1, log2(3) == 2, etc.)
@@ -68,6 +69,7 @@ func log2(x int) int {
 	// p/2 < x <= p == 2**n
 	return n
 }
+
 
 func TestSearchEfficiency(t *testing.T) {
 	n := 100
@@ -91,6 +93,7 @@ func TestSearchEfficiency(t *testing.T) {
 	}
 }
 
+
 // Smoke tests for convenience wrappers - not comprehensive.
 
 var fdata = []float64{0: -3.14, 1: 0, 2: 1, 3: 2, 4: 1000.7}
@@ -109,6 +112,7 @@ var wrappertests = []struct {
 	{"StringSlice.Search", StringSlice(sdata).Search("x"), 3},
 }
 
+
 func TestSearchWrappers(t *testing.T) {
 	for _, e := range wrappertests {
 		if e.result != e.i {
@@ -116,6 +120,7 @@ func TestSearchWrappers(t *testing.T) {
 		}
 	}
 }
+
 
 // Abstract exhaustive test: all sizes up to 100,
 // all possible return values.  If there are any small

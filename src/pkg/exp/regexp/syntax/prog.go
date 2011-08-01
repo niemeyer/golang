@@ -10,9 +10,8 @@ import (
 
 // A Prog is a compiled regular expression program.
 type Prog struct {
-	Inst   []Inst
-	Start  int // index of start instruction
-	NumCap int // number of InstCapture insts in re
+	Inst  []Inst
+	Start int // index of start instruction
 }
 
 // An InstOp is an instruction opcode.
@@ -123,6 +122,7 @@ func (i *Inst) MatchEmptyWidth(before int, after int) bool {
 	}
 	panic("unknown empty width arg")
 }
+
 
 func (i *Inst) String() string {
 	var b bytes.Buffer

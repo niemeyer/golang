@@ -43,13 +43,11 @@ func special(s string) (f float64, ok bool) {
 	switch {
 	case equalIgnoreCase(s, "nan"):
 		return math.NaN(), true
-	case equalIgnoreCase(s, "-inf"),
-		equalIgnoreCase(s, "-infinity"):
+	case equalIgnoreCase(s, "-inf"):
 		return math.Inf(-1), true
-	case equalIgnoreCase(s, "+inf"),
-		equalIgnoreCase(s, "+infinity"),
-		equalIgnoreCase(s, "inf"),
-		equalIgnoreCase(s, "infinity"):
+	case equalIgnoreCase(s, "+inf"):
+		return math.Inf(1), true
+	case equalIgnoreCase(s, "inf"):
 		return math.Inf(1), true
 	}
 	return

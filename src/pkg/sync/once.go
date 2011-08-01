@@ -11,7 +11,7 @@ import (
 // Once is an object that will perform exactly one action.
 type Once struct {
 	m    Mutex
-	done uint32
+	done int32
 }
 
 // Do calls the function f if and only if the method is being called for the
@@ -30,7 +30,7 @@ type Once struct {
 // Do to be called, it will deadlock.
 //
 func (o *Once) Do(f func()) {
-	if atomic.LoadUint32(&o.done) == 1 {
+	if atomic.AddInt32(&o.done, 0) == 1 {
 		return
 	}
 	// Slow-path.
@@ -38,6 +38,6 @@ func (o *Once) Do(f func()) {
 	defer o.m.Unlock()
 	if o.done == 0 {
 		f()
-		atomic.CompareAndSwapUint32(&o.done, 0, 1)
+		atomic.CompareAndSwapInt32(&o.done, 0, 1)
 	}
 }

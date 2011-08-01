@@ -1049,25 +1049,21 @@ Jconv(Fmt *fp)
 {
 	Node *n;
 	char *s;
-	int c;
 
 	n = va_arg(fp->args, Node*);
-
-	c = fp->flags&FmtShort;
-
-	if(!c && n->ullman != 0)
+	if(n->ullman != 0)
 		fmtprint(fp, " u(%d)", n->ullman);
 
-	if(!c && n->addable != 0)
+	if(n->addable != 0)
 		fmtprint(fp, " a(%d)", n->addable);
 
-	if(!c && n->vargen != 0)
+	if(n->vargen != 0)
 		fmtprint(fp, " g(%d)", n->vargen);
 
 	if(n->lineno != 0)
 		fmtprint(fp, " l(%d)", n->lineno);
 
-	if(!c && n->xoffset != BADWIDTH)
+	if(n->xoffset != BADWIDTH)
 		fmtprint(fp, " x(%lld%+d)", n->xoffset, n->stkdelta);
 
 	if(n->class != 0) {
@@ -1085,13 +1081,10 @@ Jconv(Fmt *fp)
 	if(n->funcdepth != 0)
 		fmtprint(fp, " f(%d)", n->funcdepth);
 
-	if(n->noescape != 0)
-		fmtprint(fp, " ne(%d)", n->noescape);
-
-	if(!c && n->typecheck != 0)
+	if(n->typecheck != 0)
 		fmtprint(fp, " tc(%d)", n->typecheck);
 
-	if(!c && n->dodata != 0)
+	if(n->dodata != 0)
 		fmtprint(fp, " dd(%d)", n->dodata);
 
 	if(n->isddd != 0)
@@ -1100,10 +1093,10 @@ Jconv(Fmt *fp)
 	if(n->implicit != 0)
 		fmtprint(fp, " implicit(%d)", n->implicit);
 
-	if(!c && n->pun != 0)
+	if(n->pun != 0)
 		fmtprint(fp, " pun(%d)", n->pun);
 
-	if(!c && n->used != 0)
+	if(n->used != 0)
 		fmtprint(fp, " used(%d)", n->used);
 	return 0;
 }
@@ -1501,25 +1494,17 @@ Nconv(Fmt *fp)
 
 	switch(n->op) {
 	default:
-		if (fp->flags & FmtShort)
-			fmtprint(fp, "%O%hJ", n->op, n);
-		else
-			fmtprint(fp, "%O%J", n->op, n);
+		fmtprint(fp, "%O%J", n->op, n);
 		break;
 
 	case ONAME:
 	case ONONAME:
 		if(n->sym == S) {
-			if (fp->flags & FmtShort)
-				fmtprint(fp, "%O%hJ", n->op, n);
-			else
-				fmtprint(fp, "%O%J", n->op, n);
+			fmtprint(fp, "%O%J", n->op, n);
 			break;
 		}
-		if (fp->flags & FmtShort)
-			fmtprint(fp, "%O-%S%hJ", n->op, n->sym, n);
-		else
-			fmtprint(fp, "%O-%S%J", n->op, n->sym, n);
+		fmtprint(fp, "%O-%S G%d%J", n->op,
+			n->sym, n->vargen, n);
 		goto ptyp;
 
 	case OREGISTER:
@@ -1717,6 +1702,29 @@ isblank(Node *n)
 	if(p == nil)
 		return 0;
 	return p[0] == '_' && p[1] == '\0';
+}
+
+int
+isselect(Node *n)
+{
+	Sym *s;
+
+	if(n == N)
+		return 0;
+	n = n->left;
+	s = pkglookup("selectsend", runtimepkg);
+	if(s == n->sym)
+		return 1;
+	s = pkglookup("selectrecv", runtimepkg);
+	if(s == n->sym)
+		return 1;
+	s = pkglookup("selectrecv2", runtimepkg);
+	if(s == n->sym)
+		return 1;
+	s = pkglookup("selectdefault", runtimepkg);
+	if(s == n->sym)
+		return 1;
+	return 0;
 }
 
 int
@@ -2727,20 +2735,6 @@ safeexpr(Node *n, NodeList **init)
 	return cheapexpr(n, init);
 }
 
-static Node*
-copyexpr(Node *n, NodeList **init)
-{
-	Node *a, *l;
-	
-	l = nod(OXXX, N, N);
-	tempname(l, n->type);
-	a = nod(OAS, l, n);
-	typecheck(&a, Etop);
-	walkexpr(&a, init);
-	*init = list(*init, a);
-	return l;
-}
-
 /*
  * return side-effect free and cheap n, appending side effects to init.
  * result may not be assignable.
@@ -2748,26 +2742,21 @@ copyexpr(Node *n, NodeList **init)
 Node*
 cheapexpr(Node *n, NodeList **init)
 {
+	Node *a, *l;
+
 	switch(n->op) {
 	case ONAME:
 	case OLITERAL:
 		return n;
 	}
 
-	return copyexpr(n, init);
-}
-
-/*
- * return n in a local variable if it is not already.
- */
-Node*
-localexpr(Node *n, NodeList **init)
-{
-	if(n->op == ONAME &&
-		 (n->class == PAUTO || n->class == PPARAM || n->class == PPARAMOUT))
-		return n;
-	
-	return copyexpr(n, init);
+	l = nod(OXXX, N, N);
+	tempname(l, n->type);
+	a = nod(OAS, l, n);
+	typecheck(&a, Etop);
+	walkexpr(&a, init);
+	*init = list(*init, a);
+	return l;
 }
 
 void

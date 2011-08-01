@@ -29,6 +29,7 @@
 // THE SOFTWARE.
 
 #include	<u.h>
+#include	<ctype.h>
 #include	"cc.h"
 
 #include	"macbody"

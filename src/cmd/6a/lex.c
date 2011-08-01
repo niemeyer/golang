@@ -29,10 +29,9 @@
 // THE SOFTWARE.
 
 #define	EXTERN
-#include <u.h>
-#include <libc.h>
 #include "a.h"
 #include "y.tab.h"
+#include <ctype.h>
 
 enum
 {
@@ -170,13 +169,6 @@ assemble(char *file)
 struct
 {
 	char	*name;
-	/*
-	 * type is the lexical type to return.  It dictates what kind of
-	 * operands 6a allows to follow it (in a.y) as the possible operand
-	 * types are handled by a grammar.  How do you know which LTYPE?
-	 * Either read a.y or think of an instruction that has the same
-	 * possible operands and look up what it takes.
-	 */
 	ushort	type;
 	ushort	value;
 } itab[] =
@@ -993,8 +985,6 @@ struct
 	"UNPCKLPS",	LTYPE3,	AUNPCKLPS,
 	"XORPD",	LTYPE3,	AXORPD,
 	"XORPS",	LTYPE3,	AXORPS,
-	"CRC32B",	LTYPE4, ACRC32B,
-	"CRC32Q",	LTYPE4, ACRC32Q,
 
 	0
 };

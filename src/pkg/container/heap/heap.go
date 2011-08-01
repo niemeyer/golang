@@ -21,6 +21,7 @@ type Interface interface {
 	Pop() interface{}
 }
 
+
 // A heap must be initialized before any of the heap operations
 // can be used. Init is idempotent with respect to the heap invariants
 // and may be called whenever the heap invariants may have been invalidated.
@@ -34,6 +35,7 @@ func Init(h Interface) {
 	}
 }
 
+
 // Push pushes the element x onto the heap. The complexity is
 // O(log(n)) where n = h.Len().
 //
@@ -41,6 +43,7 @@ func Push(h Interface, x interface{}) {
 	h.Push(x)
 	up(h, h.Len()-1)
 }
+
 
 // Pop removes the minimum element (according to Less) from the heap
 // and returns it. The complexity is O(log(n)) where n = h.Len().
@@ -52,6 +55,7 @@ func Pop(h Interface) interface{} {
 	down(h, 0, n)
 	return h.Pop()
 }
+
 
 // Remove removes the element at index i from the heap.
 // The complexity is O(log(n)) where n = h.Len().
@@ -66,6 +70,7 @@ func Remove(h Interface, i int) interface{} {
 	return h.Pop()
 }
 
+
 func up(h Interface, j int) {
 	for {
 		i := (j - 1) / 2 // parent
@@ -76,6 +81,7 @@ func up(h Interface, j int) {
 		j = i
 	}
 }
+
 
 func down(h Interface, i, n int) {
 	for {

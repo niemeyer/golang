@@ -6,6 +6,7 @@
 
 package os
 
+
 func Hostname() (name string, err Error) {
 	f, err := Open("#c/sysname")
 	if err != nil {

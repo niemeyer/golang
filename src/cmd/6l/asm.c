@@ -524,7 +524,7 @@ adddynsym(Sym *s)
 			adduint64(d, 0);	// value
 		else
 			addaddr(d, s);
-	} else if(HEADTYPE != Hwindows) {
+	} else {
 		diag("adddynsym: unsupported binary format");
 	}
 }
@@ -559,7 +559,7 @@ doelf(void)
 
 	/* predefine strings we need for section headers */
 	shstrtab = lookup(".shstrtab", 0);
-	shstrtab->type = SELFROSECT;
+	shstrtab->type = SELFDATA;
 	shstrtab->reachable = 1;
 
 	elfstr[ElfStrEmpty] = addstring(shstrtab, "");
@@ -593,13 +593,13 @@ doelf(void)
 
 		/* dynamic symbol table - first entry all zeros */
 		s = lookup(".dynsym", 0);
-		s->type = SELFROSECT;
+		s->type = SELFDATA;
 		s->reachable = 1;
 		s->size += ELF64SYMSIZE;
 
 		/* dynamic string table */
 		s = lookup(".dynstr", 0);
-		s->type = SELFROSECT;
+		s->type = SELFDATA;
 		s->reachable = 1;
 		if(s->size == 0)
 			addstring(s, "");
@@ -608,44 +608,44 @@ doelf(void)
 		/* relocation table */
 		s = lookup(".rela", 0);
 		s->reachable = 1;
-		s->type = SELFROSECT;
+		s->type = SELFDATA;
 
 		/* global offset table */
 		s = lookup(".got", 0);
 		s->reachable = 1;
-		s->type = SELFSECT; // writable
+		s->type = SDATA;	// writable, so not SELFDATA
 
 		/* hash */
 		s = lookup(".hash", 0);
 		s->reachable = 1;
-		s->type = SELFROSECT;
+		s->type = SELFDATA;
 
 		s = lookup(".got.plt", 0);
 		s->reachable = 1;
-		s->type = SELFSECT; // writable
+		s->type = SDATA;	// writable, not SELFDATA
 
 		s = lookup(".plt", 0);
 		s->reachable = 1;
-		s->type = SELFROSECT;
+		s->type = SELFDATA;
 		
 		elfsetupplt();
 		
 		s = lookup(".rela.plt", 0);
 		s->reachable = 1;
-		s->type = SELFROSECT;
+		s->type = SELFDATA;
 		
 		s = lookup(".gnu.version", 0);
 		s->reachable = 1;
-		s->type = SELFROSECT;
+		s->type = SELFDATA;
 		
 		s = lookup(".gnu.version_r", 0);
 		s->reachable = 1;
-		s->type = SELFROSECT;
+		s->type = SELFDATA;
 
 		/* define dynamic elf table */
 		s = lookup(".dynamic", 0);
 		s->reachable = 1;
-		s->type = SELFROSECT;
+		s->type = SELFDATA;
 
 		/*
 		 * .dynamic table
@@ -673,11 +673,8 @@ doelf(void)
 void
 shsym(ElfShdr *sh, Sym *s)
 {
-	vlong addr;
-	addr = symaddr(s);
-	if(sh->flags&SHF_ALLOC)
-		sh->addr = addr;
-	sh->off = datoff(addr);
+	sh->addr = symaddr(s);
+	sh->off = datoff(sh->addr);
 	sh->size = s->size;
 }
 
@@ -702,7 +699,6 @@ asmb(void)
 	ElfPhdr *ph, *pph;
 	ElfShdr *sh;
 	Section *sect;
-	int o;
 
 	if(debug['v'])
 		Bprint(&bso, "%5.2f asmb\n", cputime());
@@ -715,12 +711,12 @@ asmb(void)
 	Bflush(&bso);
 
 	sect = segtext.sect;
-	cseek(sect->vaddr - segtext.vaddr + segtext.fileoff);
+	seek(cout, sect->vaddr - segtext.vaddr + segtext.fileoff, 0);
 	codeblk(sect->vaddr, sect->len);
 
 	/* output read-only data in text segment (rodata, gosymtab and pclntab) */
 	for(sect = sect->next; sect != nil; sect = sect->next) {
-		cseek(sect->vaddr - segtext.vaddr + segtext.fileoff);
+		seek(cout, sect->vaddr - segtext.vaddr + segtext.fileoff, 0);
 		datblk(sect->vaddr, sect->len);
 	}
 
@@ -728,7 +724,7 @@ asmb(void)
 		Bprint(&bso, "%5.2f datblk\n", cputime());
 	Bflush(&bso);
 
-	cseek(segdata.fileoff);
+	seek(cout, segdata.fileoff, 0);
 	datblk(segdata.vaddr, segdata.filelen);
 
 	machlink = 0;
@@ -749,7 +745,7 @@ asmb(void)
 		debug['8'] = 1;	/* 64-bit addresses */
 		/* index of elf text section; needed by asmelfsym, double-checked below */
 		/* !debug['d'] causes extra sections before the .text section */
-		elftextsh = 2;
+		elftextsh = 1;
 		if(!debug['d']) {
 			elftextsh += 10;
 			if(elfverneed)
@@ -788,14 +784,14 @@ asmb(void)
 			symo = rnd(symo, PEFILEALIGN);
 			break;
 		}
-		cseek(symo);
+		seek(cout, symo, 0);
 		switch(HEADTYPE) {
 		default:
 			if(iself) {
-				cseek(symo);
+				seek(cout, symo, 0);
 				asmelfsym();
 				cflush();
-				cwrite(elfstrdat, elfstrsize);
+				ewrite(cout, elfstrdat, elfstrsize);
 
 				if(debug['v'])
 				       Bprint(&bso, "%5.2f dwarf\n", cputime());
@@ -816,7 +812,7 @@ asmb(void)
 	if(debug['v'])
 		Bprint(&bso, "%5.2f headr\n", cputime());
 	Bflush(&bso);
-	cseek(0L);
+	seek(cout, 0L, 0);
 	switch(HEADTYPE) {
 	default:
 	case Hplan9x32:	/* plan9 */
@@ -865,17 +861,6 @@ asmb(void)
 		pph->vaddr = INITTEXT - HEADR + pph->off;
 		pph->paddr = INITTEXT - HEADR + pph->off;
 		pph->align = INITRND;
-
-		/*
-		 * PHDR must be in a loaded segment. Adjust the text
-		 * segment boundaries downwards to include it.
-		 */
-		o = segtext.vaddr - pph->vaddr;
-		segtext.vaddr -= o;
-		segtext.len += o;
-		o = segtext.fileoff - pph->off;
-		segtext.fileoff -= o;
-		segtext.filelen += o;
 
 		if(!debug['d']) {
 			/* interpreter */
@@ -1017,11 +1002,6 @@ asmb(void)
 		ph->flags = PF_W+PF_R;
 		ph->align = 8;
 
-		sh = newElfShstrtab(elfstr[ElfStrShstrtab]);
-		sh->type = SHT_STRTAB;
-		sh->addralign = 1;
-		shsym(sh, lookup(".shstrtab", 0));
-
 		if(elftextsh != eh->shnum)
 			diag("elftextsh = %d, want %d", elftextsh, eh->shnum);
 		for(sect=segtext.sect; sect!=nil; sect=sect->next)
@@ -1047,6 +1027,11 @@ asmb(void)
 			dwarfaddelfheaders();
 		}
 
+		sh = newElfShstrtab(elfstr[ElfStrShstrtab]);
+		sh->type = SHT_STRTAB;
+		sh->addralign = 1;
+		shsym(sh, lookup(".shstrtab", 0));
+
 		/* Main header */
 		eh->ident[EI_MAG0] = '\177';
 		eh->ident[EI_MAG1] = 'E';
@@ -1066,13 +1051,13 @@ asmb(void)
 		pph->filesz = eh->phnum * eh->phentsize;
 		pph->memsz = pph->filesz;
 
-		cseek(0);
+		seek(cout, 0, 0);
 		a = 0;
 		a += elfwritehdr();
 		a += elfwritephdrs();
 		a += elfwriteshdrs();
 		cflush();
-		if(a+elfwriteinterp() > ELFRESERVE)	
+		if(a+elfwriteinterp() > ELFRESERVE)
 			diag("ELFRESERVE too small: %d > %d", a, ELFRESERVE);
 		break;
 	case Hwindows:
@@ -1080,6 +1065,25 @@ asmb(void)
 		break;
 	}
 	cflush();
+}
+
+void
+cflush(void)
+{
+	int n;
+
+	n = sizeof(buf.cbuf) - cbc;
+	if(n)
+		ewrite(cout, buf.cbuf, n);
+	cbp = buf.cbuf;
+	cbc = sizeof(buf.cbuf);
+}
+
+/* Current position in file */
+vlong
+cpos(void)
+{
+	return seek(cout, 0, 1) + sizeof(buf.cbuf) - cbc;
 }
 
 vlong
@@ -1114,7 +1118,7 @@ genasmsym(void (*put)(Sym*, char*, int, vlong, vlong, int, Sym*))
 		case SCONST:
 		case SRODATA:
 		case SDATA:
-		case SELFROSECT:
+		case SELFDATA:
 		case SMACHOGOT:
 		case STYPE:
 		case SSTRING:

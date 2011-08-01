@@ -259,6 +259,7 @@ var tests = []*Test{
 		out: "77",
 	},
 
+
 	// Repeated
 	&Test{
 		in: "{.section Pdata }\n" +
@@ -436,6 +437,7 @@ var tests = []*Test{
 		out: "pointedToString\n" +
 			"pointedToString\n",
 	},
+
 
 	// Interface values
 

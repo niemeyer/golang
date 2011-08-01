@@ -18,6 +18,7 @@ import (
 	"utf8"
 )
 
+
 // An RWValue wraps a value and permits mutually exclusive
 // access to it and records the time the value was last set.
 //
@@ -27,6 +28,7 @@ type RWValue struct {
 	timestamp int64 // time of last set(), in seconds since epoch
 }
 
+
 func (v *RWValue) set(value interface{}) {
 	v.mutex.Lock()
 	v.value = value
@@ -34,11 +36,13 @@ func (v *RWValue) set(value interface{}) {
 	v.mutex.Unlock()
 }
 
+
 func (v *RWValue) get() (interface{}, int64) {
 	v.mutex.RLock()
 	defer v.mutex.RUnlock()
 	return v.value, v.timestamp
 }
+
 
 // TODO(gri) For now, using os.Getwd() is ok here since the functionality
 //           based on this code is not invoked for the appengine version,
@@ -90,6 +94,7 @@ func canonicalizePaths(list []string, filter func(path string) bool) []string {
 	return list[0:i]
 }
 
+
 // writeFileAtomically writes data to a temporary file and then
 // atomically renames that file to the file named by filename.
 //
@@ -109,6 +114,7 @@ func writeFileAtomically(filename string, data []byte) os.Error {
 	}
 	return os.Rename(f.Name(), filename)
 }
+
 
 // isText returns true if a significant prefix of s looks like correct UTF-8;
 // that is, if it is likely that s is human-readable text.
@@ -131,6 +137,7 @@ func isText(s []byte) bool {
 	return true
 }
 
+
 // TODO(gri): Should have a mapping from extension to handler, eventually.
 
 // textExt[x] is true if the extension x indicates a text file, and false otherwise.
@@ -138,6 +145,7 @@ var textExt = map[string]bool{
 	".css": false, // must be served raw
 	".js":  false, // must be served raw
 }
+
 
 // isTextFile returns true if the file has a known extension indicating
 // a text file, or if a significant chunk of the specified file looks like

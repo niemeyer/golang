@@ -74,6 +74,7 @@ func TestInotifyEvents(t *testing.T) {
 	}
 }
 
+
 func TestInotifyClose(t *testing.T) {
 	watcher, _ := NewWatcher()
 	watcher.Close()

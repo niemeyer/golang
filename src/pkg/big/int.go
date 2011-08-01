@@ -21,7 +21,9 @@ type Int struct {
 	abs nat  // absolute value of the integer
 }
 
+
 var intOne = &Int{false, natOne}
+
 
 // Sign returns:
 //
@@ -39,6 +41,7 @@ func (x *Int) Sign() int {
 	return 1
 }
 
+
 // SetInt64 sets z to x and returns z.
 func (z *Int) SetInt64(x int64) *Int {
 	neg := false
@@ -51,10 +54,12 @@ func (z *Int) SetInt64(x int64) *Int {
 	return z
 }
 
+
 // NewInt allocates and returns a new Int set to x.
 func NewInt(x int64) *Int {
 	return new(Int).SetInt64(x)
 }
+
 
 // Set sets z to x and returns z.
 func (z *Int) Set(x *Int) *Int {
@@ -63,6 +68,7 @@ func (z *Int) Set(x *Int) *Int {
 	return z
 }
 
+
 // Abs sets z to |x| (the absolute value of x) and returns z.
 func (z *Int) Abs(x *Int) *Int {
 	z.abs = z.abs.set(x.abs)
@@ -70,12 +76,14 @@ func (z *Int) Abs(x *Int) *Int {
 	return z
 }
 
+
 // Neg sets z to -x and returns z.
 func (z *Int) Neg(x *Int) *Int {
 	z.abs = z.abs.set(x.abs)
 	z.neg = len(z.abs) > 0 && !x.neg // 0 has no sign
 	return z
 }
+
 
 // Add sets z to the sum x+y and returns z.
 func (z *Int) Add(x, y *Int) *Int {
@@ -98,6 +106,7 @@ func (z *Int) Add(x, y *Int) *Int {
 	return z
 }
 
+
 // Sub sets z to the difference x-y and returns z.
 func (z *Int) Sub(x, y *Int) *Int {
 	neg := x.neg
@@ -119,6 +128,7 @@ func (z *Int) Sub(x, y *Int) *Int {
 	return z
 }
 
+
 // Mul sets z to the product x*y and returns z.
 func (z *Int) Mul(x, y *Int) *Int {
 	// x * y == x * y
@@ -129,6 +139,7 @@ func (z *Int) Mul(x, y *Int) *Int {
 	z.neg = len(z.abs) > 0 && x.neg != y.neg // 0 has no sign
 	return z
 }
+
 
 // MulRange sets z to the product of all integers
 // in the range [a, b] inclusively and returns z.
@@ -153,6 +164,7 @@ func (z *Int) MulRange(a, b int64) *Int {
 	return z
 }
 
+
 // Binomial sets z to the binomial coefficient of (n, k) and returns z.
 func (z *Int) Binomial(n, k int64) *Int {
 	var a, b Int
@@ -160,6 +172,7 @@ func (z *Int) Binomial(n, k int64) *Int {
 	b.MulRange(1, k)
 	return z.Quo(&a, &b)
 }
+
 
 // Quo sets z to the quotient x/y for y != 0 and returns z.
 // If y == 0, a division-by-zero run-time panic occurs.
@@ -170,6 +183,7 @@ func (z *Int) Quo(x, y *Int) *Int {
 	return z
 }
 
+
 // Rem sets z to the remainder x%y for y != 0 and returns z.
 // If y == 0, a division-by-zero run-time panic occurs.
 // See QuoRem for more details.
@@ -178,6 +192,7 @@ func (z *Int) Rem(x, y *Int) *Int {
 	z.neg = len(z.abs) > 0 && x.neg // 0 has no sign
 	return z
 }
+
 
 // QuoRem sets z to the quotient x/y and r to the remainder x%y
 // and returns the pair (z, r) for y != 0.
@@ -196,6 +211,7 @@ func (z *Int) QuoRem(x, y, r *Int) (*Int, *Int) {
 	return z, r
 }
 
+
 // Div sets z to the quotient x/y for y != 0 and returns z.
 // If y == 0, a division-by-zero run-time panic occurs.
 // See DivMod for more details.
@@ -212,6 +228,7 @@ func (z *Int) Div(x, y *Int) *Int {
 	}
 	return z
 }
+
 
 // Mod sets z to the modulus x%y for y != 0 and returns z.
 // If y == 0, a division-by-zero run-time panic occurs.
@@ -232,6 +249,7 @@ func (z *Int) Mod(x, y *Int) *Int {
 	}
 	return z
 }
+
 
 // DivMod sets z to the quotient x div y and m to the modulus x mod y
 // and returns the pair (z, m) for y != 0.
@@ -265,6 +283,7 @@ func (z *Int) DivMod(x, y, m *Int) (*Int, *Int) {
 	return z, m
 }
 
+
 // Cmp compares x and y and returns:
 //
 //   -1 if x <  y
@@ -290,6 +309,7 @@ func (x *Int) Cmp(y *Int) (r int) {
 	return
 }
 
+
 func (x *Int) String() string {
 	switch {
 	case x == nil:
@@ -299,6 +319,7 @@ func (x *Int) String() string {
 	}
 	return x.abs.decimalString()
 }
+
 
 func charset(ch int) string {
 	switch ch {
@@ -316,26 +337,10 @@ func charset(ch int) string {
 	return "" // unknown format
 }
 
-// write count copies of text to s
-func writeMultiple(s fmt.State, text string, count int) {
-	if len(text) > 0 {
-		b := []byte(text)
-		for ; count > 0; count-- {
-			s.Write(b)
-		}
-	}
-}
 
 // Format is a support routine for fmt.Formatter. It accepts
 // the formats 'b' (binary), 'o' (octal), 'd' (decimal), 'x'
 // (lowercase hexadecimal), and 'X' (uppercase hexadecimal).
-// Also supported are the full suite of package fmt's format
-// verbs for integral types, including '+', '-', and ' '
-// for sign control, '#' for leading zero in octal and for
-// hexadecimal, a leading "0x" or "0X" for "%#x" and "%#X"
-// respectively, specification of minimum digits precision,
-// output field width, space or zero padding, and left or
-// right justification.
 //
 func (x *Int) Format(s fmt.State, ch int) {
 	cs := charset(ch)
@@ -351,73 +356,74 @@ func (x *Int) Format(s fmt.State, ch int) {
 		return
 	}
 
-	// determine sign character
-	sign := ""
-	switch {
-	case x.neg:
-		sign = "-"
-	case s.Flag('+'): // supersedes ' ' when both specified
-		sign = "+"
-	case s.Flag(' '):
-		sign = " "
-	}
-
-	// determine prefix characters for indicating output base
-	prefix := ""
+	// determine format
+	format := "%s"
 	if s.Flag('#') {
 		switch ch {
-		case 'o': // octal
-			prefix = "0"
-		case 'x': // hexadecimal
-			prefix = "0x"
+		case 'o':
+			format = "0%s"
+		case 'x':
+			format = "0x%s"
 		case 'X':
-			prefix = "0X"
+			format = "0X%s"
 		}
 	}
+	t := fmt.Sprintf(format, x.abs.string(cs))
 
-	// determine digits with base set by len(cs) and digit characters from cs
-	digits := x.abs.string(cs)
-
-	// number of characters for the three classes of number padding
-	var left int   // space characters to left of digits for right justification ("%8d")
-	var zeroes int // zero characters (actually cs[0]) as left-most digits ("%.8d")
-	var right int  // space characters to right of digits for left justification ("%-8d")
-
-	// determine number padding from precision: the least number of digits to output
-	precision, precisionSet := s.Precision()
-	if precisionSet {
-		switch {
-		case len(digits) < precision:
-			zeroes = precision - len(digits) // count of zero padding 
-		case digits == "0" && precision == 0:
-			return // print nothing if zero value (x == 0) and zero precision ("." or ".0")
+	// insert spaces in hexadecimal formats if needed
+	if len(t) > 0 && s.Flag(' ') && (ch == 'x' || ch == 'X') {
+		spaces := (len(t)+1)/2 - 1
+		spaced := make([]byte, len(t)+spaces)
+		var i, j int
+		spaced[i] = t[j]
+		i++
+		j++
+		if len(t)&1 == 0 {
+			spaced[i] = t[j]
+			i++
+			j++
 		}
+		for j < len(t) {
+			spaced[i] = ' '
+			i++
+			spaced[i] = t[j]
+			i++
+			j++
+			spaced[i] = t[j]
+			i++
+			j++
+		}
+		t = string(spaced)
 	}
 
-	// determine field pad from width: the least number of characters to output
-	length := len(sign) + len(prefix) + zeroes + len(digits)
-	if width, widthSet := s.Width(); widthSet && length < width { // pad as specified
-		switch d := width - length; {
-		case s.Flag('-'):
-			// pad on the right with spaces; supersedes '0' when both specified
-			right = d
-		case s.Flag('0') && !precisionSet:
-			// pad with zeroes unless precision also specified
-			zeroes = d
-		default:
-			// pad on the left with spaces
-			left = d
-		}
+	// determine sign prefix
+	prefix := ""
+	switch {
+	case x.neg:
+		prefix = "-"
+	case s.Flag('+'):
+		prefix = "+"
+	case s.Flag(' ') && ch != 'x' && ch != 'X':
+		prefix = " "
 	}
 
-	// print number as [left pad][sign][prefix][zero pad][digits][right pad]
-	writeMultiple(s, " ", left)
-	writeMultiple(s, sign, 1)
-	writeMultiple(s, prefix, 1)
-	writeMultiple(s, "0", zeroes)
-	writeMultiple(s, digits, 1)
-	writeMultiple(s, " ", right)
+	// fill to minimum width and prepend sign prefix
+	if width, ok := s.Width(); ok && len(t)+len(prefix) < width {
+		if s.Flag('0') {
+			t = fmt.Sprintf("%s%0*d%s", prefix, width-len(t)-len(prefix), 0, t)
+		} else {
+			if s.Flag('-') {
+				width = -width
+			}
+			t = fmt.Sprintf("%*s", width, prefix+t)
+		}
+	} else if prefix != "" {
+		t = prefix + t
+	}
+
+	fmt.Fprint(s, t)
 }
+
 
 // scan sets z to the integer value corresponding to the longest possible prefix
 // read from r representing a signed integer number in a given conversion base.
@@ -455,6 +461,7 @@ func (z *Int) scan(r io.RuneScanner, base int) (*Int, int, os.Error) {
 	return z, base, nil
 }
 
+
 // Scan is a support routine for fmt.Scanner; it sets z to the value of
 // the scanned number. It accepts the formats 'b' (binary), 'o' (octal),
 // 'd' (decimal), 'x' (lowercase hexadecimal), and 'X' (uppercase hexadecimal).
@@ -479,6 +486,7 @@ func (z *Int) Scan(s fmt.ScanState, ch int) os.Error {
 	return err
 }
 
+
 // Int64 returns the int64 representation of x.
 // If x cannot be represented in an int64, the result is undefined.
 func (x *Int) Int64() int64 {
@@ -494,6 +502,7 @@ func (x *Int) Int64() int64 {
 	}
 	return v
 }
+
 
 // SetString sets z to the value of s, interpreted in the given base,
 // and returns z and a boolean indicating success. If SetString fails,
@@ -514,6 +523,7 @@ func (z *Int) SetString(s string, base int) (*Int, bool) {
 	return z, err == os.EOF // err == os.EOF => scan consumed all of s
 }
 
+
 // SetBytes interprets buf as the bytes of a big-endian unsigned
 // integer, sets z to that value, and returns z.
 func (z *Int) SetBytes(buf []byte) *Int {
@@ -522,17 +532,20 @@ func (z *Int) SetBytes(buf []byte) *Int {
 	return z
 }
 
+
 // Bytes returns the absolute value of z as a big-endian byte slice.
 func (z *Int) Bytes() []byte {
 	buf := make([]byte, len(z.abs)*_S)
 	return buf[z.abs.bytes(buf):]
 }
 
+
 // BitLen returns the length of the absolute value of z in bits.
 // The bit length of 0 is 0.
 func (z *Int) BitLen() int {
 	return z.abs.bitLen()
 }
+
 
 // Exp sets z = x**y mod m. If m is nil, z = x**y.
 // See Knuth, volume 2, section 4.6.3.
@@ -553,6 +566,7 @@ func (z *Int) Exp(x, y, m *Int) *Int {
 	z.neg = len(z.abs) > 0 && x.neg && y.abs[0]&1 == 1 // 0 has no sign
 	return z
 }
+
 
 // GcdInt sets d to the greatest common divisor of a and b, which must be
 // positive numbers.
@@ -612,12 +626,14 @@ func GcdInt(d, x, y, a, b *Int) {
 	*d = *A
 }
 
+
 // ProbablyPrime performs n Miller-Rabin tests to check whether z is prime.
 // If it returns true, z is prime with probability 1 - 1/4^n.
 // If it returns false, z is not prime.
 func ProbablyPrime(z *Int, n int) bool {
 	return !z.neg && z.abs.probablyPrime(n)
 }
+
 
 // Rand sets z to a pseudo-random number in [0, n) and returns z.
 func (z *Int) Rand(rnd *rand.Rand, n *Int) *Int {
@@ -629,6 +645,7 @@ func (z *Int) Rand(rnd *rand.Rand, n *Int) *Int {
 	z.abs = z.abs.random(rnd, n.abs, n.abs.bitLen())
 	return z
 }
+
 
 // ModInverse sets z to the multiplicative inverse of g in the group ℤ/pℤ (where
 // p is a prime) and returns z.
@@ -643,12 +660,14 @@ func (z *Int) ModInverse(g, p *Int) *Int {
 	return z
 }
 
+
 // Lsh sets z = x << n and returns z.
 func (z *Int) Lsh(x *Int, n uint) *Int {
 	z.abs = z.abs.shl(x.abs, n)
 	z.neg = x.neg
 	return z
 }
+
 
 // Rsh sets z = x >> n and returns z.
 func (z *Int) Rsh(x *Int, n uint) *Int {
@@ -666,6 +685,7 @@ func (z *Int) Rsh(x *Int, n uint) *Int {
 	return z
 }
 
+
 // Bit returns the value of the i'th bit of z. That is, it
 // returns (z>>i)&1. The bit index i must be >= 0.
 func (z *Int) Bit(i int) uint {
@@ -679,6 +699,7 @@ func (z *Int) Bit(i int) uint {
 
 	return z.abs.bit(uint(i))
 }
+
 
 // SetBit sets the i'th bit of z to bit and returns z.
 // That is, if bit is 1 SetBit sets z = x | (1 << i);
@@ -699,6 +720,7 @@ func (z *Int) SetBit(x *Int, i int, b uint) *Int {
 	z.neg = false
 	return z
 }
+
 
 // And sets z = x & y and returns z.
 func (z *Int) And(x, y *Int) *Int {
@@ -729,6 +751,7 @@ func (z *Int) And(x, y *Int) *Int {
 	z.neg = false
 	return z
 }
+
 
 // AndNot sets z = x &^ y and returns z.
 func (z *Int) AndNot(x, y *Int) *Int {
@@ -763,6 +786,7 @@ func (z *Int) AndNot(x, y *Int) *Int {
 	return z
 }
 
+
 // Or sets z = x | y and returns z.
 func (z *Int) Or(x, y *Int) *Int {
 	if x.neg == y.neg {
@@ -792,6 +816,7 @@ func (z *Int) Or(x, y *Int) *Int {
 	z.neg = true // z cannot be zero if one of x or y is negative
 	return z
 }
+
 
 // Xor sets z = x ^ y and returns z.
 func (z *Int) Xor(x, y *Int) *Int {
@@ -823,6 +848,7 @@ func (z *Int) Xor(x, y *Int) *Int {
 	return z
 }
 
+
 // Not sets z = ^x and returns z.
 func (z *Int) Not(x *Int) *Int {
 	if x.neg {
@@ -838,6 +864,7 @@ func (z *Int) Not(x *Int) *Int {
 	return z
 }
 
+
 // Gob codec version. Permits backward-compatible changes to the encoding.
 const intGobVersion byte = 1
 
@@ -852,6 +879,7 @@ func (z *Int) GobEncode() ([]byte, os.Error) {
 	buf[i] = b
 	return buf[i:], nil
 }
+
 
 // GobDecode implements the gob.GobDecoder interface.
 func (z *Int) GobDecode(buf []byte) os.Error {

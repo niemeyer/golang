@@ -271,6 +271,7 @@ const (
 	BothDir = RecvDir | SendDir
 )
 
+
 // arrayType represents a fixed array type.
 type arrayType struct {
 	commonType `reflect:"array"`
@@ -340,6 +341,7 @@ type structType struct {
 	commonType `reflect:"struct"`
 	fields     []structField
 }
+
 
 /*
  * The compiler knows the exact layout of all the data structures above.
@@ -446,7 +448,7 @@ func (t *commonType) common() *commonType { return t }
 
 func (t *uncommonType) Method(i int) (m Method) {
 	if t == nil || i < 0 || i >= len(t.methods) {
-		panic("reflect: Method index out of range")
+		return
 	}
 	p := &t.methods[i]
 	if p.name != nil {
@@ -904,7 +906,7 @@ func toCommonType(p *runtime.Type) *commonType {
 	}
 	x := unsafe.Pointer(p)
 	if uintptr(x)&reflectFlags != 0 {
-		panic("reflect: invalid interface value")
+		panic("invalid interface value")
 	}
 	return &(*hdr)(x).t
 }

@@ -9,6 +9,7 @@ import (
 	"testing"
 )
 
+
 func checkPos(t *testing.T, msg string, p, q Position) {
 	if p.Filename != q.Filename {
 		t.Errorf("%s: expected filename = %q; got %q", msg, q.Filename, p.Filename)
@@ -24,6 +25,7 @@ func checkPos(t *testing.T, msg string, p, q Position) {
 	}
 }
 
+
 func TestNoPos(t *testing.T) {
 	if NoPos.IsValid() {
 		t.Errorf("NoPos should not be valid")
@@ -33,6 +35,7 @@ func TestNoPos(t *testing.T) {
 	fset = NewFileSet()
 	checkPos(t, "fset NoPos", fset.Position(NoPos), Position{})
 }
+
 
 var tests = []struct {
 	filename string
@@ -50,6 +53,7 @@ var tests = []struct {
 	{"h", []byte("package p\n\nimport \"fmt\"\n "), 25, []int{0, 10, 11, 24}},
 }
 
+
 func linecol(lines []int, offs int) (int, int) {
 	prevLineOffs := 0
 	for line, lineOffs := range lines {
@@ -60,6 +64,7 @@ func linecol(lines []int, offs int) (int, int) {
 	}
 	return len(lines), offs - prevLineOffs + 1
 }
+
 
 func verifyPositions(t *testing.T, fset *FileSet, f *File, lines []int) {
 	for offs := 0; offs < f.Size(); offs++ {
@@ -75,6 +80,7 @@ func verifyPositions(t *testing.T, fset *FileSet, f *File, lines []int) {
 	}
 }
 
+
 func makeTestSource(size int, lines []int) []byte {
 	src := make([]byte, size)
 	for _, offs := range lines {
@@ -84,6 +90,7 @@ func makeTestSource(size int, lines []int) []byte {
 	}
 	return src
 }
+
 
 func TestPositions(t *testing.T) {
 	const delta = 7 // a non-zero base offset increment
@@ -143,6 +150,7 @@ func TestPositions(t *testing.T) {
 	}
 }
 
+
 func TestLineInfo(t *testing.T) {
 	fset := NewFileSet()
 	f := fset.AddFile("foo", fset.Base(), 500)
@@ -161,6 +169,7 @@ func TestLineInfo(t *testing.T) {
 		checkPos(t, msg, fset.Position(p), Position{"bar", offs, 42, col})
 	}
 }
+
 
 func TestFiles(t *testing.T) {
 	fset := NewFileSet()

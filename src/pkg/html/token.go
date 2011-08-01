@@ -459,7 +459,7 @@ loop:
 			src++
 			break loop
 		case '&':
-			dst, src = unescapeEntity(z.buf, dst, src, true)
+			dst, src = unescapeEntity(z.buf, dst, src)
 		case '\\':
 			if src == z.p1 {
 				z.buf[dst] = '\\'

@@ -69,10 +69,7 @@ Goinstall recognizes packages from a few common code hosting sites:
 		import "github.com/user/project"
 		import "github.com/user/project/sub/directory"
 
-	Google Code Project Hosting (Git, Mercurial, Subversion)
-
-		import "project.googlecode.com/git"
-		import "project.googlecode.com/git/sub/directory"
+	Google Code Project Hosting (Mercurial, Subversion)
 
 		import "project.googlecode.com/hg"
 		import "project.googlecode.com/hg/sub/directory"

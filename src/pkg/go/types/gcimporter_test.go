@@ -15,6 +15,7 @@ import (
 	"time"
 )
 
+
 var gcName, gcPath string // compiler name and path
 
 func init() {
@@ -34,6 +35,7 @@ func init() {
 	gcPath, _ = exec.LookPath(gcName)
 }
 
+
 func compile(t *testing.T, dirname, filename string) {
 	cmd := exec.Command(gcPath, filename)
 	cmd.Dir = dirname
@@ -44,6 +46,7 @@ func compile(t *testing.T, dirname, filename string) {
 	}
 	t.Logf("%s", string(out))
 }
+
 
 // Use the same global imports map for all tests. The effect is
 // as if all tested packages were imported into a single package.
@@ -57,6 +60,7 @@ func testPath(t *testing.T, path string) bool {
 	}
 	return true
 }
+
 
 const maxTime = 3e9 // maximum allotted testing time in ns
 
@@ -88,6 +92,7 @@ func testDir(t *testing.T, dir string, endTime int64) (nimports int) {
 	}
 	return
 }
+
 
 func TestGcImport(t *testing.T) {
 	compile(t, "testdata", "exports.go")

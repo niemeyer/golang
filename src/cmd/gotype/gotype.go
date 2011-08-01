@@ -18,19 +18,21 @@ import (
 	"strings"
 )
 
+
 var (
 	// main operation modes
 	pkgName   = flag.String("p", "", "process only those files in package pkgName")
 	recursive = flag.Bool("r", false, "recursively process subdirectories")
 	verbose   = flag.Bool("v", false, "verbose mode")
-	allErrors = flag.Bool("e", false, "print all (including spurious) errors")
 
 	// debugging support
 	printTrace = flag.Bool("trace", false, "print parse trace")
 	printAST   = flag.Bool("ast", false, "print AST")
 )
 
+
 var exitCode = 0
+
 
 func usage() {
 	fmt.Fprintf(os.Stderr, "usage: gotype [flags] [path ...]\n")
@@ -38,10 +40,12 @@ func usage() {
 	os.Exit(2)
 }
 
+
 func report(err os.Error) {
 	scanner.PrintError(os.Stderr, err)
 	exitCode = 2
 }
+
 
 // parse returns the AST for the Go source src.
 // The filename is for error reporting only.
@@ -69,9 +73,6 @@ func parse(fset *token.FileSet, filename string, src []byte) *ast.File {
 
 	// parse entire file
 	mode := parser.DeclarationErrors
-	if *allErrors {
-		mode |= parser.SpuriousErrors
-	}
 	if *printTrace {
 		mode |= parser.Trace
 	}
@@ -87,6 +88,7 @@ func parse(fset *token.FileSet, filename string, src []byte) *ast.File {
 	return file
 }
 
+
 func parseStdin(fset *token.FileSet) (files map[string]*ast.File) {
 	files = make(map[string]*ast.File)
 	src, err := ioutil.ReadAll(os.Stdin)
@@ -100,6 +102,7 @@ func parseStdin(fset *token.FileSet) (files map[string]*ast.File) {
 	}
 	return
 }
+
 
 func parseFiles(fset *token.FileSet, filenames []string) (files map[string]*ast.File) {
 	files = make(map[string]*ast.File)
@@ -120,10 +123,12 @@ func parseFiles(fset *token.FileSet, filenames []string) (files map[string]*ast.
 	return
 }
 
+
 func isGoFilename(filename string) bool {
 	// ignore non-Go files
 	return !strings.HasPrefix(filename, ".") && strings.HasSuffix(filename, ".go")
 }
+
 
 func processDirectory(dirname string) {
 	f, err := os.Open(dirname)
@@ -142,6 +147,7 @@ func processDirectory(dirname string) {
 	}
 	processFiles(filenames, false)
 }
+
 
 func processFiles(filenames []string, allFiles bool) {
 	i := 0
@@ -164,6 +170,7 @@ func processFiles(filenames []string, allFiles bool) {
 	processPackage(fset, parseFiles(fset, filenames[0:i]))
 }
 
+
 func processPackage(fset *token.FileSet, files map[string]*ast.File) {
 	// make a package (resolve all identifiers)
 	pkg, err := ast.NewPackage(fset, files, types.GcImporter, types.Universe)
@@ -176,6 +183,7 @@ func processPackage(fset *token.FileSet, files map[string]*ast.File) {
 		report(err)
 	}
 }
+
 
 func main() {
 	flag.Usage = usage

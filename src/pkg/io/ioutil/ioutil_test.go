@@ -59,6 +59,7 @@ func TestWriteFile(t *testing.T) {
 	os.Remove(filename) // ignore error
 }
 
+
 func TestReadDir(t *testing.T) {
 	dirname := "rumpelstilzchen"
 	_, err := ReadDir(dirname)

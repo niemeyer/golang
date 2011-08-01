@@ -17,6 +17,7 @@ import (
 	"utf8"
 )
 
+
 // ----------------------------------------------------------------------------
 // Filter implementation
 
@@ -30,6 +31,7 @@ type cell struct {
 	width int  // cell width in runes
 	htab  bool // true if the cell is terminated by an htab ('\t')
 }
+
 
 // A Writer is a filter that inserts padding around tab-delimited
 // columns in its input to align them in the output.
@@ -93,7 +95,9 @@ type Writer struct {
 	widths  []int        // list of column widths in runes - re-used during formatting
 }
 
+
 func (b *Writer) addLine() { b.lines = append(b.lines, []cell{}) }
+
 
 // Reset the current state.
 func (b *Writer) reset() {
@@ -105,6 +109,7 @@ func (b *Writer) reset() {
 	b.widths = b.widths[0:0]
 	b.addLine()
 }
+
 
 // Internal representation (current state):
 //
@@ -128,6 +133,7 @@ func (b *Writer) reset() {
 // ^                  ^                         ^
 // |                  |                         |
 // buf                start of incomplete cell  pos
+
 
 // Formatting can be controlled with these flags.
 const (
@@ -155,6 +161,7 @@ const (
 	// Discarded columns appear as zero-width columns ("||").
 	Debug
 )
+
 
 // A Writer must be initialized with a call to Init. The first parameter (output)
 // specifies the filter output. The remaining parameters control the formatting:
@@ -198,6 +205,7 @@ func (b *Writer) Init(output io.Writer, minwidth, tabwidth, padding int, padchar
 	return b
 }
 
+
 // debugging support (keep code around)
 func (b *Writer) dump() {
 	pos := 0
@@ -212,11 +220,13 @@ func (b *Writer) dump() {
 	print("\n")
 }
 
+
 // local error wrapper so we can distinguish os.Errors we want to return
 // as errors from genuine panics (which we don't want to return as errors)
 type osError struct {
 	err os.Error
 }
+
 
 func (b *Writer) write0(buf []byte) {
 	n, err := b.output.Write(buf)
@@ -228,6 +238,7 @@ func (b *Writer) write0(buf []byte) {
 	}
 }
 
+
 func (b *Writer) writeN(src []byte, n int) {
 	for n > len(src) {
 		b.write0(src)
@@ -236,10 +247,12 @@ func (b *Writer) writeN(src []byte, n int) {
 	b.write0(src[0:n])
 }
 
+
 var (
 	newline = []byte{'\n'}
 	tabs    = []byte("\t\t\t\t\t\t\t\t")
 )
+
 
 func (b *Writer) writePadding(textw, cellw int, useTabs bool) {
 	if b.padbytes[0] == '\t' || useTabs {
@@ -260,6 +273,7 @@ func (b *Writer) writePadding(textw, cellw int, useTabs bool) {
 	// padding is done with non-tab characters
 	b.writeN(b.padbytes[0:], cellw-textw)
 }
+
 
 var vbar = []byte{'|'}
 
@@ -313,6 +327,7 @@ func (b *Writer) writeLines(pos0 int, line0, line1 int) (pos int) {
 	}
 	return
 }
+
 
 // Format the text between line0 and line1 (excluding line1); pos
 // is the buffer position corresponding to the beginning of line0.
@@ -377,17 +392,20 @@ func (b *Writer) format(pos0 int, line0, line1 int) (pos int) {
 	return b.writeLines(pos, line0, line1)
 }
 
+
 // Append text to current cell.
 func (b *Writer) append(text []byte) {
 	b.buf.Write(text)
 	b.cell.size += len(text)
 }
 
+
 // Update the cell width.
 func (b *Writer) updateWidth() {
 	b.cell.width += utf8.RuneCount(b.buf.Bytes()[b.pos:b.buf.Len()])
 	b.pos = b.buf.Len()
 }
+
 
 // To escape a text segment, bracket it with Escape characters.
 // For instance, the tab in this string "Ignore this tab: \xff\t\xff"
@@ -397,6 +415,7 @@ func (b *Writer) updateWidth() {
 // The value 0xff was chosen because it cannot appear in a valid UTF-8 sequence.
 //
 const Escape = '\xff'
+
 
 // Start escaped mode.
 func (b *Writer) startEscape(ch byte) {
@@ -409,6 +428,7 @@ func (b *Writer) startEscape(ch byte) {
 		b.endChar = ';'
 	}
 }
+
 
 // Terminate escaped mode. If the escaped text was an HTML tag, its width
 // is assumed to be zero for formatting purposes; if it was an HTML entity,
@@ -430,6 +450,7 @@ func (b *Writer) endEscape() {
 	b.endChar = 0
 }
 
+
 // Terminate the current cell by adding it to the list of cells of the
 // current line. Returns the number of cells in that line.
 //
@@ -441,11 +462,13 @@ func (b *Writer) terminateCell(htab bool) int {
 	return len(*line)
 }
 
+
 func handlePanic(err *os.Error) {
 	if e := recover(); e != nil {
 		*err = e.(osError).err // re-panics if it's not a local osError
 	}
 }
+
 
 // Flush should be called after the last call to Write to ensure
 // that any data buffered in the Writer is written to output. Any
@@ -470,6 +493,7 @@ func (b *Writer) Flush() (err os.Error) {
 
 	return
 }
+
 
 var hbar = []byte("---\n")
 
@@ -552,6 +576,7 @@ func (b *Writer) Write(buf []byte) (n int, err os.Error) {
 	n = len(buf)
 	return
 }
+
 
 // NewWriter allocates and initializes a new tabwriter.Writer.
 // The parameters are the same as for the the Init function.

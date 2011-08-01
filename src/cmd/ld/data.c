@@ -36,7 +36,6 @@
 #include	"../ld/pe.h"
 
 void	dynreloc(void);
-static vlong addaddrplus4(Sym *s, Sym *t, int32 add);
 
 /*
  * divide-and-conquer list-link
@@ -256,19 +255,11 @@ dynrelocsym(Sym *s)
 				r->add = targ->plt;
 				
 				// jmp *addr
-				if(thechar == '8') {
-					adduint8(rel, 0xff);
-					adduint8(rel, 0x25);
-					addaddr(rel, targ);
-					adduint8(rel, 0x90);
-					adduint8(rel, 0x90);
-				} else {
-					adduint8(rel, 0xff);
-					adduint8(rel, 0x24);
-					adduint8(rel, 0x25);
-					addaddrplus4(rel, targ, 0);
-					adduint8(rel, 0x90);
-				}
+				adduint8(rel, 0xff);
+				adduint8(rel, 0x25);
+				addaddr(rel, targ);
+				adduint8(rel, 0x90);
+				adduint8(rel, 0x90);
 			} else if(r->sym->plt >= 0) {
 				r->sym = rel;
 				r->add = targ->plt;
@@ -460,7 +451,7 @@ codeblk(int32 addr, int32 size)
 	uchar *q;
 
 	if(debug['a'])
-		Bprint(&bso, "codeblk [%#x,%#x) at offset %#llx\n", addr, addr+size, cpos());
+		Bprint(&bso, "codeblk [%#x,%#x) at offset %#llx\n", addr, addr+size, seek(cout, 0, 1));
 
 	blk(textp, addr, size);
 
@@ -536,7 +527,7 @@ datblk(int32 addr, int32 size)
 	uchar *p, *ep;
 
 	if(debug['a'])
-		Bprint(&bso, "datblk [%#x,%#x) at offset %#llx\n", addr, addr+size, cpos());
+		Bprint(&bso, "datblk [%#x,%#x) at offset %#llx\n", addr, addr+size, seek(cout, 0, 1));
 
 	blk(datap, addr, size);
 
@@ -688,27 +679,6 @@ addaddrplus(Sym *s, Sym *t, int32 add)
 }
 
 vlong
-addaddrplus4(Sym *s, Sym *t, int32 add)
-{
-	vlong i;
-	Reloc *r;
-
-	if(s->type == 0)
-		s->type = SDATA;
-	s->reachable = 1;
-	i = s->size;
-	s->size += 4;
-	symgrow(s, s->size);
-	r = addrel(s);
-	r->sym = t;
-	r->off = i;
-	r->siz = 4;
-	r->type = D_ADDR;
-	r->add = add;
-	return i;
-}
-
-vlong
 addpcrelplus(Sym *s, Sym *t, int32 add)
 {
 	vlong i;
@@ -821,8 +791,9 @@ dodata(void)
 	s = datap;
 	for(; s != nil && s->type < SSYMTAB; s = s->next) {
 		s->type = SRODATA;
+		t = rnd(s->size, PtrSize);
 		s->value = datsize;
-		datsize += rnd(s->size, PtrSize);
+		datsize += t;
 	}
 	sect->len = datsize - sect->vaddr;
 
@@ -835,43 +806,21 @@ dodata(void)
 		datsize += s->size;
 	}
 	sect->len = datsize - sect->vaddr;
-	datsize = rnd(datsize, PtrSize);
 
 	/* gopclntab */
 	sect = addsection(&segtext, ".gopclntab", 04);
 	sect->vaddr = datsize;
-	for(; s != nil && s->type < SELFROSECT; s = s->next) {
+	for(; s != nil && s->type < SDATA; s = s->next) {
 		s->type = SRODATA;
 		s->value = datsize;
 		datsize += s->size;
 	}
 	sect->len = datsize - sect->vaddr;
-	datsize = rnd(datsize, PtrSize);
-
-	/* read-only ELF sections */
-	for(; s != nil && s->type < SELFSECT; s = s->next) {
-		sect = addsection(&segtext, s->name, 04);
-		sect->vaddr = datsize;
-		s->type = SRODATA;
-		s->value = datsize;
-		datsize += rnd(s->size, PtrSize);
-		sect->len = datsize - sect->vaddr;
-	}
-
-	/* writable ELF sections */
-	datsize = 0;
-	for(; s != nil && s->type < SDATA; s = s->next) {
-		sect = addsection(&segdata, s->name, 06);
-		sect->vaddr = datsize;
-		s->type = SDATA;
-		s->value = datsize;
-		datsize += rnd(s->size, PtrSize);
-		sect->len = datsize - sect->vaddr;
-	}
 
 	/* data */
+	datsize = 0;
 	sect = addsection(&segdata, ".data", 06);
-	sect->vaddr = datsize;
+	sect->vaddr = 0;
 	for(; s != nil && s->type < SBSS; s = s->next) {
 		s->type = SDATA;
 		t = s->size;
@@ -971,43 +920,38 @@ address(void)
 	segtext.fileoff = HEADR;
 	for(s=segtext.sect; s != nil; s=s->next) {
 		s->vaddr = va;
-		va += rnd(s->len, PtrSize);
+		va += s->len;
+		segtext.len = va - INITTEXT;
+		va = rnd(va, INITRND);
 	}
-	segtext.len = va - INITTEXT;
 	segtext.filelen = segtext.len;
-
-	va = rnd(va, INITRND);
 
 	segdata.rwx = 06;
 	segdata.vaddr = va;
 	segdata.fileoff = va - segtext.vaddr + segtext.fileoff;
-	segdata.filelen = 0;
 	if(HEADTYPE == Hwindows)
 		segdata.fileoff = segtext.fileoff + rnd(segtext.len, PEFILEALIGN);
 	if(HEADTYPE == Hplan9x32)
 		segdata.fileoff = segtext.fileoff + segtext.filelen;
-	data = nil;
 	for(s=segdata.sect; s != nil; s=s->next) {
 		s->vaddr = va;
 		va += s->len;
-		segdata.filelen += s->len;
 		segdata.len = va - segdata.vaddr;
-		if(strcmp(s->name, ".data") == 0)
-			data = s;
 	}
-	segdata.filelen -= data->next->len; // deduct .bss
-
+	segdata.filelen = segdata.sect->len;	// assume .data is first
+	
 	text = segtext.sect;
 	rodata = text->next;
 	symtab = rodata->next;
 	pclntab = symtab->next;
+	data = segdata.sect;
 
 	for(sym = datap; sym != nil; sym = sym->next) {
 		cursym = sym;
 		if(sym->type < SDATA)
 			sym->value += rodata->vaddr;
 		else
-			sym->value += segdata.sect->vaddr;
+			sym->value += data->vaddr;
 		for(sub = sym->sub; sub != nil; sub = sub->sub)
 			sub->value += sym->value;
 	}

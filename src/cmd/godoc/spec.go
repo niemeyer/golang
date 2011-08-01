@@ -18,6 +18,7 @@ import (
 	"io"
 )
 
+
 type ebnfParser struct {
 	out     io.Writer   // parser output
 	src     []byte      // parser source
@@ -29,11 +30,13 @@ type ebnfParser struct {
 	lit     string      // token literal
 }
 
+
 func (p *ebnfParser) flush() {
 	offs := p.file.Offset(p.pos)
 	p.out.Write(p.src[p.prev:offs])
 	p.prev = offs
 }
+
 
 func (p *ebnfParser) next() {
 	if p.pos.IsValid() {
@@ -47,9 +50,11 @@ func (p *ebnfParser) next() {
 	}
 }
 
+
 func (p *ebnfParser) Error(pos token.Position, msg string) {
 	fmt.Fprintf(p.out, `<span class="alert">error: %s</span>`, msg)
 }
+
 
 func (p *ebnfParser) errorExpected(pos token.Pos, msg string) {
 	msg = "expected " + msg
@@ -64,6 +69,7 @@ func (p *ebnfParser) errorExpected(pos token.Pos, msg string) {
 	p.Error(p.file.Position(pos), msg)
 }
 
+
 func (p *ebnfParser) expect(tok token.Token) token.Pos {
 	pos := p.pos
 	if p.tok != tok {
@@ -72,6 +78,7 @@ func (p *ebnfParser) expect(tok token.Token) token.Pos {
 	p.next() // make progress in any case
 	return pos
 }
+
 
 func (p *ebnfParser) parseIdentifier(def bool) {
 	name := p.lit
@@ -83,6 +90,7 @@ func (p *ebnfParser) parseIdentifier(def bool) {
 	}
 	p.prev += len(name) // skip identifier when calling flush
 }
+
 
 func (p *ebnfParser) parseTerm() bool {
 	switch p.tok {
@@ -119,6 +127,7 @@ func (p *ebnfParser) parseTerm() bool {
 	return true
 }
 
+
 func (p *ebnfParser) parseSequence() {
 	if !p.parseTerm() {
 		p.errorExpected(p.pos, "term")
@@ -126,6 +135,7 @@ func (p *ebnfParser) parseSequence() {
 	for p.parseTerm() {
 	}
 }
+
 
 func (p *ebnfParser) parseExpression() {
 	for {
@@ -137,6 +147,7 @@ func (p *ebnfParser) parseExpression() {
 	}
 }
 
+
 func (p *ebnfParser) parseProduction() {
 	p.parseIdentifier(true)
 	p.expect(token.ASSIGN)
@@ -145,6 +156,7 @@ func (p *ebnfParser) parseProduction() {
 	}
 	p.expect(token.PERIOD)
 }
+
 
 func (p *ebnfParser) parse(fset *token.FileSet, out io.Writer, src []byte) {
 	// initialize ebnfParser
@@ -161,11 +173,13 @@ func (p *ebnfParser) parse(fset *token.FileSet, out io.Writer, src []byte) {
 	p.flush()
 }
 
+
 // Markers around EBNF sections
 var (
 	openTag  = []byte(`<pre class="ebnf">`)
 	closeTag = []byte(`</pre>`)
 )
+
 
 func linkify(out io.Writer, src []byte) {
 	fset := token.NewFileSet()

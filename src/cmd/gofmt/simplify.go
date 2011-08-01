@@ -9,6 +9,7 @@ import (
 	"reflect"
 )
 
+
 type simplifier struct{}
 
 func (s *simplifier) Visit(node ast.Node) ast.Visitor {
@@ -58,6 +59,7 @@ func (s *simplifier) Visit(node ast.Node) ast.Visitor {
 
 	return s
 }
+
 
 func simplify(node ast.Node) {
 	var s simplifier

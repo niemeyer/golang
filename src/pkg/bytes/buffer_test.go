@@ -12,6 +12,7 @@ import (
 	"utf8"
 )
 
+
 const N = 10000  // make this bigger for a larger (and slower) test
 var data string  // test data for write tests
 var bytes []byte // test data; same as data but as a slice.
@@ -46,6 +47,7 @@ func check(t *testing.T, testname string, buf *Buffer, s string) {
 	}
 }
 
+
 // Fill buf through n writes of string fus.
 // The initial contents of buf corresponds to the string s;
 // the result is the final contents of buf returned as a string.
@@ -64,6 +66,7 @@ func fillString(t *testing.T, testname string, buf *Buffer, s string, n int, fus
 	}
 	return s
 }
+
 
 // Fill buf through n writes of byte slice fub.
 // The initial contents of buf corresponds to the string s;
@@ -84,15 +87,18 @@ func fillBytes(t *testing.T, testname string, buf *Buffer, s string, n int, fub 
 	return s
 }
 
+
 func TestNewBuffer(t *testing.T) {
 	buf := NewBuffer(bytes)
 	check(t, "NewBuffer", buf, data)
 }
 
+
 func TestNewBufferString(t *testing.T) {
 	buf := NewBufferString(data)
 	check(t, "NewBufferString", buf, data)
 }
+
 
 // Empty buf through repeated reads into fub.
 // The initial contents of buf corresponds to the string s.
@@ -113,6 +119,7 @@ func empty(t *testing.T, testname string, buf *Buffer, s string, fub []byte) {
 
 	check(t, testname+" (empty 4)", buf, "")
 }
+
 
 func TestBasicOperations(t *testing.T) {
 	var buf Buffer
@@ -168,6 +175,7 @@ func TestBasicOperations(t *testing.T) {
 	}
 }
 
+
 func TestLargeStringWrites(t *testing.T) {
 	var buf Buffer
 	limit := 30
@@ -180,6 +188,7 @@ func TestLargeStringWrites(t *testing.T) {
 	}
 	check(t, "TestLargeStringWrites (3)", &buf, "")
 }
+
 
 func TestLargeByteWrites(t *testing.T) {
 	var buf Buffer
@@ -194,6 +203,7 @@ func TestLargeByteWrites(t *testing.T) {
 	check(t, "TestLargeByteWrites (3)", &buf, "")
 }
 
+
 func TestLargeStringReads(t *testing.T) {
 	var buf Buffer
 	for i := 3; i < 30; i += 3 {
@@ -203,6 +213,7 @@ func TestLargeStringReads(t *testing.T) {
 	check(t, "TestLargeStringReads (3)", &buf, "")
 }
 
+
 func TestLargeByteReads(t *testing.T) {
 	var buf Buffer
 	for i := 3; i < 30; i += 3 {
@@ -211,6 +222,7 @@ func TestLargeByteReads(t *testing.T) {
 	}
 	check(t, "TestLargeByteReads (3)", &buf, "")
 }
+
 
 func TestMixedReadsAndWrites(t *testing.T) {
 	var buf Buffer
@@ -231,12 +243,14 @@ func TestMixedReadsAndWrites(t *testing.T) {
 	empty(t, "TestMixedReadsAndWrites (2)", &buf, s, make([]byte, buf.Len()))
 }
 
+
 func TestNil(t *testing.T) {
 	var b *Buffer
 	if b.String() != "<nil>" {
 		t.Errorf("expected <nil>; got %q", b.String())
 	}
 }
+
 
 func TestReadFrom(t *testing.T) {
 	var buf Buffer
@@ -248,6 +262,7 @@ func TestReadFrom(t *testing.T) {
 	}
 }
 
+
 func TestWriteTo(t *testing.T) {
 	var buf Buffer
 	for i := 3; i < 30; i += 3 {
@@ -257,6 +272,7 @@ func TestWriteTo(t *testing.T) {
 		empty(t, "TestReadFrom (2)", &b, s, make([]byte, len(data)))
 	}
 }
+
 
 func TestRuneIO(t *testing.T) {
 	const NRune = 1000
@@ -306,6 +322,7 @@ func TestRuneIO(t *testing.T) {
 		}
 	}
 }
+
 
 func TestNext(t *testing.T) {
 	b := []byte{0, 1, 2, 3, 4}

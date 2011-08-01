@@ -15,6 +15,7 @@ import (
 	"utf8"
 )
 
+
 const (
 	defaultBufSize = 4096
 )
@@ -40,6 +41,7 @@ type BufSizeError int
 func (b BufSizeError) String() string {
 	return "bufio: bad buffer size " + strconv.Itoa(int(b))
 }
+
 
 // Buffered input.
 
@@ -372,6 +374,7 @@ func (b *Reader) ReadString(delim byte) (line string, err os.Error) {
 	bytes, e := b.ReadBytes(delim)
 	return string(bytes), e
 }
+
 
 // buffered output
 

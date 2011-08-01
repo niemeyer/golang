@@ -11,7 +11,6 @@ CGOFILES=\
 	basic.go\
 	callback.go\
 	env.go\
-	exports.go\
 	issue1222.go\
 	issue1328.go\
 	issue1560.go\

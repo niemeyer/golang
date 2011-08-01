@@ -73,24 +73,6 @@
 #define IMAGE_REL_I386_SECREL7	0x000D
 #define IMAGE_REL_I386_REL32	0x0014
 
-#define IMAGE_REL_AMD64_ABSOLUTE 0x0000
-#define IMAGE_REL_AMD64_ADDR64 0x0001 // R_X86_64_64
-#define IMAGE_REL_AMD64_ADDR32 0x0002 // R_X86_64_PC32
-#define IMAGE_REL_AMD64_ADDR32NB 0x0003
-#define IMAGE_REL_AMD64_REL32 0x0004 
-#define IMAGE_REL_AMD64_REL32_1 0x0005
-#define IMAGE_REL_AMD64_REL32_2 0x0006
-#define IMAGE_REL_AMD64_REL32_3 0x0007
-#define IMAGE_REL_AMD64_REL32_4 0x0008
-#define IMAGE_REL_AMD64_REL32_5 0x0009
-#define IMAGE_REL_AMD64_SECTION 0x000A
-#define IMAGE_REL_AMD64_SECREL 0x000B
-#define IMAGE_REL_AMD64_SECREL7 0x000C
-#define IMAGE_REL_AMD64_TOKEN 0x000D
-#define IMAGE_REL_AMD64_SREL32 0x000E
-#define IMAGE_REL_AMD64_PAIR 0x000F
-#define IMAGE_REL_AMD64_SSPAN32 0x0010
-
 typedef struct PeSym PeSym;
 typedef struct PeSect PeSect;
 typedef struct PeObj PeObj;
@@ -222,8 +204,6 @@ ldpe(Biobuf *f, char *pkg, int64 len, char *pn)
 				s->type = SRODATA;
 				break;
 			case IMAGE_SCN_CNT_UNINITIALIZED_DATA|IMAGE_SCN_MEM_READ|IMAGE_SCN_MEM_WRITE: //.bss
-				s->type = SBSS;
-				break;
 			case IMAGE_SCN_CNT_INITIALIZED_DATA|IMAGE_SCN_MEM_READ|IMAGE_SCN_MEM_WRITE: //.data
 				s->type = SDATA;
 				break;
@@ -281,7 +261,6 @@ ldpe(Biobuf *f, char *pkg, int64 len, char *pn)
 				default:
 					diag("%s: unknown relocation type %d;", pn, type);
 				case IMAGE_REL_I386_REL32:
-				case IMAGE_REL_AMD64_REL32:
 					rp->type = D_PCREL;
 					rp->add = 0;
 					break;
@@ -290,16 +269,6 @@ ldpe(Biobuf *f, char *pkg, int64 len, char *pn)
 					rp->type = D_ADDR;
 					// load addend from image
 					rp->add = le32(rsect->base+rp->off);
-					break;
-				case IMAGE_REL_AMD64_ADDR32: // R_X86_64_PC32
-					rp->type = D_PCREL;
-					rp->add += 4;
-					break;
-				case IMAGE_REL_AMD64_ADDR64: // R_X86_64_64
-					rp->siz = 8;
-					rp->type = D_ADDR;
-					// load addend from image
-					rp->add = le64(rsect->base+rp->off);
 					break;
 			}
 		}
@@ -329,10 +298,6 @@ ldpe(Biobuf *f, char *pkg, int64 len, char *pn)
 		if(sym->sectnum == 0) {// extern
 			if(s->type == SDYNIMPORT)
 				s->plt = -2; // flag for dynimport in PE object files.
-			if (s->type == SXREF && sym->value > 0) {// global data
-				s->type = SDATA; 
-				s->size = sym->value;
-			}
 			continue;
 		} else if (sym->sectnum > 0) {
 			sect = &obj->sect[sym->sectnum-1];
@@ -384,8 +349,6 @@ map(PeObj *obj, PeSect *sect)
 		return 0;
 
 	sect->base = mal(sect->sh.SizeOfRawData);
-	if(sect->sh.PointerToRawData == 0) // .bss don't has data in object file.
-		return 0;
 	werrstr("short read");
 	if(Bseek(obj->f, obj->base+sect->sh.PointerToRawData, 0) < 0 || 
 			Bread(obj->f, sect->base, sect->sh.SizeOfRawData) != sect->sh.SizeOfRawData)

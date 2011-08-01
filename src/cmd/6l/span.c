@@ -94,7 +94,7 @@ span1(Sym *s)
 					*bp++ = v;
 					*bp++ = v>>8;
 					*bp++ = v>>16;
-					*bp = v>>24;
+					*bp++ = v>>24;
 				}	
 			}
 			p->comefrom = P;
@@ -706,7 +706,6 @@ asmandsz(Adr *a, int r, int rex, int m64)
 	int t, scale;
 	Reloc rel;
 
-	USED(m64);
 	rex &= (0x40 | Rxr);
 	v = a->offset;
 	t = a->type;
@@ -733,6 +732,7 @@ asmandsz(Adr *a, int r, int rex, int m64)
 			*andptr++ = (0 << 6) | (4 << 0) | (r << 3);
 			asmidx(a->scale, a->index, t);
 			goto putrelv;
+			return;
 		}
 		if(v == 0 && rel.siz == 0 && t != D_BP && t != D_R13) {
 			*andptr++ = (0 << 6) | (4 << 0) | (r << 3);
@@ -1164,12 +1164,6 @@ found:
 	case Zlit:
 		for(; op = o->op[z]; z++)
 			*andptr++ = op;
-		break;
-
-	case Zlitm_r:
-		for(; op = o->op[z]; z++)
-			*andptr++ = op;
-		asmand(&p->from, &p->to);
 		break;
 
 	case Zmb_r:

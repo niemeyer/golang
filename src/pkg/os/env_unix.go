@@ -16,6 +16,7 @@ var ENOENV = NewError("no such environment variable")
 var env map[string]string
 var once sync.Once
 
+
 func copyenv() {
 	env = make(map[string]string)
 	for _, s := range Envs {

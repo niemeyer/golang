@@ -2,51 +2,27 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// This code differs from the slides in that it handles errors.
-
 package main
 
 import (
 	"crypto/aes"
-	"crypto/cipher"
+	"crypto/block"
 	"compress/gzip"
 	"io"
-	"log"
 	"os"
 )
 
-func EncryptAndGzip(dstfile, srcfile string, key, iv []byte) os.Error {
-	r, err := os.Open(srcfile)
-	if err != nil {
-		return err
-	}
+func EncryptAndGzip(dstfile, srcfile string, key, iv []byte) {
+	r, _ := os.Open(srcfile, os.O_RDONLY, 0)
 	var w io.WriteCloser
-	w, err = os.Create(dstfile)
-	if err != nil {
-		return err
-	}
+	w, _ = os.Open(dstfile, os.O_WRONLY|os.O_CREATE, 0666)
 	defer w.Close()
-	w, err = gzip.NewWriter(w)
-	if err != nil {
-		return err
-	}
+	w, _ = gzip.NewDeflater(w)
 	defer w.Close()
-	c, err := aes.NewCipher(key)
-	if err != nil {
-		return err
-	}
-	_, err = io.Copy(cipher.StreamWriter{S: cipher.NewOFB(c, iv), W: w}, r)
-	return err
+	c, _ := aes.NewCipher(key)
+	io.Copy(block.NewCBCEncrypter(c, iv, w), r)
 }
 
 func main() {
-	err := EncryptAndGzip(
-		"/tmp/passwd.gz",
-		"/etc/passwd",
-		make([]byte, 16),
-		make([]byte, 16),
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
+	EncryptAndGzip("/tmp/passwd.gz", "/etc/passwd", make([]byte, 16), make([]byte, 16))
 }

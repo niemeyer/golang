@@ -318,25 +318,6 @@ TEXT runtime·casp(SB), 7, $0
 	MOVL	$1, AX
 	RET
 
-// uint32 xadd(uint32 volatile *val, int32 delta)
-// Atomically:
-//	*val += delta;
-//	return *val;
-TEXT runtime·xadd(SB), 7, $0
-	MOVL	4(SP), BX
-	MOVL	8(SP), AX
-	MOVL	AX, CX
-	LOCK
-	XADDL	AX, 0(BX)
-	ADDL	CX, AX
-	RET
-
-TEXT runtime·atomicstorep(SB), 7, $0
-	MOVL	4(SP), BX
-	MOVL	8(SP), AX
-	XCHGL	AX, 0(BX)
-	RET
-
 // void jmpdefer(fn, sp);
 // called from deferreturn.
 // 1. pop the caller
@@ -479,16 +460,12 @@ TEXT runtime·stackcheck(SB), 7, $0
 TEXT runtime·memclr(SB),7,$0
 	MOVL	4(SP), DI		// arg 1 addr
 	MOVL	8(SP), CX		// arg 2 count
-	MOVL	CX, BX
-	ANDL	$3, BX
+	ADDL	$3, CX
 	SHRL	$2, CX
 	MOVL	$0, AX
 	CLD
 	REP
 	STOSL
-	MOVL	BX, CX
-	REP
-	STOSB
 	RET
 
 TEXT runtime·getcallerpc(SB),7,$0

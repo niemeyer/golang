@@ -4,10 +4,7 @@
 
 package sync
 
-import (
-	"runtime"
-	"sync/atomic"
-)
+import "runtime"
 
 // A WaitGroup waits for a collection of goroutines to finish.
 // The main goroutine calls Add to set the number of
@@ -31,8 +28,8 @@ import (
 // 
 type WaitGroup struct {
 	m       Mutex
-	counter int32
-	waiters int32
+	counter int
+	waiters int
 	sema    *uint32
 }
 
@@ -51,19 +48,19 @@ type WaitGroup struct {
 // Add adds delta, which may be negative, to the WaitGroup counter.
 // If the counter becomes zero, all goroutines blocked on Wait() are released.
 func (wg *WaitGroup) Add(delta int) {
-	v := atomic.AddInt32(&wg.counter, int32(delta))
-	if v < 0 {
+	wg.m.Lock()
+	if delta < -wg.counter {
+		wg.m.Unlock()
 		panic("sync: negative WaitGroup count")
 	}
-	if v > 0 || atomic.LoadInt32(&wg.waiters) == 0 {
-		return
+	wg.counter += delta
+	if wg.counter == 0 && wg.waiters > 0 {
+		for i := 0; i < wg.waiters; i++ {
+			runtime.Semrelease(wg.sema)
+		}
+		wg.waiters = 0
+		wg.sema = nil
 	}
-	wg.m.Lock()
-	for i := int32(0); i < wg.waiters; i++ {
-		runtime.Semrelease(wg.sema)
-	}
-	wg.waiters = 0
-	wg.sema = nil
 	wg.m.Unlock()
 }
 
@@ -74,20 +71,12 @@ func (wg *WaitGroup) Done() {
 
 // Wait blocks until the WaitGroup counter is zero.
 func (wg *WaitGroup) Wait() {
-	if atomic.LoadInt32(&wg.counter) == 0 {
-		return
-	}
 	wg.m.Lock()
-	atomic.AddInt32(&wg.waiters, 1)
-	// This code is racing with the unlocked path in Add above.
-	// The code above modifies counter and then reads waiters.
-	// We must modify waiters and then read counter (the opposite order)
-	// to avoid missing an Add.
-	if atomic.LoadInt32(&wg.counter) == 0 {
-		atomic.AddInt32(&wg.waiters, -1)
+	if wg.counter == 0 {
 		wg.m.Unlock()
 		return
 	}
+	wg.waiters++
 	if wg.sema == nil {
 		wg.sema = new(uint32)
 	}

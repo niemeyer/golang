@@ -16,6 +16,7 @@ import (
 	"strconv"
 )
 
+
 // hello world, the web server
 var helloRequests = expvar.NewInt("hello-requests")
 
@@ -125,6 +126,7 @@ func Logger(w http.ResponseWriter, req *http.Request) {
 	w.Write([]byte("oops"))
 }
 
+
 var webroot = flag.String("root", "/home/rsc", "web root directory")
 
 func main() {
@@ -136,7 +138,7 @@ func main() {
 	expvar.Publish("counter", ctr)
 
 	http.Handle("/", http.HandlerFunc(Logger))
-	http.Handle("/go/", http.StripPrefix("/go/", http.FileServer(http.Dir(*webroot))))
+	http.Handle("/go/", http.FileServer(*webroot, "/go/"))
 	http.Handle("/flags", http.HandlerFunc(FlagServer))
 	http.Handle("/args", http.HandlerFunc(ArgServer))
 	http.Handle("/go/hello", http.HandlerFunc(HelloServer))

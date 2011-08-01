@@ -80,6 +80,7 @@
 // This C code was written with an eye toward translating to Go
 // in the future.  Methods have the form Type_Method(Type *t, ...).
 
+typedef struct FixAlloc	FixAlloc;
 typedef struct MCentral	MCentral;
 typedef struct MHeap	MHeap;
 typedef struct MSpan	MSpan;
@@ -185,10 +186,10 @@ void	runtime·FixAlloc_Free(FixAlloc *f, void *p);
 // Shared with Go: if you edit this structure, also edit extern.go.
 struct MStats
 {
-	// General statistics.
+	// General statistics.  No locking; approximate.
 	uint64	alloc;		// bytes allocated and still in use
 	uint64	total_alloc;	// bytes allocated (even if freed)
-	uint64	sys;		// bytes obtained from system (should be sum of xxx_sys below, no locking, approximate)
+	uint64	sys;		// bytes obtained from system (should be sum of xxx_sys below)
 	uint64	nlookup;	// number of pointer lookups
 	uint64	nmalloc;	// number of mallocs
 	uint64	nfree;  // number of frees
@@ -221,6 +222,7 @@ struct MStats
 	bool	debuggc;
 	
 	// Statistics about allocation size classes.
+	// No locking; approximate.
 	struct {
 		uint32 size;
 		uint64 nmalloc;
@@ -266,20 +268,9 @@ struct MCache
 {
 	MCacheList list[NumSizeClasses];
 	uint64 size;
-	int64 local_cachealloc;	// bytes allocated (or freed) from cache since last lock of heap
-	int64 local_objects;	// objects allocated (or freed) from cache since last lock of heap
 	int64 local_alloc;	// bytes allocated (or freed) since last lock of heap
-	int64 local_total_alloc;	// bytes allocated (even if freed) since last lock of heap
-	int64 local_nmalloc;	// number of mallocs since last lock of heap
-	int64 local_nfree;	// number of frees since last lock of heap
-	int64 local_nlookup;	// number of pointer lookups since last lock of heap
+	int64 local_objects;	// objects allocated (or freed) since last lock of heap
 	int32 next_sample;	// trigger heap sample after allocating this many bytes
-	// Statistics about allocation size classes since last lock of heap
-	struct {
-		int64 nmalloc;
-		int64 nfree;
-	} local_by_size[NumSizeClasses];
-	
 };
 
 void*	runtime·MCache_Alloc(MCache *c, int32 sizeclass, uintptr size, int32 zeroed);
@@ -388,7 +379,6 @@ void	runtime·markspan(void *v, uintptr size, uintptr n, bool leftover);
 void	runtime·unmarkspan(void *v, uintptr size);
 bool	runtime·blockspecial(void*);
 void	runtime·setblockspecial(void*);
-void	runtime·purgecachedstats(M*);
 
 enum
 {

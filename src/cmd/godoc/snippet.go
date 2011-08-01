@@ -16,10 +16,12 @@ import (
 	"fmt"
 )
 
+
 type Snippet struct {
 	Line int
 	Text []byte
 }
+
 
 func newSnippet(fset *token.FileSet, decl ast.Decl, id *ast.Ident) *Snippet {
 	// TODO instead of pretty-printing the node, should use the original source instead
@@ -32,6 +34,7 @@ func newSnippet(fset *token.FileSet, decl ast.Decl, id *ast.Ident) *Snippet {
 	buf2.WriteString("</pre>")
 	return &Snippet{fset.Position(id.Pos()).Line, buf2.Bytes()}
 }
+
 
 func findSpec(list []ast.Spec, id *ast.Ident) ast.Spec {
 	for _, spec := range list {
@@ -55,6 +58,7 @@ func findSpec(list []ast.Spec, id *ast.Ident) ast.Spec {
 	return nil
 }
 
+
 func genSnippet(fset *token.FileSet, d *ast.GenDecl, id *ast.Ident) *Snippet {
 	s := findSpec(d.Specs, id)
 	if s == nil {
@@ -67,6 +71,7 @@ func genSnippet(fset *token.FileSet, d *ast.GenDecl, id *ast.Ident) *Snippet {
 	return newSnippet(fset, dd, id)
 }
 
+
 func funcSnippet(fset *token.FileSet, d *ast.FuncDecl, id *ast.Ident) *Snippet {
 	if d.Name != id {
 		return nil //  declaration doesn't contain id - exit gracefully
@@ -77,6 +82,7 @@ func funcSnippet(fset *token.FileSet, d *ast.FuncDecl, id *ast.Ident) *Snippet {
 
 	return newSnippet(fset, dd, id)
 }
+
 
 // NewSnippet creates a text snippet from a declaration decl containing an
 // identifier id. Parts of the declaration not containing the identifier
