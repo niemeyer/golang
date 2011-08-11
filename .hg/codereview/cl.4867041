@@ -1,0 +1,11 @@
+Mailed: False
+Description:
+	exp/template: rename Parse*File and Parse*Files for clarity
+	
+	The following functions have been renamed:
+	
+	    ParseSetFiles => ParseSetGlob
+	    ParseSetFile => ParseSetFiles
+	    ParseTemplateFiles => ParseTemplateGlob
+	    ParseTemplateFile => ParseTemplateFiles
+Files:
