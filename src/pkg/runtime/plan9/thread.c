@@ -47,11 +47,11 @@ runtime·exit(int32)
 		pid = pid/10;
 	}
 	p = buf;
-	runtime·mcpy((void*)p, (void*)"/proc/", 6);
+	runtime·memmove((void*)p, (void*)"/proc/", 6);
 	p += 6;
 	for(q--; q >= tmp;)
 		*p++ = *q--;
-	runtime·mcpy((void*)p, (void*)"/notepg", 7);
+	runtime·memmove((void*)p, (void*)"/notepg", 7);
 	
 	/* post interrupt note */
 	fd = runtime·open(buf, OWRITE);
@@ -114,12 +114,6 @@ runtime·unlock(Lock *l)
 }
 
 
-void 
-runtime·destroylock(Lock *l)
-{
-	// nothing
-}
-
 // User-level semaphore implementation:
 // try to do the operations in user space on u,
 // but when it's time to block, fall back on the kernel semaphore k.
@@ -166,4 +160,15 @@ void
 os·sigpipe(void)
 {
 	runtime·throw("too many writes on closed pipe");
+}
+
+/*
+ * placeholder - once notes are implemented,
+ * a signal generating a panic must appear as
+ * a call to this function for correct handling by
+ * traceback.
+ */
+void
+runtime·sigpanic(void)
+{
 }

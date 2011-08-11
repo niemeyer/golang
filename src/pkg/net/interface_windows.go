@@ -55,7 +55,6 @@ func getInterfaceList() ([]syscall.InterfaceInfo, os.Error) {
 	return ii[:c-1], nil
 }
 
-
 // If the ifindex is zero, interfaceTable returns mappings of all
 // network interfaces.  Otheriwse it returns a mapping of a specific
 // interface.
@@ -149,4 +148,11 @@ func interfaceAddrTable(ifindex int) ([]Addr, os.Error) {
 		}
 	}
 	return ifat, nil
+}
+
+// If the ifindex is zero, interfaceMulticastAddrTable returns
+// addresses for all network interfaces.  Otherwise it returns
+// addresses for a specific interface.
+func interfaceMulticastAddrTable(ifindex int) ([]Addr, os.Error) {
+	return nil, nil
 }

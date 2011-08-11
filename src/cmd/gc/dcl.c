@@ -457,17 +457,19 @@ colasname(Node *n)
 void
 colasdefn(NodeList *left, Node *defn)
 {
-	int nnew;
+	int nnew, nerr;
 	NodeList *l;
 	Node *n;
 
 	nnew = 0;
+	nerr = 0;
 	for(l=left; l; l=l->next) {
 		n = l->n;
 		if(isblank(n))
 			continue;
 		if(!colasname(n)) {
 			yyerror("non-name %#N on left side of :=", n);
+			nerr++;
 			continue;
 		}
 		if(n->sym->block == block)
@@ -480,7 +482,7 @@ colasdefn(NodeList *left, Node *defn)
 		defn->ninit = list(defn->ninit, nod(ODCL, n, N));
 		l->n = n;
 	}
-	if(nnew == 0)
+	if(nnew == 0 && nerr == 0)
 		yyerror("no new variables on left side of :=");
 }
 
@@ -744,10 +746,8 @@ stotype(NodeList *l, int et, Type **t, int funarg)
 			} else {
 				typecheck(&n->right, Etype);
 				n->type = n->right->type;
-				if(n->type == T) {
-					*t0 = T;
-					return t0;
-				}
+				if(n->type == T)
+					continue;
 				if(left != N)
 					left->type = n->type;
 				n->right = N;
@@ -1077,7 +1077,10 @@ methodsym(Sym *nsym, Type *t0, int iface)
 		if(t0->width < types[tptr]->width)
 			suffix = "·i";
 	}
-	p = smprint("%#hT·%s%s", t0, nsym->name, suffix);
+	if(t0->sym == S && isptr[t0->etype])
+		p = smprint("(%#hT).%s%s", t0, nsym->name, suffix);
+	else
+		p = smprint("%#hT.%s%s", t0, nsym->name, suffix);
 	s = pkglookup(p, s->pkg);
 	free(p);
 	return s;
@@ -1104,14 +1107,17 @@ methodname1(Node *n, Node *t)
 	char *star;
 	char *p;
 
-	star = "";
+	star = nil;
 	if(t->op == OIND) {
 		star = "*";
 		t = t->left;
 	}
 	if(t->sym == S || isblank(n))
 		return newname(n->sym);
-	p = smprint("%s%S·%S", star, t->sym, n->sym);
+	if(star)
+		p = smprint("(%s%S).%S", star, t->sym, n->sym);
+	else
+		p = smprint("%S.%S", t->sym, n->sym);
 	n = newname(pkglookup(p, t->sym->pkg));
 	free(p);
 	return n;

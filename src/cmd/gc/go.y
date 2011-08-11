@@ -685,6 +685,7 @@ select_stmt:
 	LBODY caseblock_list '}'
 	{
 		$$ = nod(OSELECT, N, N);
+		$$->lineno = typesw->lineno;
 		$$->list = $4;
 		typesw = typesw->left;
 	}
@@ -915,6 +916,18 @@ pexpr:
 |	'(' expr_or_type ')'
 	{
 		$$ = $2;
+		
+		// Need to know on lhs of := whether there are ( ).
+		// Don't bother with the OPAREN in other cases:
+		// it's just a waste of memory and time.
+		switch($$->op) {
+		case ONAME:
+		case ONONAME:
+		case OPACK:
+		case OTYPE:
+		case OLITERAL:
+			$$ = nod(OPAREN, $$, N);
+		}
 	}
 
 expr_or_type:
@@ -1236,7 +1249,10 @@ fnliteral:
 		$$ = closurebody($3);
 		fixlbrace($2);
 	}
-
+|	fnlitdcl error
+	{
+		$$ = closurebody(nil);
+	}
 
 /*
  * lists of things
@@ -1462,6 +1478,9 @@ non_dcl_stmt:
 	}
 |	if_stmt LELSE stmt
 	{
+		if($3->op != OIF && $3->op != OBLOCK)
+			yyerror("missing { } after else");
+
 		popdcl();
 		$$ = $1;
 		$$->nelse = list1($3);

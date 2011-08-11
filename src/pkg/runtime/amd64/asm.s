@@ -18,7 +18,8 @@ TEXT _rt0_amd64(SB),7,$-8
 	TESTQ	AX, AX
 	JZ	needtls
 	CALL	AX
-	JMP ok
+	CMPL	runtime·iswindows(SB), $0
+	JEQ ok
 
 needtls:
 	LEAQ	runtime·tls0(SB), DI
@@ -364,6 +365,45 @@ TEXT runtime·casp(SB), 7, $0
 	MOVL	$1, AX
 	RET
 
+// uint32 xadd(uint32 volatile *val, int32 delta)
+// Atomically:
+//	*val += delta;
+//	return *val;
+TEXT runtime·xadd(SB), 7, $0
+	MOVQ	8(SP), BX
+	MOVL	16(SP), AX
+	MOVL	AX, CX
+	LOCK
+	XADDL	AX, 0(BX)
+	ADDL	CX, AX
+	RET
+
+TEXT runtime·xchg(SB), 7, $0
+	MOVQ	8(SP), BX
+	MOVL	16(SP), AX
+	XCHGL	AX, 0(BX)
+	RET
+
+TEXT runtime·procyield(SB),7,$0
+	MOVL	8(SP), AX
+again:
+	PAUSE
+	SUBL	$1, AX
+	JNZ	again
+	RET
+
+TEXT runtime·atomicstorep(SB), 7, $0
+	MOVQ	8(SP), BX
+	MOVQ	16(SP), AX
+	XCHGQ	AX, 0(BX)
+	RET
+
+TEXT runtime·atomicstore(SB), 7, $0
+	MOVQ	8(SP), BX
+	MOVL	16(SP), AX
+	XCHGL	AX, 0(BX)
+	RET
+
 // void jmpdefer(fn, sp);
 // called from deferreturn.
 // 1. pop the caller
@@ -413,6 +453,7 @@ TEXT runtime·asmcgocall(SB),7,$0
 	MOVQ	DI, 16(SP)	// save g
 	MOVQ	DX, 8(SP)	// save SP
 	MOVQ	BX, DI		// DI = first argument in AMD64 ABI
+	MOVQ	BX, CX		// CX = first argument in Win64
 	CALL	AX
 
 	// Restore registers, g, stack pointer.
@@ -506,12 +547,16 @@ TEXT runtime·stackcheck(SB), 7, $0
 TEXT runtime·memclr(SB),7,$0
 	MOVQ	8(SP), DI		// arg 1 addr
 	MOVQ	16(SP), CX		// arg 2 count
-	ADDQ	$7, CX
+	MOVQ	CX, BX
+	ANDQ	$7, BX
 	SHRQ	$3, CX
 	MOVQ	$0, AX
 	CLD
 	REP
 	STOSQ
+	MOVQ	BX, CX
+	REP
+	STOSB
 	RET
 
 TEXT runtime·getcallerpc(SB),7,$0

@@ -6,6 +6,8 @@
 // collections.
 package sort
 
+import "math"
+
 // A type, typically a collection, that satisfies sort.Interface can be
 // sorted by the routines in this package.  The methods require that the
 // elements of the collection be enumerated by an integer index.
@@ -141,7 +143,6 @@ func quickSort(data Interface, a, b int) {
 
 func Sort(data Interface) { quickSort(data, 0, data.Len()) }
 
-
 func IsSorted(data Interface) bool {
 	n := data.Len()
 	for i := n - 1; i > 0; i-- {
@@ -151,7 +152,6 @@ func IsSorted(data Interface) bool {
 	}
 	return true
 }
-
 
 // Convenience types for common cases
 
@@ -165,17 +165,15 @@ func (p IntSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 // Sort is a convenience method.
 func (p IntSlice) Sort() { Sort(p) }
 
-
 // Float64Slice attaches the methods of Interface to []float64, sorting in increasing order.
 type Float64Slice []float64
 
 func (p Float64Slice) Len() int           { return len(p) }
-func (p Float64Slice) Less(i, j int) bool { return p[i] < p[j] }
+func (p Float64Slice) Less(i, j int) bool { return p[i] < p[j] || math.IsNaN(p[i]) && !math.IsNaN(p[j]) }
 func (p Float64Slice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
 // Sort is a convenience method.
 func (p Float64Slice) Sort() { Sort(p) }
-
 
 // StringSlice attaches the methods of Interface to []string, sorting in increasing order.
 type StringSlice []string
@@ -187,7 +185,6 @@ func (p StringSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 // Sort is a convenience method.
 func (p StringSlice) Sort() { Sort(p) }
 
-
 // Convenience wrappers for common cases
 
 // Ints sorts a slice of ints in increasing order.
@@ -196,7 +193,6 @@ func Ints(a []int) { Sort(IntSlice(a)) }
 func Float64s(a []float64) { Sort(Float64Slice(a)) }
 // Strings sorts a slice of strings in increasing order.
 func Strings(a []string) { Sort(StringSlice(a)) }
-
 
 // IntsAreSorted tests whether a slice of ints is sorted in increasing order.
 func IntsAreSorted(a []int) bool { return IsSorted(IntSlice(a)) }

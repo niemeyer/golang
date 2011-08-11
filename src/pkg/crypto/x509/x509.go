@@ -9,7 +9,6 @@ import (
 	"asn1"
 	"big"
 	"bytes"
-	"container/vector"
 	"crypto"
 	"crypto/dsa"
 	"crypto/rsa"
@@ -794,7 +793,7 @@ func ParseCertificate(asn1Data []byte) (*Certificate, os.Error) {
 // ParseCertificates parses one or more certificates from the given ASN.1 DER
 // data. The certificates must be concatenated with no intermediate padding.
 func ParseCertificates(asn1Data []byte) ([]*Certificate, os.Error) {
-	v := new(vector.Vector)
+	var v []*certificate
 
 	for len(asn1Data) > 0 {
 		cert := new(certificate)
@@ -803,12 +802,12 @@ func ParseCertificates(asn1Data []byte) ([]*Certificate, os.Error) {
 		if err != nil {
 			return nil, err
 		}
-		v.Push(cert)
+		v = append(v, cert)
 	}
 
-	ret := make([]*Certificate, v.Len())
-	for i := 0; i < v.Len(); i++ {
-		cert, err := parseCertificate(v.At(i).(*certificate))
+	ret := make([]*Certificate, len(v))
+	for i, ci := range v {
+		cert, err := parseCertificate(ci)
 		if err != nil {
 			return nil, err
 		}

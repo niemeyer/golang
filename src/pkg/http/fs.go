@@ -78,6 +78,7 @@ func isText(b []byte) bool {
 }
 
 func dirList(w ResponseWriter, f File) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, "<pre>\n")
 	for {
 		dirs, err := f.Readdir(100)
@@ -101,8 +102,10 @@ func serveFile(w ResponseWriter, r *Request, fs FileSystem, name string, redirec
 	const indexPage = "/index.html"
 
 	// redirect .../index.html to .../
+	// can't use Redirect() because that would make the path absolute,
+	// which would be a problem running under StripPrefix
 	if strings.HasSuffix(r.URL.Path, indexPage) {
-		Redirect(w, r, r.URL.Path[0:len(r.URL.Path)-len(indexPage)+1], StatusMovedPermanently)
+		localRedirect(w, r, "./")
 		return
 	}
 
@@ -127,12 +130,12 @@ func serveFile(w ResponseWriter, r *Request, fs FileSystem, name string, redirec
 		url := r.URL.Path
 		if d.IsDirectory() {
 			if url[len(url)-1] != '/' {
-				Redirect(w, r, url+"/", StatusMovedPermanently)
+				localRedirect(w, r, path.Base(url)+"/")
 				return
 			}
 		} else {
 			if url[len(url)-1] == '/' {
-				Redirect(w, r, url[0:len(url)-1], StatusMovedPermanently)
+				localRedirect(w, r, "../"+path.Base(url))
 				return
 			}
 		}
@@ -146,7 +149,7 @@ func serveFile(w ResponseWriter, r *Request, fs FileSystem, name string, redirec
 
 	// use contents of index.html for directory, if present
 	if d.IsDirectory() {
-		index := name + filepath.FromSlash(indexPage)
+		index := name + indexPage
 		ff, err := fs.Open(index)
 		if err == nil {
 			defer ff.Close()
@@ -220,9 +223,20 @@ func serveFile(w ResponseWriter, r *Request, fs FileSystem, name string, redirec
 	}
 }
 
+// localRedirect gives a Moved Permanently response.
+// It does not convert relative paths to absolute paths like Redirect does.
+func localRedirect(w ResponseWriter, r *Request, newPath string) {
+	if q := r.URL.RawQuery; q != "" {
+		newPath += "?" + q
+	}
+	w.Header().Set("Location", newPath)
+	w.WriteHeader(StatusMovedPermanently)
+}
+
 // ServeFile replies to the request with the contents of the named file or directory.
 func ServeFile(w ResponseWriter, r *Request, name string) {
-	serveFile(w, r, Dir(name), "", false)
+	dir, file := filepath.Split(name)
+	serveFile(w, r, Dir(dir), file, false)
 }
 
 type fileHandler struct {
@@ -241,7 +255,12 @@ func FileServer(root FileSystem) Handler {
 }
 
 func (f *fileHandler) ServeHTTP(w ResponseWriter, r *Request) {
-	serveFile(w, r, f.root, path.Clean(r.URL.Path), true)
+	upath := r.URL.Path
+	if !strings.HasPrefix(upath, "/") {
+		upath = "/" + upath
+		r.URL.Path = upath
+	}
+	serveFile(w, r, f.root, path.Clean(upath), true)
 }
 
 // httpRange specifies the byte range to be sent to the client.

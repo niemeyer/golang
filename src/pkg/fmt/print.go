@@ -53,7 +53,7 @@ type Formatter interface {
 	Format(f State, c int)
 }
 
-// Stringer is implemented by any value that has a String method(),
+// Stringer is implemented by any value that has a String method,
 // which defines the ``native'' format for that value.
 // The String method is used to print values passed as an operand
 // to a %s or %v format or to an unformatted printer such as Print.
@@ -61,7 +61,7 @@ type Stringer interface {
 	String() string
 }
 
-// GoStringer is implemented by any value that has a GoString() method,
+// GoStringer is implemented by any value that has a GoString method,
 // which defines the Go syntax for that value.
 // The GoString method is used to print values passed as an operand
 // to a %#v format.
@@ -252,7 +252,6 @@ func Sprintln(a ...interface{}) string {
 	p.free()
 	return s
 }
-
 
 // Get the i'th arg of the struct value.
 // If the arg itself is an interface, return a value for
@@ -929,6 +928,10 @@ func (p *pp) doPrintf(format string, a []interface{}) {
 				}
 			} else {
 				p.fmt.prec, p.fmt.precPresent, i = parsenum(format, i+1, end)
+				if !p.fmt.precPresent {
+					p.fmt.prec = 0
+					p.fmt.precPresent = true
+				}
 			}
 		}
 		if i >= end {

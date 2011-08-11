@@ -135,16 +135,6 @@ func Wait4(pid int, wstatus *WaitStatus, options int, rusage *Rusage) (wpid int,
 	return
 }
 
-//sysnb	pipe() (r int, w int, errno int)
-
-func Pipe(p []int) (errno int) {
-	if len(p) != 2 {
-		return EINVAL
-	}
-	p[0], p[1], errno = pipe()
-	return
-}
-
 func Sleep(ns int64) (errno int) {
 	tv := NsecToTimeval(ns)
 	return Select(0, nil, nil, nil, &tv)
@@ -621,9 +611,6 @@ func Futimes(fd int, tv []Timeval) (errno int) {
 //	Mprotect(addr *byte, len int, prot int) (errno int)
 //	Msync(addr *byte, len int, flags int) (errno int)
 //	Ptrace(req int, pid int, addr uintptr, data int) (ret uintptr, errno int)
-
-//sys	mmap(addr uintptr, length uintptr, prot int, flag int, fd int, pos int64) (ret uintptr, errno int)
-//sys	munmap(addr uintptr, length uintptr) (errno int)
 
 var mapper = &mmapper{
 	active: make(map[*byte][]byte),

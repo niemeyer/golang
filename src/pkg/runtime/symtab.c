@@ -78,6 +78,7 @@ static int32 nfunc;
 static byte **fname;
 static int32 nfname;
 
+static uint32 funcinit;
 static Lock funclock;
 
 static void
@@ -159,7 +160,7 @@ makepath(byte *buf, int32 nbuf, byte *path)
 			break;
 		if(p > buf && p[-1] != '/')
 			*p++ = '/';
-		runtime·mcpy(p, q, len+1);
+		runtime·memmove(p, q, len+1);
 		p += len;
 	}
 }
@@ -420,10 +421,21 @@ runtime·findfunc(uintptr addr)
 	Func *f;
 	int32 nf, n;
 
-	runtime·lock(&funclock);
-	if(func == nil)
-		buildfuncs();
-	runtime·unlock(&funclock);
+	// Use atomic double-checked locking,
+	// because when called from pprof signal
+	// handler, findfunc must run without
+	// grabbing any locks.
+	// (Before enabling the signal handler,
+	// SetCPUProfileRate calls findfunc to trigger
+	// the initialization outside the handler.)
+	if(runtime·atomicload(&funcinit) == 0) {
+		runtime·lock(&funclock);
+		if(funcinit == 0) {
+			buildfuncs();
+			runtime·atomicstore(&funcinit, 1);
+		}
+		runtime·unlock(&funclock);
+	}
 
 	if(nfunc == 0)
 		return nil;

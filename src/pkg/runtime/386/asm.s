@@ -28,15 +28,18 @@ TEXT _rt0_386(SB),7,$0
 	TESTL	AX, AX
 	JZ	4(PC)
 	CALL	AX
+	// skip runtime·ldt0setup(SB) and tls test after initcgo for non-windows
 	CMPL runtime·iswindows(SB), $0
 	JEQ ok
+
+	// skip runtime·ldt0setup(SB) and tls test on Plan 9 in all cases
+	CMPL	runtime·isplan9(SB), $1
+	JEQ	ok
 
 	// set up %gs
 	CALL	runtime·ldt0setup(SB)
 
 	// store through it, to make sure it works
-	CMPL	runtime·isplan9(SB), $1
-	JEQ	ok
 	get_tls(BX)
 	MOVL	$0x123, g(BX)
 	MOVL	runtime·tls0(SB), AX
@@ -318,6 +321,45 @@ TEXT runtime·casp(SB), 7, $0
 	MOVL	$1, AX
 	RET
 
+// uint32 xadd(uint32 volatile *val, int32 delta)
+// Atomically:
+//	*val += delta;
+//	return *val;
+TEXT runtime·xadd(SB), 7, $0
+	MOVL	4(SP), BX
+	MOVL	8(SP), AX
+	MOVL	AX, CX
+	LOCK
+	XADDL	AX, 0(BX)
+	ADDL	CX, AX
+	RET
+
+TEXT runtime·xchg(SB), 7, $0
+	MOVL	4(SP), BX
+	MOVL	8(SP), AX
+	XCHGL	AX, 0(BX)
+	RET
+
+TEXT runtime·procyield(SB),7,$0
+	MOVL	4(SP), AX
+again:
+	PAUSE
+	SUBL	$1, AX
+	JNZ	again
+	RET
+
+TEXT runtime·atomicstorep(SB), 7, $0
+	MOVL	4(SP), BX
+	MOVL	8(SP), AX
+	XCHGL	AX, 0(BX)
+	RET
+
+TEXT runtime·atomicstore(SB), 7, $0
+	MOVL	4(SP), BX
+	MOVL	8(SP), AX
+	XCHGL	AX, 0(BX)
+	RET
+
 // void jmpdefer(fn, sp);
 // called from deferreturn.
 // 1. pop the caller
@@ -460,12 +502,16 @@ TEXT runtime·stackcheck(SB), 7, $0
 TEXT runtime·memclr(SB),7,$0
 	MOVL	4(SP), DI		// arg 1 addr
 	MOVL	8(SP), CX		// arg 2 count
-	ADDL	$3, CX
+	MOVL	CX, BX
+	ANDL	$3, BX
 	SHRL	$2, CX
 	MOVL	$0, AX
 	CLD
 	REP
 	STOSL
+	MOVL	BX, CX
+	REP
+	STOSB
 	RET
 
 TEXT runtime·getcallerpc(SB),7,$0

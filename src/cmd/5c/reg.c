@@ -66,6 +66,11 @@ rcmp(const void *a1, const void *a2)
 void
 regopt(Prog *p)
 {
+	// TODO(kaib): optimizer disabled because it smashes R8 when running out of registers
+	// the disable is unconventionally here because the call is in common code shared by 5c/6c/8c
+	return;
+
+#ifdef	NOTDEF
 	Reg *r, *r1, *r2;
 	Prog *p1;
 	int i, z;
@@ -78,10 +83,6 @@ regopt(Prog *p)
 		int32	c;
 		Reg*	p;
 	} log5[6], *lp;
-
-	// TODO(kaib): optimizer disabled because it smashes R8 when running out of registers
-	// the disable is unconventionally here because the call is in common code shared by 5c/6c/8c
-	return;
 
 	firstr = R;
 	lastr = R;
@@ -490,6 +491,7 @@ brk:
 		r1->link = freer;
 		freer = firstr;
 	}
+#endif
 }
 
 void

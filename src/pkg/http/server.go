@@ -94,11 +94,13 @@ type Hijacker interface {
 // A conn represents the server side of an HTTP connection.
 type conn struct {
 	remoteAddr string               // network address of remote side
-	handler    Handler              // request handler
+	server     *Server              // the Server on which the connection arrived
 	rwc        net.Conn             // i/o connection
-	buf        *bufio.ReadWriter    // buffered rwc
+	lr         *io.LimitedReader    // io.LimitReader(rwc)
+	buf        *bufio.ReadWriter    // buffered(lr,rwc), reading from bufio->limitReader->rwc
 	hijacked   bool                 // connection has been hijacked by handler
-	tlsState   *tls.ConnectionState // or nil when not using TLS        
+	tlsState   *tls.ConnectionState // or nil when not using TLS
+	body       []byte
 }
 
 // A response represents the server side of an HTTP response.
@@ -112,6 +114,7 @@ type response struct {
 	written       int64    // number of bytes written in body
 	contentLength int64    // explicitly-declared Content-Length; or -1
 	status        int      // status code passed to WriteHeader
+	needSniff     bool     // need to sniff to find Content-Type
 
 	// close connection after this reply.  set on request and
 	// updated after response from handler if there's a
@@ -129,7 +132,7 @@ func (r *response) ReadFrom(src io.Reader) (n int64, err os.Error) {
 	// WriteHeader if it hasn't been called yet, and WriteHeader
 	// is what sets r.chunking.
 	r.Flush()
-	if !r.chunking && r.bodyAllowed() {
+	if !r.chunking && r.bodyAllowed() && !r.needSniff {
 		if rf, ok := r.conn.rwc.(io.ReaderFrom); ok {
 			n, err = rf.ReadFrom(src)
 			r.written += n
@@ -141,13 +144,18 @@ func (r *response) ReadFrom(src io.Reader) (n int64, err os.Error) {
 	return io.Copy(writerOnly{r}, src)
 }
 
+// noLimit is an effective infinite upper bound for io.LimitedReader
+const noLimit int64 = (1 << 63) - 1
+
 // Create new connection from rwc.
-func newConn(rwc net.Conn, handler Handler) (c *conn, err os.Error) {
+func (srv *Server) newConn(rwc net.Conn) (c *conn, err os.Error) {
 	c = new(conn)
 	c.remoteAddr = rwc.RemoteAddr().String()
-	c.handler = handler
+	c.server = srv
 	c.rwc = rwc
-	br := bufio.NewReader(rwc)
+	c.body = make([]byte, sniffLen)
+	c.lr = io.LimitReader(rwc, noLimit).(*io.LimitedReader)
+	br := bufio.NewReader(c.lr)
 	bw := bufio.NewWriter(rwc)
 	c.buf = bufio.NewReadWriter(br, bw)
 
@@ -158,6 +166,18 @@ func newConn(rwc net.Conn, handler Handler) (c *conn, err os.Error) {
 	}
 
 	return c, nil
+}
+
+// DefaultMaxHeaderBytes is the maximum permitted size of the headers
+// in an HTTP request.
+// This can be overridden by setting Server.MaxHeaderBytes.
+const DefaultMaxHeaderBytes = 1 << 20 // 1 MB
+
+func (srv *Server) maxHeaderBytes() int {
+	if srv.MaxHeaderBytes > 0 {
+		return srv.MaxHeaderBytes
+	}
+	return DefaultMaxHeaderBytes
 }
 
 // wrapper around io.ReaderCloser which on first read, sends an
@@ -191,15 +211,22 @@ func (ecr *expectContinueReader) Close() os.Error {
 // It is like time.RFC1123 but hard codes GMT as the time zone.
 const TimeFormat = "Mon, 02 Jan 2006 15:04:05 GMT"
 
+var errTooLarge = os.NewError("http: request too large")
+
 // Read next request from connection.
 func (c *conn) readRequest() (w *response, err os.Error) {
 	if c.hijacked {
 		return nil, ErrHijacked
 	}
+	c.lr.N = int64(c.server.maxHeaderBytes()) + 4096 /* bufio slop */
 	var req *Request
 	if req, err = ReadRequest(c.buf.Reader); err != nil {
+		if c.lr.N == 0 {
+			return nil, errTooLarge
+		}
 		return nil, err
 	}
+	c.lr.N = noLimit
 
 	req.RemoteAddr = c.remoteAddr
 	req.TLS = c.tlsState
@@ -209,6 +236,7 @@ func (c *conn) readRequest() (w *response, err os.Error) {
 	w.req = req
 	w.header = make(Header)
 	w.contentLength = -1
+	c.body = c.body[:0]
 	return w, nil
 }
 
@@ -249,9 +277,9 @@ func (w *response) WriteHeader(code int) {
 			}
 		}
 	} else {
-		// Default output is HTML encoded in UTF-8.
+		// If no content type, apply sniffing algorithm to body.
 		if w.header.Get("Content-Type") == "" {
-			w.header.Set("Content-Type", "text/html; charset=utf-8")
+			w.needSniff = true
 		}
 	}
 
@@ -337,7 +365,36 @@ func (w *response) WriteHeader(code int) {
 	}
 	io.WriteString(w.conn.buf, proto+" "+codestring+" "+text+"\r\n")
 	w.header.Write(w.conn.buf)
-	io.WriteString(w.conn.buf, "\r\n")
+
+	// If we need to sniff the body, leave the header open.
+	// Otherwise, end it here.
+	if !w.needSniff {
+		io.WriteString(w.conn.buf, "\r\n")
+	}
+}
+
+// sniff uses the first block of written data,
+// stored in w.conn.body, to decide the Content-Type
+// for the HTTP body.
+func (w *response) sniff() {
+	if !w.needSniff {
+		return
+	}
+	w.needSniff = false
+
+	data := w.conn.body
+	fmt.Fprintf(w.conn.buf, "Content-Type: %s\r\n\r\n", DetectContentType(data))
+
+	if len(data) == 0 {
+		return
+	}
+	if w.chunking {
+		fmt.Fprintf(w.conn.buf, "%x\r\n", len(data))
+	}
+	_, err := w.conn.buf.Write(data)
+	if w.chunking && err == nil {
+		io.WriteString(w.conn.buf, "\r\n")
+	}
 }
 
 // bodyAllowed returns true if a Write is allowed for this response type.
@@ -369,6 +426,32 @@ func (w *response) Write(data []byte) (n int, err os.Error) {
 		return 0, ErrContentLength
 	}
 
+	var m int
+	if w.needSniff {
+		// We need to sniff the beginning of the output to
+		// determine the content type.  Accumulate the
+		// initial writes in w.conn.body.
+		// Cap m so that append won't allocate.
+		m := cap(w.conn.body) - len(w.conn.body)
+		if m > len(data) {
+			m = len(data)
+		}
+		w.conn.body = append(w.conn.body, data[:m]...)
+		data = data[m:]
+		if len(data) == 0 {
+			// Copied everything into the buffer.
+			// Wait for next write.
+			return m, nil
+		}
+
+		// Filled the buffer; more data remains.
+		// Sniff the content (flushes the buffer)
+		// and then proceed with the remainder
+		// of the data as a normal Write.
+		// Calling sniff clears needSniff.
+		w.sniff()
+	}
+
 	// TODO(rsc): if chunking happened after the buffering,
 	// then there would be fewer chunk headers.
 	// On the other hand, it would make hijacking more difficult.
@@ -385,7 +468,7 @@ func (w *response) Write(data []byte) (n int, err os.Error) {
 		}
 	}
 
-	return n, err
+	return m + n, err
 }
 
 // If this is an error reply (4xx or 5xx)
@@ -449,6 +532,9 @@ func (w *response) finishRequest() {
 	if !w.wroteHeader {
 		w.WriteHeader(StatusOK)
 	}
+	if w.needSniff {
+		w.sniff()
+	}
 	errorKludge(w)
 	if w.chunking {
 		io.WriteString(w.conn.buf, "0\r\n")
@@ -471,6 +557,7 @@ func (w *response) Flush() {
 	if !w.wroteHeader {
 		w.WriteHeader(StatusOK)
 	}
+	w.sniff()
 	w.conn.buf.Flush()
 }
 
@@ -504,6 +591,14 @@ func (c *conn) serve() {
 	for {
 		w, err := c.readRequest()
 		if err != nil {
+			if err == errTooLarge {
+				// Their HTTP client may or may not be
+				// able to read this if we're
+				// responding to them and hanging up
+				// while they're still writing their
+				// request.  Undefined behavior.
+				fmt.Fprintf(c.rwc, "HTTP/1.1 400 Request Too Large\r\n\r\n")
+			}
 			break
 		}
 
@@ -517,6 +612,7 @@ func (c *conn) serve() {
 			if req.ContentLength == 0 {
 				w.Header().Set("Connection", "close")
 				w.WriteHeader(StatusBadRequest)
+				w.finishRequest()
 				break
 			}
 			req.Header.Del("Expect")
@@ -535,7 +631,13 @@ func (c *conn) serve() {
 			// respond with a 417 (Expectation Failed) status."
 			w.Header().Set("Connection", "close")
 			w.WriteHeader(StatusExpectationFailed)
+			w.finishRequest()
 			break
+		}
+
+		handler := c.server.Handler
+		if handler == nil {
+			handler = DefaultServeMux
 		}
 
 		// HTTP cannot have multiple simultaneous active requests.[*]
@@ -543,7 +645,7 @@ func (c *conn) serve() {
 		// so we might as well run the handler in this goroutine.
 		// [*] Not strictly true: HTTP pipelining.  We could let them all process
 		// in parallel even if their responses need to be serialized.
-		c.handler.ServeHTTP(w, w.req)
+		handler.ServeHTTP(w, w.req)
 		if c.hijacked {
 			return
 		}
@@ -841,10 +943,11 @@ func Serve(l net.Listener, handler Handler) os.Error {
 
 // A Server defines parameters for running an HTTP server.
 type Server struct {
-	Addr         string  // TCP address to listen on, ":http" if empty
-	Handler      Handler // handler to invoke, http.DefaultServeMux if nil
-	ReadTimeout  int64   // the net.Conn.SetReadTimeout value for new connections
-	WriteTimeout int64   // the net.Conn.SetWriteTimeout value for new connections
+	Addr           string  // TCP address to listen on, ":http" if empty
+	Handler        Handler // handler to invoke, http.DefaultServeMux if nil
+	ReadTimeout    int64   // the net.Conn.SetReadTimeout value for new connections
+	WriteTimeout   int64   // the net.Conn.SetWriteTimeout value for new connections
+	MaxHeaderBytes int     // maximum size of request headers, DefaultMaxHeaderBytes if 0
 }
 
 // ListenAndServe listens on the TCP network address srv.Addr and then
@@ -867,10 +970,6 @@ func (srv *Server) ListenAndServe() os.Error {
 // then call srv.Handler to reply to them.
 func (srv *Server) Serve(l net.Listener) os.Error {
 	defer l.Close()
-	handler := srv.Handler
-	if handler == nil {
-		handler = DefaultServeMux
-	}
 	for {
 		rw, e := l.Accept()
 		if e != nil {
@@ -886,7 +985,7 @@ func (srv *Server) Serve(l net.Listener) os.Error {
 		if srv.WriteTimeout != 0 {
 			rw.SetWriteTimeout(srv.WriteTimeout)
 		}
-		c, err := newConn(rw, handler)
+		c, err := srv.newConn(rw)
 		if err != nil {
 			continue
 		}

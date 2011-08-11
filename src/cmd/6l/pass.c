@@ -294,7 +294,8 @@ patch(void)
 				p->from.offset = 0x58;
 			}
 		}
-		if(HEADTYPE == Hlinux || HEADTYPE == Hfreebsd) {
+		if(HEADTYPE == Hlinux || HEADTYPE == Hfreebsd
+		|| HEADTYPE == Hopenbsd) {
 			// ELF uses FS instead of GS.
 			if(p->from.type == D_INDIR+D_GS)
 				p->from.type = D_INDIR+D_FS;
@@ -402,8 +403,6 @@ dostkoff(void)
 		pmorestack[i] = symmorestack[i]->text;
 	}
 
-	autoffset = 0;
-	deltasp = 0;
 	for(cursym = textp; cursym != nil; cursym = cursym->next) {
 		if(cursym->text == nil || cursym->text->link == nil)
 			continue;
@@ -415,14 +414,14 @@ dostkoff(void)
 			autoffset = 0;
 
 		q = P;
-		q1 = P;
 		if((p->from.scale & NOSPLIT) && autoffset >= StackSmall)
 			diag("nosplit func likely to overflow stack");
 
 		if(!(p->from.scale & NOSPLIT)) {
 			p = appendp(p);	// load g into CX
 			p->as = AMOVQ;
-			if(HEADTYPE == Hlinux || HEADTYPE == Hfreebsd)	// ELF uses FS
+			if(HEADTYPE == Hlinux || HEADTYPE == Hfreebsd
+			|| HEADTYPE == Hopenbsd)	// ELF uses FS
 				p->from.type = D_INDIR+D_FS;
 			else
 				p->from.type = D_INDIR+D_GS;
@@ -471,7 +470,6 @@ dostkoff(void)
 				p = appendp(p);
 				p->as = ANOP;
 				q1->pcond = p;
-				q1 = P;
 			}
 
 			if(autoffset < StackBig) {  // do we need to call morestack?
@@ -611,7 +609,6 @@ dostkoff(void)
 			p = appendp(p);
 			p->as = ANOP;
 			q1->pcond = p;
-			q1 = P;
 		}
 		
 		for(; p != P; p = p->link) {

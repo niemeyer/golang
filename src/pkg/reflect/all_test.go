@@ -380,7 +380,6 @@ func TestMapSetNil(t *testing.T) {
 	}
 }
 
-
 func TestAll(t *testing.T) {
 	testType(t, 1, TypeOf((int8)(0)), "int8")
 	testType(t, 2, TypeOf((*int8)(nil)).Elem(), "int8")
@@ -743,7 +742,6 @@ func TestDeepEqualUnexportedMap(t *testing.T) {
 		t.Error("DeepEqual(x1, y1) = true, want false")
 	}
 }
-
 
 func check2ndField(x interface{}, offs uintptr, t *testing.T) {
 	s := ValueOf(x)
@@ -1329,8 +1327,8 @@ func TestImportPath(t *testing.T) {
 	}
 }
 
-func TestDotDotDot(t *testing.T) {
-	// Test example from FuncType.DotDotDot documentation.
+func TestVariadicType(t *testing.T) {
+	// Test example from Type documentation.
 	var f func(x int, y ...float64)
 	typ := TypeOf(f)
 	if typ.NumIn() == 2 && typ.In(0) == TypeOf(int(0)) {

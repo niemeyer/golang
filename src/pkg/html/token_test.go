@@ -41,6 +41,22 @@ var tokenTests = []tokenTest{
 		"<a>b<c/>d</e>",
 		"<a>$b$<c/>$d$</e>",
 	},
+	// Some malformed tags that are missing a '>'.
+	{
+		"malformed tag #0",
+		`<p</p>`,
+		`<p< p="">`,
+	},
+	{
+		"malformed tag #1",
+		`<p id=0</p>`,
+		`<p id="0&lt;/p">`,
+	},
+	{
+		"malformed tag #2",
+		`<p id="0</p>`,
+		`<p id="0&lt;/p&gt;">`,
+	},
 	// Comments.
 	{
 		"comment0",
@@ -107,7 +123,16 @@ var tokenTests = []tokenTest{
 		`<a b="c&noSuchEntity;d">&lt;&alsoDoesntExist;&`,
 		`<a b="c&amp;noSuchEntity;d">$&lt;&amp;alsoDoesntExist;&amp;`,
 	},
-
+	{
+		"entity without semicolon",
+		`&notit;&notin;<a b="q=z&amp=5&notice=hello&not;=world">`,
+		`¬it;∉$<a b="q=z&amp;amp=5&amp;notice=hello¬=world">`,
+	},
+	{
+		"entity with digits",
+		"&frac12;",
+		"½",
+	},
 	// Attribute tests:
 	// http://dev.w3.org/html5/spec/Overview.html#attributes-0
 	{

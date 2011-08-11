@@ -29,6 +29,7 @@ GOFILES_freebsd=\
 	fd.go\
 	file.go\
 	interface_bsd.go\
+	interface_freebsd.go\
 	lookup_unix.go\
 	newpollserver.go\
 	port.go\
@@ -45,6 +46,7 @@ GOFILES_darwin=\
 	fd.go\
 	file.go\
 	interface_bsd.go\
+	interface_darwin.go\
 	lookup_unix.go\
 	newpollserver.go\
 	port.go\
@@ -66,6 +68,18 @@ GOFILES_linux=\
 	port.go\
 	sendfile_linux.go\
 	sock_linux.go\
+
+GOFILES_openbsd=\
+	dnsclient.go\
+	dnsconfig.go\
+	fd.go\
+	file.go\
+	interface_bsd.go\
+	newpollserver.go\
+	port.go\
+	sendfile_stub.go\
+	sock_bsd.go\
+	cgo_stub.go\
 
 GOFILES_plan9=\
 	interface_stub.go\

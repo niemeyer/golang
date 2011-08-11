@@ -10,8 +10,9 @@ import (
 
 // A Prog is a compiled regular expression program.
 type Prog struct {
-	Inst  []Inst
-	Start int // index of start instruction
+	Inst   []Inst
+	Start  int // index of start instruction
+	NumCap int // number of InstCapture insts in re
 }
 
 // An InstOp is an instruction opcode.
@@ -52,6 +53,61 @@ func (p *Prog) String() string {
 	var b bytes.Buffer
 	dumpProg(&b, p)
 	return b.String()
+}
+
+// skipNop follows any no-op or capturing instructions
+// and returns the resulting pc.
+func (p *Prog) skipNop(pc uint32) *Inst {
+	i := &p.Inst[pc]
+	for i.Op == InstNop || i.Op == InstCapture {
+		pc = i.Out
+		i = &p.Inst[pc]
+	}
+	return i
+}
+
+// Prefix returns a literal string that all matches for the
+// regexp must start with.  Complete is true if the prefix
+// is the entire match.
+func (p *Prog) Prefix() (prefix string, complete bool) {
+	i := p.skipNop(uint32(p.Start))
+
+	// Avoid allocation of buffer if prefix is empty.
+	if i.Op != InstRune || len(i.Rune) != 1 {
+		return "", i.Op == InstMatch
+	}
+
+	// Have prefix; gather characters.
+	var buf bytes.Buffer
+	for i.Op == InstRune && len(i.Rune) == 1 {
+		buf.WriteRune(i.Rune[0])
+		i = p.skipNop(i.Out)
+	}
+	return buf.String(), i.Op == InstMatch
+}
+
+// StartCond returns the leading empty-width conditions that must
+// be true in any match.  It returns ^EmptyOp(0) if no matches are possible.
+func (p *Prog) StartCond() EmptyOp {
+	var flag EmptyOp
+	pc := uint32(p.Start)
+	i := &p.Inst[pc]
+Loop:
+	for {
+		switch i.Op {
+		case InstEmptyWidth:
+			flag |= EmptyOp(i.Arg)
+		case InstFail:
+			return ^EmptyOp(0)
+		case InstCapture, InstNop:
+			// skip
+		default:
+			break Loop
+		}
+		pc = i.Out
+		i = &p.Inst[pc]
+	}
+	return flag
 }
 
 // MatchRune returns true if the instruction matches (and consumes) r.
@@ -122,7 +178,6 @@ func (i *Inst) MatchEmptyWidth(before int, after int) bool {
 	}
 	panic("unknown empty width arg")
 }
-
 
 func (i *Inst) String() string {
 	var b bytes.Buffer

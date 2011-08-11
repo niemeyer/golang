@@ -57,6 +57,7 @@ typedef	struct	String		String;
 typedef	struct	Usema		Usema;
 typedef	struct	SigTab		SigTab;
 typedef	struct	MCache		MCache;
+typedef struct	FixAlloc	FixAlloc;
 typedef	struct	Iface		Iface;
 typedef	struct	Itab		Itab;
 typedef	struct	Eface		Eface;
@@ -130,7 +131,10 @@ struct	Usema
 union	Note
 {
 	struct {	// Linux
-		Lock	lock;
+		uint32	state;
+	};
+	struct {	// Windows
+		Lock lock;
 	};
 	struct {	// OS X
 		int32	wakeup;
@@ -229,12 +233,15 @@ struct	M
 	int32	waitnextg;
 	int32	dying;
 	int32	profilehz;
+	uint32	fastrand;
+	uint64	ncgocall;
 	Note	havenextg;
 	G*	nextg;
 	M*	alllink;	// on allm
 	M*	schedlink;
 	uint32	machport;	// Return address for Mach IPC (OS X)
 	MCache	*mcache;
+	FixAlloc	*stackalloc;
 	G*	lockedg;
 	G*	idleg;
 	uint32	freglo[16];	// D[i] lsb and F[i]
@@ -328,7 +335,17 @@ enum
 	ASTRING,
 	AINTER,
 	ANILINTER,
-	AMEMWORD,
+	ASLICE,
+	AMEM8,
+	AMEM16,
+	AMEM32,
+	AMEM64,
+	AMEM128,
+	ANOEQ8,
+	ANOEQ16,
+	ANOEQ32,
+	ANOEQ64,
+	ANOEQ128,
 	Amax
 };
 
@@ -368,17 +385,18 @@ extern	Alg	runtime·algarray[Amax];
 extern	String	runtime·emptystring;
 G*	runtime·allg;
 M*	runtime·allm;
-int32	runtime·goidgen;
 extern	int32	runtime·gomaxprocs;
 extern	uint32	runtime·panicking;
 extern	int32	runtime·gcwaiting;		// gc is waiting to run
 int8*	runtime·goos;
 extern	bool	runtime·iscgo;
+extern	void	(*runtime·destroylock)(Lock*);
 
 /*
  * common functions and data
  */
 int32	runtime·strcmp(byte*, byte*);
+byte*	runtime·strstr(byte*, byte*);
 int32	runtime·findnull(byte*);
 int32	runtime·findnullw(uint16*);
 void	runtime·dump(byte*, int32);
@@ -404,13 +422,13 @@ uint32	runtime·rnd(uint32, uint32);
 void	runtime·prints(int8*);
 void	runtime·printf(int8*, ...);
 byte*	runtime·mchr(byte*, byte, byte*);
-void	runtime·mcpy(byte*, byte*, uint32);
 int32	runtime·mcmp(byte*, byte*, uint32);
 void	runtime·memmove(void*, void*, uint32);
 void*	runtime·mal(uintptr);
 String	runtime·catstring(String, String);
 String	runtime·gostring(byte*);
 String  runtime·gostringn(byte*, int32);
+Slice	runtime·gobytes(byte*, int32);
 String	runtime·gostringnocopy(byte*);
 String	runtime·gostringw(uint16*);
 void	runtime·initsig(int32);
@@ -424,7 +442,11 @@ bool	runtime·casp(void**, void*, void*);
 // Don't confuse with XADD x86 instruction,
 // this one is actually 'addx', that is, add-and-fetch.
 uint32	runtime·xadd(uint32 volatile*, int32);
-uint32  runtime·atomicload(uint32 volatile*);
+uint32	runtime·xchg(uint32 volatile*, uint32);
+uint32	runtime·atomicload(uint32 volatile*);
+void	runtime·atomicstore(uint32 volatile*, uint32);
+void*	runtime·atomicloadp(void* volatile*);
+void	runtime·atomicstorep(void* volatile*, void*);
 void	runtime·jmpdefer(byte*, void*);
 void	runtime·exit1(int32);
 void	runtime·ready(G*);
@@ -454,6 +476,7 @@ void	runtime·runpanic(Panic*);
 void*	runtime·getcallersp(void*);
 int32	runtime·mcount(void);
 void	runtime·mcall(void(*)(G*));
+uint32	runtime·fastrand1(void);
 
 void	runtime·exit(int32);
 void	runtime·breakpoint(void);
@@ -503,16 +526,18 @@ void	runtime·starttheworld(void);
  */
 void	runtime·lock(Lock*);
 void	runtime·unlock(Lock*);
-void	runtime·destroylock(Lock*);
 
 /*
  * sleep and wakeup on one-time events.
  * before any calls to notesleep or notewakeup,
  * must call noteclear to initialize the Note.
- * then, any number of threads can call notesleep
+ * then, exactly one thread can call notesleep
  * and exactly one thread can call notewakeup (once).
- * once notewakeup has been called, all the notesleeps
- * will return.  future notesleeps will return immediately.
+ * once notewakeup has been called, the notesleep
+ * will return.  future notesleep will return immediately.
+ * subsequent noteclear must be called only after
+ * previous notesleep has returned, e.g. it's disallowed
+ * to call noteclear straight after notewakeup.
  */
 void	runtime·noteclear(Note*);
 void	runtime·notesleep(Note*);
@@ -590,6 +615,8 @@ void	runtime·semacquire(uint32*);
 void	runtime·semrelease(uint32*);
 String	runtime·signame(int32 sig);
 int32	runtime·gomaxprocsfunc(int32 n);
+void	runtime·procyield(uint32);
+void	runtime·osyield(void);
 
 void	runtime·mapassign(Hmap*, byte*, byte*);
 void	runtime·mapaccess(Hmap*, byte*, byte*, bool*);

@@ -86,6 +86,7 @@ func Compile(re *Regexp) (*Prog, os.Error) {
 
 func (c *compiler) init() {
 	c.p = new(Prog)
+	c.p.NumCap = 2 // implicit ( and ) for whole match $0
 	c.inst(InstFail)
 }
 
@@ -185,6 +186,10 @@ func (c *compiler) cap(arg uint32) frag {
 	f := c.inst(InstCapture)
 	f.out = patchList(f.i << 1)
 	c.p.Inst[f.i].Arg = arg
+
+	if c.p.NumCap < int(arg)+1 {
+		c.p.NumCap = int(arg) + 1
+	}
 	return f
 }
 

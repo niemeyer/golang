@@ -41,7 +41,7 @@ char	symname[]	= SYMDEF;
 char	pkgname[]	= "__.PKGDEF";
 char*	libdir[16];
 int	nlibdir = 0;
-int	cout = -1;
+static int	cout = -1;
 
 char*	goroot;
 char*	goarch;
@@ -62,6 +62,7 @@ libinit(void)
 {
 	fmtinstall('i', iconv);
 	fmtinstall('Y', Yconv);
+	fmtinstall('Z', Zconv);
 	mywhatsys();	// get goroot, goarch, goos
 	if(strcmp(goarch, thestring) != 0)
 		print("goarch is not known: %s\n", goarch);
@@ -281,6 +282,8 @@ loadlib(void)
 	// binaries, so leave it enabled on OS X (Mach-O) binaries.
 	if(!havedynamic && HEADTYPE != Hdarwin)
 		debug['d'] = 1;
+	
+	importcycles();
 }
 
 /*
@@ -938,15 +941,6 @@ addsection(Segment *seg, char *name, int rwx)
 }
 
 void
-ewrite(int fd, void *buf, int n)
-{
-	if(write(fd, buf, n) < 0) {
-		diag("write error: %r");
-		errorexit();
-	}
-}
-
-void
 pclntab(void)
 {
 	vlong oldpc;
@@ -1358,4 +1352,66 @@ Yconv(Fmt *fp)
 	}
 
 	return 0;
+}
+
+vlong coutpos;
+
+void
+cflush(void)
+{
+	int n;
+
+	if(cbpmax < cbp)
+		cbpmax = cbp;
+	n = cbpmax - buf.cbuf;
+	if(n) {
+		if(write(cout, buf.cbuf, n) != n) {
+			diag("write error: %r");
+			errorexit();
+		}
+		coutpos += n;
+	}
+	cbp = buf.cbuf;
+	cbc = sizeof(buf.cbuf);
+	cbpmax = cbp;
+}
+
+vlong
+cpos(void)
+{
+	return coutpos + cbp - buf.cbuf;
+}
+
+void
+cseek(vlong p)
+{
+	vlong start;
+	int delta;
+
+	if(cbpmax < cbp)
+		cbpmax = cbp;
+	start = coutpos;
+	if(start <= p && p <= start+(cbpmax - buf.cbuf)) {
+//print("cseek %lld in [%lld,%lld] (%lld)\n", p, start, start+sizeof(buf.cbuf), cpos());
+		delta = p - (start + cbp - buf.cbuf);
+		cbp += delta;
+		cbc -= delta;
+//print("now at %lld\n", cpos());
+		return;
+	}
+
+	cflush();
+	seek(cout, p, 0);
+	coutpos = p;
+}
+
+void
+cwrite(void *buf, int n)
+{
+	cflush();
+	if(write(cout, buf, n) != n) {
+		diag("write error: %r");
+		errorexit();
+	}
+	coutpos += n;
 }

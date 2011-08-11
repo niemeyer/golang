@@ -218,6 +218,7 @@ main(int argc, char *argv[])
 		curio.nlsemi = 0;
 
 		block = 1;
+		iota = -1000000;
 
 		yyparse();
 		if(nsyntaxerrors != 0)
@@ -253,15 +254,20 @@ main(int argc, char *argv[])
 	resumetypecopy();
 	resumecheckwidth();
 
-	for(l=xtop; l; l=l->next)
-		if(l->n->op == ODCLFUNC) {
+	for(l=xtop; l; l=l->next) {
+		if(l->n->op == ODCLFUNC || l->n->op == OCLOSURE) {
 			curfn = l->n;
 			saveerrors();
 			typechecklist(l->n->nbody, Etop);
 			if(nerrors != 0)
 				l->n->nbody = nil;  // type errors; do not compile
 		}
+	}
+
 	curfn = nil;
+	
+	if(nsavederrors+nerrors)
+		errorexit();
 
 	for(l=xtop; l; l=l->next)
 		if(l->n->op == ODCLFUNC)
@@ -273,8 +279,9 @@ main(int argc, char *argv[])
 	while(closures) {
 		l = closures;
 		closures = nil;
-		for(; l; l=l->next)
+		for(; l; l=l->next) {
 			funccompile(l->n, 1);
+		}
 	}
 
 	for(l=externdcl; l; l=l->next)
@@ -728,6 +735,7 @@ l0:
 		yylval.val.u.sval = (Strlit*)cp;
 		yylval.val.ctype = CTSTR;
 		DBG("lex: string literal\n");
+		strcpy(litbuf, "string literal");
 		return LLITERAL;
 
 	case '\'':
@@ -744,6 +752,7 @@ l0:
 		mpmovecfix(yylval.val.u.xval, v);
 		yylval.val.ctype = CTINT;
 		DBG("lex: codepoint literal\n");
+		strcpy(litbuf, "string literal");
 		return LLITERAL;
 
 	case '/':
@@ -1133,6 +1142,8 @@ ncu:
 	}
 	yylval.val.ctype = CTINT;
 	DBG("lex: integer literal\n");
+	strcpy(litbuf, "literal ");
+	strcat(litbuf, lexbuf);
 	return LLITERAL;
 
 casedot:
@@ -1205,6 +1216,8 @@ casei:
 	}
 	yylval.val.ctype = CTCPLX;
 	DBG("lex: imaginary literal\n");
+	strcpy(litbuf, "literal ");
+	strcat(litbuf, lexbuf);
 	return LLITERAL;
 
 caseout:
@@ -1219,6 +1232,8 @@ caseout:
 	}
 	yylval.val.ctype = CTFLT;
 	DBG("lex: floating literal\n");
+	strcpy(litbuf, "literal ");
+	strcat(litbuf, lexbuf);
 	return LLITERAL;
 }
 
@@ -1858,6 +1873,12 @@ yytinit(void)
 
 	for(i=0; yytname[i] != nil; i++) {
 		s = yytname[i];
+		
+		if(strcmp(s, "LLITERAL") == 0) {
+			strcpy(litbuf, "literal");
+			yytname[i] = litbuf;
+			goto loop;
+		}
 		
 		// apply yytfix if possible
 		for(j=0; j<nelem(yytfix); j++) {

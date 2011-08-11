@@ -10,6 +10,8 @@ import (
 	"http/httptest"
 	"io/ioutil"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -85,6 +87,30 @@ func TestServeFile(t *testing.T) {
 	}
 }
 
+var fsRedirectTestData = []struct {
+	original, redirect string
+}{
+	{"/test/index.html", "/test/"},
+	{"/test/testdata", "/test/testdata/"},
+	{"/test/testdata/file/", "/test/testdata/file"},
+}
+
+func TestFSRedirect(t *testing.T) {
+	ts := httptest.NewServer(StripPrefix("/test", FileServer(Dir("."))))
+	defer ts.Close()
+
+	for _, data := range fsRedirectTestData {
+		res, err := Get(ts.URL + data.original)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if g, e := res.Request.URL.Path, data.redirect; g != e {
+			t.Errorf("redirect from %s: got %s, want %s", data.original, g, e)
+		}
+	}
+}
+
 type testFileSystem struct {
 	open func(name string) (File, os.Error)
 }
@@ -117,6 +143,36 @@ func TestFileServerCleans(t *testing.T) {
 	}
 }
 
+func TestFileServerImplicitLeadingSlash(t *testing.T) {
+	tempDir, err := ioutil.TempDir("", "")
+	if err != nil {
+		t.Fatalf("TempDir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+	if err := ioutil.WriteFile(filepath.Join(tempDir, "foo.txt"), []byte("Hello world"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	ts := httptest.NewServer(StripPrefix("/bar/", FileServer(Dir(tempDir))))
+	defer ts.Close()
+	get := func(suffix string) string {
+		res, err := Get(ts.URL + suffix)
+		if err != nil {
+			t.Fatalf("Get %s: %v", suffix, err)
+		}
+		b, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			t.Fatalf("ReadAll %s: %v", suffix, err)
+		}
+		return string(b)
+	}
+	if s := get("/bar/"); !strings.Contains(s, ">foo.txt<") {
+		t.Logf("expected a directory listing with foo.txt, got %q", s)
+	}
+	if s := get("/bar/foo.txt"); s != "Hello world" {
+		t.Logf("expected %q, got %q", "Hello world", s)
+	}
+}
+
 func TestDirJoin(t *testing.T) {
 	wfi, err := os.Stat("/etc/hosts")
 	if err != nil {
@@ -131,10 +187,10 @@ func TestDirJoin(t *testing.T) {
 		defer f.Close()
 		gfi, err := f.Stat()
 		if err != nil {
-			t.Fatalf("stat of %s: %v", err)
+			t.Fatalf("stat of %s: %v", name, err)
 		}
 		if gfi.Ino != wfi.Ino {
-			t.Errorf("%s got different inode")
+			t.Errorf("%s got different inode", name)
 		}
 	}
 	test(Dir("/etc/"), "/hosts")
@@ -167,12 +223,27 @@ func TestServeFileContentType(t *testing.T) {
 			t.Fatal(err)
 		}
 		if h := resp.Header.Get("Content-Type"); h != want {
-			t.Errorf("Content-Type mismatch: got %d, want %d", h, want)
+			t.Errorf("Content-Type mismatch: got %q, want %q", h, want)
 		}
 	}
 	get("text/plain; charset=utf-8")
 	override = true
 	get(ctype)
+}
+
+func TestServeFileMimeType(t *testing.T) {
+	ts := httptest.NewServer(HandlerFunc(func(w ResponseWriter, r *Request) {
+		ServeFile(w, r, "testdata/style.css")
+	}))
+	defer ts.Close()
+	resp, err := Get(ts.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "text/css; charset=utf-8"
+	if h := resp.Header.Get("Content-Type"); h != want {
+		t.Errorf("Content-Type mismatch: got %q, want %q", h, want)
+	}
 }
 
 func TestServeFileWithContentEncoding(t *testing.T) {
@@ -186,7 +257,28 @@ func TestServeFileWithContentEncoding(t *testing.T) {
 		t.Fatal(err)
 	}
 	if g, e := resp.ContentLength, int64(-1); g != e {
-		t.Errorf("Content-Length mismatch: got %q, want %q", g, e)
+		t.Errorf("Content-Length mismatch: got %d, want %d", g, e)
+	}
+}
+
+func TestServeIndexHtml(t *testing.T) {
+	const want = "index.html says hello\n"
+	ts := httptest.NewServer(FileServer(Dir(".")))
+	defer ts.Close()
+
+	for _, path := range []string{"/testdata/", "/testdata/index.html"} {
+		res, err := Get(ts.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		b, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			t.Fatal("reading Body:", err)
+		}
+		if s := string(b); s != want {
+			t.Errorf("for path %q got %q, want %q", path, s, want)
+		}
 	}
 }
 

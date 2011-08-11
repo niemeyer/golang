@@ -81,7 +81,7 @@ itab(InterfaceType *inter, Type *type, int32 canfail)
 	for(locked=0; locked<2; locked++) {
 		if(locked)
 			runtime·lock(&ifacelock);
-		for(m=hash[h]; m!=nil; m=m->link) {
+		for(m=runtime·atomicloadp(&hash[h]); m!=nil; m=m->link) {
 			if(m->inter == inter && m->type == type) {
 				if(m->bad) {
 					m = nil;
@@ -145,10 +145,11 @@ search:
 	}
 
 out:
+	if(!locked)
+		runtime·panicstring("invalid itab locking");
 	m->link = hash[h];
-	hash[h] = m;
-	if(locked)
-		runtime·unlock(&ifacelock);
+	runtime·atomicstorep(&hash[h], m);
+	runtime·unlock(&ifacelock);
 	if(m->bad)
 		return nil;
 	return m;
@@ -264,7 +265,7 @@ runtime·assertI2T2(Type *t, Iface i, ...)
 
 	ret = (byte*)(&i+1);
 	wid = t->size;
-	ok = (bool*)(ret+runtime·rnd(wid, 1));
+	ok = (bool*)(ret + wid);
 
 	if(i.tab == nil || i.tab->type != t) {
 		*ok = false;
@@ -326,7 +327,7 @@ runtime·assertE2T2(Type *t, Eface e, ...)
 		runtime·throw("invalid interface value");
 	ret = (byte*)(&e+1);
 	wid = t->size;
-	ok = (bool*)(ret+runtime·rnd(wid, 1));
+	ok = (bool*)(ret + wid);
 
 	if(t != e.type) {
 		*ok = false;

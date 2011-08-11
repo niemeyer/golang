@@ -11,6 +11,7 @@ GOFILES=\
 	filesystem.go\
 	format.go\
 	godoc.go\
+	httpzip.go\
 	index.go\
 	main.go\
 	mapping.go\
@@ -18,5 +19,6 @@ GOFILES=\
 	snippet.go\
 	spec.go\
 	utils.go\
+	zip.go\
 
 include ../../Make.cmd

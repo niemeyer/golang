@@ -332,13 +332,14 @@ func (c *Cmd) StdinPipe() (io.WriteCloser, os.Error) {
 	}
 	c.Stdin = pr
 	c.closeAfterStart = append(c.closeAfterStart, pr)
-	c.closeAfterWait = append(c.closeAfterStart, pw)
+	c.closeAfterWait = append(c.closeAfterWait, pw)
 	return pw, nil
 }
 
 // StdoutPipe returns a pipe that will be connected to the command's
 // standard output when the command starts.
-func (c *Cmd) StdoutPipe() (io.Reader, os.Error) {
+// The pipe will be closed automatically after Wait sees the command exit.
+func (c *Cmd) StdoutPipe() (io.ReadCloser, os.Error) {
 	if c.Stdout != nil {
 		return nil, os.NewError("exec: Stdout already set")
 	}
@@ -351,13 +352,14 @@ func (c *Cmd) StdoutPipe() (io.Reader, os.Error) {
 	}
 	c.Stdout = pw
 	c.closeAfterStart = append(c.closeAfterStart, pw)
-	c.closeAfterWait = append(c.closeAfterStart, pr)
+	c.closeAfterWait = append(c.closeAfterWait, pr)
 	return pr, nil
 }
 
 // StderrPipe returns a pipe that will be connected to the command's
 // standard error when the command starts.
-func (c *Cmd) StderrPipe() (io.Reader, os.Error) {
+// The pipe will be closed automatically after Wait sees the command exit.
+func (c *Cmd) StderrPipe() (io.ReadCloser, os.Error) {
 	if c.Stderr != nil {
 		return nil, os.NewError("exec: Stderr already set")
 	}
@@ -370,6 +372,6 @@ func (c *Cmd) StderrPipe() (io.Reader, os.Error) {
 	}
 	c.Stderr = pw
 	c.closeAfterStart = append(c.closeAfterStart, pw)
-	c.closeAfterWait = append(c.closeAfterStart, pr)
+	c.closeAfterWait = append(c.closeAfterWait, pr)
 	return pr, nil
 }

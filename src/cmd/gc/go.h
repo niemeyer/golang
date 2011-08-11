@@ -40,11 +40,22 @@ enum
 	ASTRING,
 	AINTER,
 	ANILINTER,
-	AMEMWORD,
+	ASLICE,
+	AMEM8,
+	AMEM16,
+	AMEM32,
+	AMEM64,
+	AMEM128,
+	ANOEQ8,
+	ANOEQ16,
+	ANOEQ32,
+	ANOEQ64,
+	ANOEQ128,
 
 	BADWIDTH	= -1000000000,
-	MAXWIDTH	= 1<<30
 };
+
+extern vlong	MAXWIDTH;
 
 /*
  * note this is the representation
@@ -392,6 +403,7 @@ enum
 	ONOT, OCOM, OPLUS, OMINUS,
 	OOROR,
 	OPANIC, OPRINT, OPRINTN,
+	OPAREN,
 	OSEND,
 	OSLICE, OSLICEARR, OSLICESTR,
 	ORECOVER,
@@ -531,6 +543,7 @@ enum
 	Eindir = 1<<8,		// indirecting through expression
 	Eaddr = 1<<9,		// taking address of expression
 	Eproc = 1<<10,		// inside a go statement
+	Ecomplit = 1<<11,	// type in composite literal
 };
 
 #define	BITS	5
@@ -697,6 +710,7 @@ EXTERN	int	nsyntaxerrors;
 EXTERN	int	safemode;
 EXTERN	char	namebuf[NSYMB];
 EXTERN	char	lexbuf[NSYMB];
+EXTERN	char	litbuf[NSYMB];
 EXTERN	char	debug[256];
 EXTERN	Sym*	hash[NHASH];
 EXTERN	Sym*	importmyname;	// my name for package
@@ -1106,7 +1120,6 @@ int	isinter(Type *t);
 int	isnil(Node *n);
 int	isnilinter(Type *t);
 int	isptrto(Type *t, int et);
-int	isselect(Node *n);
 int	isslice(Type *t);
 int	istype(Type *t, int et);
 void	linehist(char *file, int32 off, int relative);
@@ -1137,6 +1150,7 @@ Sym*	restrictlookup(char *name, Pkg *pkg);
 Node*	safeexpr(Node *n, NodeList **init);
 void	saveerrors(void);
 Node*	cheapexpr(Node *n, NodeList **init);
+Node*	localexpr(Node *n, Type *t, NodeList **init);
 int32	setlineno(Node *n);
 void	setmaxarg(Type *t);
 Type*	shallow(Type *t);

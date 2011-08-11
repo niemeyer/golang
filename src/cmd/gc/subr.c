@@ -493,8 +493,16 @@ algtype(Type *t)
 
 	if(issimple[t->etype] || isptr[t->etype] ||
 		t->etype == TCHAN || t->etype == TFUNC || t->etype == TMAP) {
-		if(t->width == widthptr)
-			a = AMEMWORD;
+		if(t->width == 1)
+			a = AMEM8;
+		else if(t->width == 2)
+			a = AMEM16;
+		else if(t->width == 4)
+			a = AMEM32;
+		else if(t->width == 8)
+			a = AMEM64;
+		else if(t->width == 16)
+			a = AMEM128;
 		else
 			a = AMEM;	// just bytes (int, ptr, etc)
 	} else if(t->etype == TSTRING)
@@ -503,8 +511,22 @@ algtype(Type *t)
 		a = ANILINTER;	// nil interface
 	else if(t->etype == TINTER)
 		a = AINTER;	// interface
-	else
-		a = ANOEQ;	// just bytes, but no hash/eq
+	else if(isslice(t))
+		a = ASLICE;	// slice
+	else {
+		if(t->width == 1)
+			a = ANOEQ8;
+		else if(t->width == 2)
+			a = ANOEQ16;
+		else if(t->width == 4)
+			a = ANOEQ32;
+		else if(t->width == 8)
+			a = ANOEQ64;
+		else if(t->width == 16)
+			a = ANOEQ128;
+		else
+			a = ANOEQ;	// just bytes, but no hash/eq
+	}
 	return a;
 }
 
@@ -1049,21 +1071,25 @@ Jconv(Fmt *fp)
 {
 	Node *n;
 	char *s;
+	int c;
 
 	n = va_arg(fp->args, Node*);
-	if(n->ullman != 0)
+
+	c = fp->flags&FmtShort;
+
+	if(!c && n->ullman != 0)
 		fmtprint(fp, " u(%d)", n->ullman);
 
-	if(n->addable != 0)
+	if(!c && n->addable != 0)
 		fmtprint(fp, " a(%d)", n->addable);
 
-	if(n->vargen != 0)
+	if(!c && n->vargen != 0)
 		fmtprint(fp, " g(%d)", n->vargen);
 
 	if(n->lineno != 0)
 		fmtprint(fp, " l(%d)", n->lineno);
 
-	if(n->xoffset != BADWIDTH)
+	if(!c && n->xoffset != BADWIDTH)
 		fmtprint(fp, " x(%lld%+d)", n->xoffset, n->stkdelta);
 
 	if(n->class != 0) {
@@ -1081,10 +1107,13 @@ Jconv(Fmt *fp)
 	if(n->funcdepth != 0)
 		fmtprint(fp, " f(%d)", n->funcdepth);
 
-	if(n->typecheck != 0)
+	if(n->noescape != 0)
+		fmtprint(fp, " ne(%d)", n->noescape);
+
+	if(!c && n->typecheck != 0)
 		fmtprint(fp, " tc(%d)", n->typecheck);
 
-	if(n->dodata != 0)
+	if(!c && n->dodata != 0)
 		fmtprint(fp, " dd(%d)", n->dodata);
 
 	if(n->isddd != 0)
@@ -1093,10 +1122,10 @@ Jconv(Fmt *fp)
 	if(n->implicit != 0)
 		fmtprint(fp, " implicit(%d)", n->implicit);
 
-	if(n->pun != 0)
+	if(!c && n->pun != 0)
 		fmtprint(fp, " pun(%d)", n->pun);
 
-	if(n->used != 0)
+	if(!c && n->used != 0)
 		fmtprint(fp, " used(%d)", n->used);
 	return 0;
 }
@@ -1494,17 +1523,25 @@ Nconv(Fmt *fp)
 
 	switch(n->op) {
 	default:
-		fmtprint(fp, "%O%J", n->op, n);
+		if (fp->flags & FmtShort)
+			fmtprint(fp, "%O%hJ", n->op, n);
+		else
+			fmtprint(fp, "%O%J", n->op, n);
 		break;
 
 	case ONAME:
 	case ONONAME:
 		if(n->sym == S) {
-			fmtprint(fp, "%O%J", n->op, n);
+			if (fp->flags & FmtShort)
+				fmtprint(fp, "%O%hJ", n->op, n);
+			else
+				fmtprint(fp, "%O%J", n->op, n);
 			break;
 		}
-		fmtprint(fp, "%O-%S G%d%J", n->op,
-			n->sym, n->vargen, n);
+		if (fp->flags & FmtShort)
+			fmtprint(fp, "%O-%S%hJ", n->op, n->sym, n);
+		else
+			fmtprint(fp, "%O-%S%J", n->op, n->sym, n);
 		goto ptyp;
 
 	case OREGISTER:
@@ -1702,29 +1739,6 @@ isblank(Node *n)
 	if(p == nil)
 		return 0;
 	return p[0] == '_' && p[1] == '\0';
-}
-
-int
-isselect(Node *n)
-{
-	Sym *s;
-
-	if(n == N)
-		return 0;
-	n = n->left;
-	s = pkglookup("selectsend", runtimepkg);
-	if(s == n->sym)
-		return 1;
-	s = pkglookup("selectrecv", runtimepkg);
-	if(s == n->sym)
-		return 1;
-	s = pkglookup("selectrecv2", runtimepkg);
-	if(s == n->sym)
-		return 1;
-	s = pkglookup("selectdefault", runtimepkg);
-	if(s == n->sym)
-		return 1;
-	return 0;
 }
 
 int
@@ -2735,6 +2749,20 @@ safeexpr(Node *n, NodeList **init)
 	return cheapexpr(n, init);
 }
 
+static Node*
+copyexpr(Node *n, Type *t, NodeList **init)
+{
+	Node *a, *l;
+	
+	l = nod(OXXX, N, N);
+	tempname(l, t);
+	a = nod(OAS, l, n);
+	typecheck(&a, Etop);
+	walkexpr(&a, init);
+	*init = list(*init, a);
+	return l;
+}
+
 /*
  * return side-effect free and cheap n, appending side effects to init.
  * result may not be assignable.
@@ -2742,21 +2770,27 @@ safeexpr(Node *n, NodeList **init)
 Node*
 cheapexpr(Node *n, NodeList **init)
 {
-	Node *a, *l;
-
 	switch(n->op) {
 	case ONAME:
 	case OLITERAL:
 		return n;
 	}
 
-	l = nod(OXXX, N, N);
-	tempname(l, n->type);
-	a = nod(OAS, l, n);
-	typecheck(&a, Etop);
-	walkexpr(&a, init);
-	*init = list(*init, a);
-	return l;
+	return copyexpr(n, n->type, init);
+}
+
+/*
+ * return n in a local variable of type t if it is not already.
+ */
+Node*
+localexpr(Node *n, Type *t, NodeList **init)
+{
+	if(n->op == ONAME &&
+		(n->class == PAUTO || n->class == PPARAM || n->class == PPARAMOUT) &&
+		convertop(n->type, t, nil) == OCONVNOP)
+		return n;
+	
+	return copyexpr(n, t, init);
 }
 
 void

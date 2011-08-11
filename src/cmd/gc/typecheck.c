@@ -124,9 +124,16 @@ typecheck(Node **np, int top)
 	n = *np;
 	if(n == N)
 		return N;
+	
+	lno = setlineno(n);
+
+	// Skip over parens.
+	while(n->op == OPAREN)
+		n = n->left;
 
 	// Resolve definition of name and value of iota lazily.
 	n = resolve(n);
+
 	*np = n;
 
 	// Skip typecheck if already done.
@@ -139,17 +146,18 @@ typecheck(Node **np, int top)
 		case OPACK:
 			break;
 		default:
+			lineno = lno;
 			return n;
 		}
 	}
 
 	if(n->typecheck == 2) {
 		yyerror("typechecking loop");
+		lineno = lno;
 		return n;
 	}
 	n->typecheck = 2;
 
-	lno = setlineno(n);
 	if(n->sym) {
 		if(n->op == ONAME && n->etype != 0 && !(top & Ecall)) {
 			yyerror("use of builtin %S not in function call", n->sym);
@@ -239,6 +247,8 @@ reswitch:
 			t->bound = -1;	// slice
 		} else if(l->op == ODDD) {
 			t->bound = -100;	// to be filled in
+			if(!(top&Ecomplit))
+				yyerror("use of [...] array outside of array literal");
 		} else {
 			l = typecheck(&n->left, Erv);
 			switch(consttype(l)) {
@@ -1342,11 +1352,6 @@ ret:
 		case TNIL:
 		case TBLANK:
 			break;
-		case TARRAY:
-			if(t->bound == -100) {
-				yyerror("use of [...] array outside of array literal");
-				t->bound = 1;
-			}
 		default:
 			checkwidth(t);
 		}
@@ -1971,7 +1976,7 @@ typecheckcomplit(Node **np)
 	}
 
 	setlineno(n->right);
-	l = typecheck(&n->right /* sic */, Etype);
+	l = typecheck(&n->right /* sic */, Etype|Ecomplit);
 	if((t = l->type) == T)
 		goto error;
 	nerr = nerrors;
@@ -2039,7 +2044,7 @@ typecheckcomplit(Node **np)
 				l->right->right = typenod(pushtype);
 			typecheck(&l->right, Erv);
 			defaultlit(&l->right, t->type);
-			l->right = assignconv(l->right, t->type, "array index");
+			l->right = assignconv(l->right, t->type, "array element");
 		}
 		if(t->bound == -100)
 			t->bound = len;

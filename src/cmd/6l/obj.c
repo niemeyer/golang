@@ -50,6 +50,7 @@ Header headers[] = {
    "darwin", Hdarwin,
    "linux", Hlinux,
    "freebsd", Hfreebsd,
+   "openbsd", Hopenbsd,
    "windows", Hwindows,
    "windowsgui", Hwindows,
    0, 0
@@ -62,6 +63,7 @@ Header headers[] = {
  *	-Hdarwin -Tx -Rx		is apple MH-exec
  *	-Hlinux -Tx -Rx			is linux elf-exec
  *	-Hfreebsd -Tx -Rx		is FreeBSD elf-exec
+ *	-Hopenbsd -Tx -Rx		is OpenBSD elf-exec
  *	-Hwindows -Tx -Rx		is MS Windows PE32+
  *
  *	options used: 189BLQSWabcjlnpsvz
@@ -80,11 +82,10 @@ main(int argc, char *argv[])
 	int c;
 
 	Binit(&bso, 1, OWRITE);
-	cout = -1;
 	listinit();
 	memset(debug, 0, sizeof(debug));
 	nerrors = 0;
-	outfile = "6.out";
+	outfile = nil;
 	HEADTYPE = -1;
 	INITTEXT = -1;
 	INITDAT = -1;
@@ -134,10 +135,19 @@ main(int argc, char *argv[])
 	if(argc != 1)
 		usage();
 
-	libinit();
+	mywhatsys();	// get goos
 
 	if(HEADTYPE == -1)
 		HEADTYPE = headtype(goos);
+
+	if(outfile == nil) {
+		if(HEADTYPE == Hwindows)
+			outfile = "6.out.exe";
+		else
+			outfile = "6.out";
+	}
+
+	libinit();
 
 	switch(HEADTYPE) {
 	default:
@@ -186,7 +196,8 @@ main(int argc, char *argv[])
 			INITDAT = 0;
 		break;
 	case Hlinux:	/* elf64 executable */
-	case Hfreebsd: /* freebsd */
+	case Hfreebsd:	/* freebsd */
+	case Hopenbsd:	/* openbsd */
 		/*
 		 * ELF uses TLS offset negative from FS.
 		 * Translate 0(FS) and 8(FS) into -16(FS) and -8(FS).
@@ -446,7 +457,6 @@ loop:
 		s = lookup(x, r);
 		if(x != name)
 			free(x);
-		name = nil;
 
 		if(debug['S'] && r == 0)
 			sig = 1729;
@@ -715,7 +725,6 @@ loop:
 		lastp = p;
 		goto loop;
 	}
-	goto loop;
 
 eof:
 	diag("truncated object file: %s", pn);

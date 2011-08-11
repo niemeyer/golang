@@ -56,6 +56,16 @@ func ParseDirent(buf []byte, max int, names []string) (consumed int, count int, 
 	return origlen - len(buf), count, names
 }
 
+//sysnb pipe() (r int, w int, errno int)
+
+func Pipe(p []int) (errno int) {
+	if len(p) != 2 {
+		return EINVAL
+	}
+	p[0], p[1], errno = pipe()
+	return
+}
+
 // TODO
 func Sendfile(outfd int, infd int, offset *int64, count int) (written int, errno int) {
 	return -1, ENOSYS
@@ -145,9 +155,10 @@ func Sendfile(outfd int, infd int, offset *int64, count int) (written int, errno
 //sys	Unlink(path string) (errno int)
 //sys	Unmount(path string, flags int) (errno int)
 //sys	Write(fd int, p []byte) (n int, errno int)
+//sys   mmap(addr uintptr, length uintptr, prot int, flag int, fd int, pos int64) (ret uintptr, errno int)
+//sys   munmap(addr uintptr, length uintptr) (errno int)
 //sys	read(fd int, buf *byte, nbuf int) (n int, errno int)
 //sys	write(fd int, buf *byte, nbuf int) (n int, errno int)
-
 
 /*
  * Unimplemented

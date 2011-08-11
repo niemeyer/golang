@@ -31,7 +31,7 @@
 #include	<u.h>
 #include	<libc.h>
 #include	<bio.h>
-#include	"../5l/5.out.h"
+#include	"5.out.h"
 
 enum
 {
@@ -264,19 +264,6 @@ enum
 	MINLC	= 4,
 };
 
-EXTERN union
-{
-	struct
-	{
-		uchar	obuf[MAXIO];			/* output buffer */
-		uchar	ibuf[MAXIO];			/* input buffer */
-	} u;
-	char	dbuf[1];
-} buf;
-
-#define	cbuf	u.obuf
-#define	xbuf	u.ibuf
-
 #ifndef COFFCVT
 
 EXTERN	int32	HEADR;			/* length of header */
@@ -286,10 +273,6 @@ EXTERN	int32	INITRND;		/* data round above text location */
 EXTERN	int32	INITTEXT;		/* text location */
 EXTERN	char*	INITENTRY;		/* entry point */
 EXTERN	int32	autosize;
-EXTERN	Biobuf	bso;
-EXTERN	int	cbc;
-EXTERN	uchar*	cbp;
-EXTERN	int	cout;
 EXTERN	Auto*	curauto;
 EXTERN	Auto*	curhist;
 EXTERN	Prog*	curp;
@@ -337,9 +320,11 @@ EXTERN	Prog*	prog_modu;
 #pragma	varargck	type	"A"	int
 #pragma	varargck	type	"C"	int
 #pragma	varargck	type	"D"	Adr*
+#pragma	varargck	type	"I"	uchar*
 #pragma	varargck	type	"N"	Adr*
 #pragma	varargck	type	"P"	Prog*
 #pragma	varargck	type	"S"	char*
+#pragma	varargck	type	"i"	char*
 
 int	Aconv(Fmt*);
 int	Cconv(Fmt*);

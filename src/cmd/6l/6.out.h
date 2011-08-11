@@ -190,6 +190,7 @@ enum	as
 	AOUTSB,
 	AOUTSL,
 	AOUTSW,
+	APAUSE,
 	APOPAL,
 	APOPAW,
 	APOPFL,
@@ -730,6 +731,8 @@ enum	as
 	ASWAPGS,
 
 	AMODE,
+	ACRC32B,
+	ACRC32Q,
 
 	ALAST
 };

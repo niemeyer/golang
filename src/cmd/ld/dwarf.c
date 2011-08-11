@@ -1209,7 +1209,7 @@ copychildren(DWDie *dst, DWDie *src)
 }
 
 // Search children (assumed to have DW_TAG_member) for the one named
-// field and set it's DW_AT_type to dwtype
+// field and set its DW_AT_type to dwtype
 static void
 substitutetype(DWDie *structdie, char *field, DWDie* dwtype)
 {
@@ -1422,7 +1422,6 @@ synthesizechantypes(DWDie *die)
 		copychildren(dwh, hchan);
 		substitutetype(dwh, "recvq", dww);
 		substitutetype(dwh, "sendq", dww);
-		substitutetype(dwh, "free", defptrto(dws));
 		newattr(dwh, DW_AT_byte_size, DW_CLS_CONSTANT,
 			getattr(hchan, DW_AT_byte_size)->value, nil);
 
@@ -1698,7 +1697,7 @@ inithist(Auto *a)
 			// We could just fixup the current
 			// linehist->line, but there doesn't appear to
 			// be a guarantee that every 'Z' is preceded
-			// by it's own 'z', so do the safe thing and
+			// by its own 'z', so do the safe thing and
 			// update the stack and push a new Linehist
 			// entry
 			includestack[includetop].line =	 a->aoffset;
@@ -1816,15 +1815,13 @@ flushunit(DWDie *dwinfo, vlong pc, vlong unitstart, int32 header_length)
 		cput(0);  // start extended opcode
 		uleb128put(1);
 		cput(DW_LNE_end_sequence);
-		cflush();
 
 		here = cpos();
-		seek(cout, unitstart, 0);
+		cseek(unitstart);
 		LPUT(here - unitstart - sizeof(int32));	 // unit_length
 		WPUT(3);  // dwarf version
 		LPUT(header_length); // header length starting here
-		cflush();
-		seek(cout, here, 0);
+		cseek(here);
 	}
 }
 
@@ -2105,17 +2102,14 @@ writeframes(void)
 		pad = rnd(fdesize, PtrSize) - fdesize;
 		strnput("", pad);
 		fdesize += pad;
-		cflush();
 
 		// Emit the FDE header for real, Section 6.4.1.
-		seek(cout, fdeo, 0);
+		cseek(fdeo);
 		LPUT(fdesize);
 		LPUT(0);
 		addrput(p->pc);
 		addrput(s->size);
-
-		cflush();
-		seek(cout, fdeo + 4 + fdesize, 0);
+		cseek(fdeo + 4 + fdesize);
 	}
 
 	cflush();
@@ -2151,14 +2145,12 @@ writeinfo(void)
 
 		putdie(compunit);
 
-		cflush();
 		here = cpos();
-		seek(cout, unitstart, 0);
+		cseek(unitstart);
 		LPUT(here - unitstart - 4);	// exclude the length field.
-		cflush();
-		seek(cout, here, 0);
+		cseek(here);
 	}
-
+	cflush();
 }
 
 /*
@@ -2213,12 +2205,10 @@ writepub(int (*ispub)(DWDie*))
 		}
 		LPUT(0);
 
-		cflush();
 		here = cpos();
-		seek(cout, sectionstart, 0);
+		cseek(sectionstart);
 		LPUT(here - sectionstart - 4);	// exclude the length field.
-		cflush();
-		seek(cout, here, 0);
+		cseek(here);
 
 	}
 
@@ -2358,7 +2348,7 @@ dwarfemitdebugsections(void)
 	if (fwdcount > 0) {
 		if (debug['v'])
 			Bprint(&bso, "%5.2f dwarf pass 2.\n", cputime());
-		seek(cout, infoo, 0);
+		cseek(infoo);
 		writeinfo();
 		if (fwdcount > 0) {
 			diag("dwarf: unresolved references after first dwarf info pass");

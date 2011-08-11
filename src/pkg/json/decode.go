@@ -8,7 +8,6 @@
 package json
 
 import (
-	"container/vector"
 	"encoding/base64"
 	"os"
 	"reflect"
@@ -70,7 +69,6 @@ func Unmarshal(data []byte, v interface{}) os.Error {
 type Unmarshaler interface {
 	UnmarshalJSON([]byte) os.Error
 }
-
 
 // An UnmarshalTypeError describes a JSON value that was
 // not appropriate for a value of a specific Go type.
@@ -670,7 +668,7 @@ func (d *decodeState) valueInterface() interface{} {
 
 // arrayInterface is like array but returns []interface{}.
 func (d *decodeState) arrayInterface() []interface{} {
-	var v vector.Vector
+	var v []interface{}
 	for {
 		// Look ahead for ] - can only happen on first iteration.
 		op := d.scanWhile(scanSkipSpace)
@@ -682,7 +680,7 @@ func (d *decodeState) arrayInterface() []interface{} {
 		d.off--
 		d.scan.undo(op)
 
-		v.Push(d.valueInterface())
+		v = append(v, d.valueInterface())
 
 		// Next token must be , or ].
 		op = d.scanWhile(scanSkipSpace)
@@ -741,7 +739,6 @@ func (d *decodeState) objectInterface() map[string]interface{} {
 	}
 	return m
 }
-
 
 // literalInterface is like literal but returns an interface value.
 func (d *decodeState) literalInterface() interface{} {

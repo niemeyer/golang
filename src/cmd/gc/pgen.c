@@ -149,7 +149,7 @@ compactframe(Prog* ptxt)
 {
 	NodeList *ll;
 	Node* n;
-	uint32 w;
+	vlong w;
 
 	if (stksize == 0)
 		return;
@@ -189,7 +189,7 @@ compactframe(Prog* ptxt)
 			continue;
 
 		w = n->type->width;
-		if((w >= MAXWIDTH) || (w < 1))
+		if(w >= MAXWIDTH || w < 0)
 			fatal("bad width");
 		stksize += w;
 		stksize = rnd(stksize, n->type->align);

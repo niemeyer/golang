@@ -480,12 +480,40 @@ samereg(Node *a, Node *b)
  * according to op.
  */
 void
-dodiv(int op, Type *t, Node *nl, Node *nr, Node *res, Node *ax, Node *dx)
+dodiv(int op, Node *nl, Node *nr, Node *res, Node *ax, Node *dx)
 {
-	Node n1, t1, t2, nz;
+	int check;
+	Node n1, t1, t2, n4, nz;
+	Type *t;
+	Prog *p1, *p2, *p3;
 
-	tempname(&t1, nl->type);
-	tempname(&t2, nr->type);
+	// Have to be careful about handling
+	// most negative int divided by -1 correctly.
+	// The hardware will trap.
+	// Also the byte divide instruction needs AH,
+	// which we otherwise don't have to deal with.
+	// Easiest way to avoid for int8, int16: use int32.
+	// For int32 and int64, use explicit test.
+	// Could use int64 hw for int32.
+	t = nl->type;
+	check = 0;
+	if(issigned[t->etype]) {
+		check = 1;
+		if(isconst(nl, CTINT) && mpgetfix(nl->val.u.xval) != -1LL<<(t->width*8-1))
+			check = 0;
+		else if(isconst(nr, CTINT) && mpgetfix(nr->val.u.xval) != -1)
+			check = 0;
+	}
+	if(t->width < 4) {
+		if(issigned[t->etype])
+			t = types[TINT32];
+		else
+			t = types[TUINT32];
+		check = 0;
+	}
+
+	tempname(&t1, t);
+	tempname(&t2, t);
 	cgen(nl, &t1);
 	cgen(nr, &t2);
 
@@ -495,6 +523,24 @@ dodiv(int op, Type *t, Node *nl, Node *nr, Node *res, Node *ax, Node *dx)
 		regalloc(&n1, t, N);
 	gmove(&t2, &n1);
 	gmove(&t1, ax);
+	p3 = P;
+	if(check) {
+		nodconst(&n4, t, -1);
+		gins(optoas(OCMP, t), &n1, &n4);
+		p1 = gbranch(optoas(ONE, t), T);
+		nodconst(&n4, t, -1LL<<(t->width*8-1));
+		gins(optoas(OCMP, t), ax, &n4);
+		p2 = gbranch(optoas(ONE, t), T);
+		if(op == ODIV)
+			gmove(&n4, res);
+		if(op == OMOD) {
+			nodconst(&n4, t, 0);
+			gmove(&n4, res);
+		}
+		p3 = gbranch(AJMP, T);
+		patch(p1, pc);
+		patch(p2, pc);
+	}
 	if(!issigned[t->etype]) {
 		nodconst(&nz, t, 0);
 		gmove(&nz, dx);
@@ -507,6 +553,8 @@ dodiv(int op, Type *t, Node *nl, Node *nr, Node *res, Node *ax, Node *dx)
 		gmove(ax, res);
 	else
 		gmove(dx, res);
+	if(check)
+		patch(p3, pc);
 }
 
 static void
@@ -553,13 +601,13 @@ cgen_div(int op, Node *nl, Node *nr, Node *res)
 	if(is64(nl->type))
 		fatal("cgen_div %T", nl->type);
 
-	t = nl->type;
-	if(t->width == 1)
-		t = types[t->etype+2];	// int8 -> int16, uint8 -> uint16
-
+	if(issigned[nl->type->etype])
+		t = types[TINT32];
+	else
+		t = types[TUINT32];
 	savex(D_AX, &ax, &oldax, res, t);
 	savex(D_DX, &dx, &olddx, res, t);
-	dodiv(op, t, nl, nr, res, &ax, &dx);
+	dodiv(op, nl, nr, res, &ax, &dx);
 	restx(&dx, &olddx);
 	restx(&ax, &oldax);
 }
@@ -572,9 +620,9 @@ cgen_div(int op, Node *nl, Node *nr, Node *res)
 void
 cgen_shift(int op, Node *nl, Node *nr, Node *res)
 {
-	Node n1, n2, cx, oldcx;
+	Node n1, n2, nt, cx, oldcx, hi, lo;
 	int a, w;
-	Prog *p1;
+	Prog *p1, *p2;
 	uvlong sc;
 
 	if(nl->type->width > 4)
@@ -608,8 +656,13 @@ cgen_shift(int op, Node *nl, Node *nr, Node *res)
 		gmove(&cx, &oldcx);
 	}
 
-	nodreg(&n1, types[TUINT32], D_CX);
-	regalloc(&n1, nr->type, &n1);		// to hold the shift type in CX
+	if(nr->type->width > 4) {
+		tempname(&nt, nr->type);
+		n1 = nt;
+	} else {
+		nodreg(&n1, types[TUINT32], D_CX);
+		regalloc(&n1, nr->type, &n1);		// to hold the shift type in CX
+	}
 
 	if(samereg(&cx, res))
 		regalloc(&n2, nl->type, N);
@@ -624,8 +677,21 @@ cgen_shift(int op, Node *nl, Node *nr, Node *res)
 	}
 
 	// test and fix up large shifts
-	gins(optoas(OCMP, nr->type), &n1, ncon(w));
-	p1 = gbranch(optoas(OLT, types[TUINT32]), T);
+	if(nr->type->width > 4) {
+		// delayed reg alloc
+		nodreg(&n1, types[TUINT32], D_CX);
+		regalloc(&n1, types[TUINT32], &n1);		// to hold the shift type in CX
+		split64(&nt, &lo, &hi);
+		gmove(&lo, &n1);
+		gins(optoas(OCMP, types[TUINT32]), &hi, ncon(0));
+		p2 = gbranch(optoas(ONE, types[TUINT32]), T);
+		gins(optoas(OCMP, types[TUINT32]), &n1, ncon(w));
+		p1 = gbranch(optoas(OLT, types[TUINT32]), T);
+		patch(p2, pc);
+	} else {
+		gins(optoas(OCMP, nr->type), &n1, ncon(w));
+		p1 = gbranch(optoas(OLT, types[TUINT32]), T);
+	}
 	if(op == ORSH && issigned[nl->type->etype]) {
 		gins(a, ncon(w-1), &n2);
 	} else {

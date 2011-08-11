@@ -40,13 +40,6 @@ var (
 	umtrue   = unmarshaler{true}
 )
 
-type badTag struct {
-	X string
-	Y string `json:"y"`
-	Z string `x:"@#*%(#@"`
-	W string `json:"@#$@#$"`
-}
-
 type unmarshalTest struct {
 	in  string
 	ptr interface{}
@@ -67,9 +60,6 @@ var unmarshalTests = []unmarshalTest{
 	{"null", new(interface{}), nil, nil},
 	{`{"X": [1,2,3], "Y": 4}`, new(T), T{Y: 4}, &UnmarshalTypeError{"array", reflect.TypeOf("")}},
 	{`{"x": 1}`, new(tx), tx{}, &UnmarshalFieldError{"x", txType, txType.Field(0)}},
-
-	// skip invalid tags
-	{`{"X":"a", "y":"b", "Z":"c", "W":"d"}`, new(badTag), badTag{"a", "b", "c", "d"}, nil},
 
 	// syntax errors
 	{`{"X": "foo", "Y"}`, nil, nil, &SyntaxError{"invalid character '}' after object key", 17}},
@@ -215,6 +205,18 @@ func TestUnmarshalPtrPtr(t *testing.T) {
 	}
 	if xint.X != 1 {
 		t.Fatalf("Did not write to xint")
+	}
+}
+
+func TestEscape(t *testing.T) {
+	const input = `"foobar"<html>`
+	const expected = `"\"foobar\"\u003chtml\u003e"`
+	b, err := Marshal(input)
+	if err != nil {
+		t.Fatalf("Marshal error: %v", err)
+	}
+	if s := string(b); s != expected {
+		t.Errorf("Encoding of [%s] was [%s], want [%s]", input, s, expected)
 	}
 }
 

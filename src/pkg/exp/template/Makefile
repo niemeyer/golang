@@ -8,7 +8,7 @@ TARG=exp/template
 GOFILES=\
 	exec.go\
 	funcs.go\
-	lex.go\
+	helper.go\
 	parse.go\
 	set.go\
 

@@ -10,10 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 )
 
-// Path is a validated list of Trees derived from $GOPATH at init.
+// Path is a validated list of Trees derived from $GOROOT and $GOPATH at init.
 var Path []*Tree
 
 // Tree describes a Go source tree, either $GOROOT or one from $GOPATH.
@@ -55,6 +54,11 @@ func (t *Tree) PkgDir() string {
 
 // BinDir returns the tree's binary executable directory.
 func (t *Tree) BinDir() string {
+	if t.Goroot {
+		if gobin := os.Getenv("GOBIN"); gobin != "" {
+			return gobin
+		}
+	}
 	return filepath.Join(t.Path, "bin")
 }
 
@@ -79,7 +83,10 @@ func (t *Tree) HasPkg(pkg string) bool {
 	// TODO(adg): check object version is consistent
 }
 
-var ErrNotFound = os.NewError("package could not be found locally")
+var (
+	ErrNotFound     = os.NewError("go/build: package could not be found locally")
+	ErrTreeNotFound = os.NewError("go/build: no valid GOROOT or GOPATH could be found")
+)
 
 // FindTree takes an import or filesystem path and returns the
 // tree where the package source should be and the package import path.
@@ -93,7 +100,7 @@ func FindTree(path string) (tree *Tree, pkg string, err os.Error) {
 		}
 		for _, t := range Path {
 			tpath := t.SrcDir() + string(filepath.Separator)
-			if !strings.HasPrefix(path, tpath) {
+			if !filepath.HasPrefix(path, tpath) {
 				continue
 			}
 			tree = t
@@ -111,14 +118,22 @@ func FindTree(path string) (tree *Tree, pkg string, err os.Error) {
 			return
 		}
 	}
-	err = ErrNotFound
+	if tree == nil {
+		err = ErrTreeNotFound
+	} else {
+		err = ErrNotFound
+	}
 	return
 }
 
 // isLocalPath returns whether the given path is local (/foo ./foo ../foo . ..)
+// Windows paths that starts with drive letter (c:\foo c:foo) are considered local.
 func isLocalPath(s string) bool {
 	const sep = string(filepath.Separator)
-	return strings.HasPrefix(s, sep) || strings.HasPrefix(s, "."+sep) || strings.HasPrefix(s, ".."+sep) || s == "." || s == ".."
+	return s == "." || s == ".." ||
+		filepath.HasPrefix(s, sep) ||
+		filepath.HasPrefix(s, "."+sep) || filepath.HasPrefix(s, ".."+sep) ||
+		filepath.VolumeName(s) != ""
 }
 
 var (
@@ -133,12 +148,13 @@ var (
 // set up Path: parse and validate GOROOT and GOPATH variables
 func init() {
 	root := runtime.GOROOT()
-	p, err := newTree(root)
+	t, err := newTree(root)
 	if err != nil {
-		log.Fatalf("Invalid GOROOT %q: %v", root, err)
+		log.Printf("go/build: invalid GOROOT %q: %v", root, err)
+	} else {
+		t.Goroot = true
+		Path = []*Tree{t}
 	}
-	p.Goroot = true
-	Path = []*Tree{p}
 
 	for _, p := range filepath.SplitList(os.Getenv("GOPATH")) {
 		if p == "" {
@@ -146,7 +162,7 @@ func init() {
 		}
 		t, err := newTree(p)
 		if err != nil {
-			log.Printf("Invalid GOPATH %q: %v", p, err)
+			log.Printf("go/build: invalid GOPATH %q: %v", p, err)
 			continue
 		}
 		Path = append(Path, t)
@@ -160,7 +176,7 @@ func init() {
 	}
 
 	// use GOROOT if no valid GOPATH specified
-	if defaultTree == nil {
+	if defaultTree == nil && len(Path) > 0 {
 		defaultTree = Path[0]
 	}
 }

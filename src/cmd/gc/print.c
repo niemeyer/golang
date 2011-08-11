@@ -78,6 +78,7 @@ exprfmt(Fmt *f, Node *n, int prec)
 	case OTPAREN:
 	case OINDEX:
 	case OINDEXMAP:
+	case OPAREN:
 		nprec = 7;
 		break;
 
@@ -132,6 +133,10 @@ exprfmt(Fmt *f, Node *n, int prec)
 	default:
 	bad:
 		fmtprint(f, "(node %O)", n->op);
+		break;
+
+	case OPAREN:
+		fmtprint(f, "(%#N)", n->left);
 		break;
 
 	case OREGISTER:
@@ -404,6 +409,7 @@ exprfmt(Fmt *f, Node *n, int prec)
 	case OCONVIFACE:
 	case OCONVNOP:
 	case OARRAYBYTESTR:
+	case OSTRARRAYBYTE:
 	case ORUNESTR:
 		if(n->type == T || n->type->sym == S)
 			fmtprint(f, "(%T)(", n->type);
@@ -445,7 +451,27 @@ exprfmt(Fmt *f, Node *n, int prec)
 		break;
 
 	case OMAKEMAP:
+	case OMAKECHAN:
 		fmtprint(f, "make(%#T)", n->type);
+		break;
+
+	// Some statements
+
+	case ODCL:
+		fmtprint(f, "var %S %#T", n->left->sym, n->left->type);
+		break;
+
+	case ORETURN:
+		fmtprint(f, "return ");
+		exprlistfmt(f, n->list);
+		break;
+
+	case OPROC:
+		fmtprint(f, "go %#N", n->left);
+		break;
+
+	case ODEFER:
+		fmtprint(f, "defer %#N", n->left);
 		break;
 	}
 

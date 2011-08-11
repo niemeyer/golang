@@ -7,6 +7,7 @@ package template
 import (
 	"bytes"
 	"fmt"
+	"http"
 	"io"
 	"os"
 	"reflect"
@@ -17,22 +18,35 @@ import (
 
 // FuncMap is the type of the map defining the mapping from names to functions.
 // Each function must have either a single return value, or two return values of
-// which the second has type os.Error.
+// which the second has type os.Error. If the second argument evaluates to non-nil
+// during execution, execution terminates and Execute returns an error.
 type FuncMap map[string]interface{}
 
-var funcs = map[string]reflect.Value{
-	"and":    reflect.ValueOf(and),
-	"html":   reflect.ValueOf(HTMLEscaper),
-	"index":  reflect.ValueOf(index),
-	"js":     reflect.ValueOf(JSEscaper),
-	"not":    reflect.ValueOf(not),
-	"or":     reflect.ValueOf(or),
-	"printf": reflect.ValueOf(fmt.Sprintf),
+var builtins = FuncMap{
+	"and":     and,
+	"html":    HTMLEscaper,
+	"index":   index,
+	"js":      JSEscaper,
+	"not":     not,
+	"or":      or,
+	"print":   fmt.Sprint,
+	"printf":  fmt.Sprintf,
+	"println": fmt.Sprintln,
+	"url":     URLEscaper,
 }
 
-// addFuncs adds to values the functions in funcs, converting them to reflect.Values.
-func addFuncs(values map[string]reflect.Value, funcMap FuncMap) {
-	for name, fn := range funcMap {
+var builtinFuncs = createValueFuncs(builtins)
+
+// createValueFuncs turns a FuncMap into a map[string]reflect.Value
+func createValueFuncs(funcMap FuncMap) map[string]reflect.Value {
+	m := make(map[string]reflect.Value)
+	addValueFuncs(m, funcMap)
+	return m
+}
+
+// addValueFuncs adds to values the functions in funcs, converting them to reflect.Values.
+func addValueFuncs(out map[string]reflect.Value, in FuncMap) {
+	for name, fn := range in {
 		v := reflect.ValueOf(fn)
 		if v.Kind() != reflect.Func {
 			panic("value for " + name + " not a function")
@@ -40,7 +54,15 @@ func addFuncs(values map[string]reflect.Value, funcMap FuncMap) {
 		if !goodFunc(v.Type()) {
 			panic(fmt.Errorf("can't handle multiple results from method/function %q", name))
 		}
-		values[name] = v
+		out[name] = v
+	}
+}
+
+// addFuncs adds to values the functions in funcs. It does no checking of the input -
+// call addValueFuncs first.
+func addFuncs(out, in FuncMap) {
+	for name, fn := range in {
+		out[name] = fn
 	}
 }
 
@@ -59,16 +81,16 @@ func goodFunc(typ reflect.Type) bool {
 // findFunction looks for a function in the template, set, and global map.
 func findFunction(name string, tmpl *Template, set *Set) (reflect.Value, bool) {
 	if tmpl != nil {
-		if fn := tmpl.funcs[name]; fn.IsValid() {
+		if fn := tmpl.execFuncs[name]; fn.IsValid() {
 			return fn, true
 		}
 	}
 	if set != nil {
-		if fn := set.funcs[name]; fn.IsValid() {
+		if fn := set.execFuncs[name]; fn.IsValid() {
 			return fn, true
 		}
 	}
-	if fn := funcs[name]; fn.IsValid() {
+	if fn := builtinFuncs[name]; fn.IsValid() {
 		return fn, true
 	}
 	return reflect.Value{}, false
@@ -106,9 +128,10 @@ func index(item interface{}, indices ...interface{}) (interface{}, os.Error) {
 			if !index.Type().AssignableTo(v.Type().Key()) {
 				return nil, fmt.Errorf("%s is not index type for %s", index.Type(), v.Type())
 			}
-			v = v.MapIndex(index)
-			if !v.IsValid() {
-				return nil, fmt.Errorf("index %v not present in map", index.Interface())
+			if x := v.MapIndex(index); x.IsValid() {
+				v = x
+			} else {
+				v = reflect.Zero(v.Type().Key())
 			}
 		default:
 			return nil, fmt.Errorf("can't index item of type %s", index.Type())
@@ -119,22 +142,39 @@ func index(item interface{}, indices ...interface{}) (interface{}, os.Error) {
 
 // Boolean logic.
 
-// and returns the Boolean AND of its arguments.
-func and(arg0 interface{}, args ...interface{}) (truth bool) {
-	truth, _ = isTrue(reflect.ValueOf(arg0))
-	for i := 0; truth && i < len(args); i++ {
-		truth, _ = isTrue(reflect.ValueOf(args[i]))
-	}
-	return
+func truth(a interface{}) bool {
+	t, _ := isTrue(reflect.ValueOf(a))
+	return t
 }
 
-// or returns the Boolean OR of its arguments.
-func or(arg0 interface{}, args ...interface{}) (truth bool) {
-	truth, _ = isTrue(reflect.ValueOf(arg0))
-	for i := 0; !truth && i < len(args); i++ {
-		truth, _ = isTrue(reflect.ValueOf(args[i]))
+// and computes the Boolean AND of its arguments, returning
+// the first false argument it encounters, or the last argument.
+func and(arg0 interface{}, args ...interface{}) interface{} {
+	if !truth(arg0) {
+		return arg0
 	}
-	return
+	for i := range args {
+		arg0 = args[i]
+		if !truth(arg0) {
+			break
+		}
+	}
+	return arg0
+}
+
+// or computes the Boolean OR of its arguments, returning
+// the first true argument it encounters, or the last argument.
+func or(arg0 interface{}, args ...interface{}) interface{} {
+	if truth(arg0) {
+		return arg0
+	}
+	for i := range args {
+		arg0 = args[i]
+		if truth(arg0) {
+			break
+		}
+	}
+	return arg0
 }
 
 // not returns the Boolean negation of its argument.
@@ -213,8 +253,9 @@ var (
 	jsBackslash = []byte(`\\`)
 	jsApos      = []byte(`\'`)
 	jsQuot      = []byte(`\"`)
+	jsLt        = []byte(`\x3C`)
+	jsGt        = []byte(`\x3E`)
 )
-
 
 // JSEscape writes to w the escaped JavaScript equivalent of the plain text data b.
 func JSEscape(w io.Writer, b []byte) {
@@ -222,14 +263,14 @@ func JSEscape(w io.Writer, b []byte) {
 	for i := 0; i < len(b); i++ {
 		c := b[i]
 
-		if ' ' <= c && c < utf8.RuneSelf && c != '\\' && c != '"' && c != '\'' {
+		if !jsIsSpecial(int(c)) {
 			// fast path: nothing to do
 			continue
 		}
 		w.Write(b[last:i])
 
 		if c < utf8.RuneSelf {
-			// Quotes and slashes get quoted.
+			// Quotes, slashes and angle brackets get quoted.
 			// Control characters get written as \u00XX.
 			switch c {
 			case '\\':
@@ -238,6 +279,10 @@ func JSEscape(w io.Writer, b []byte) {
 				w.Write(jsApos)
 			case '"':
 				w.Write(jsQuot)
+			case '<':
+				w.Write(jsLt)
+			case '>':
+				w.Write(jsGt)
 			default:
 				w.Write(jsLowUni)
 				t, b := c>>4, c&0x0f
@@ -273,7 +318,7 @@ func JSEscapeString(s string) string {
 
 func jsIsSpecial(rune int) bool {
 	switch rune {
-	case '\\', '\'', '"':
+	case '\\', '\'', '"', '<', '>':
 		return true
 	}
 	return rune < ' ' || utf8.RuneSelf <= rune
@@ -291,4 +336,17 @@ func JSEscaper(args ...interface{}) string {
 		s = fmt.Sprint(args...)
 	}
 	return JSEscapeString(s)
+}
+
+// URLEscaper returns the escaped value of the textual representation of its
+// arguments in a form suitable for embedding in a URL.
+func URLEscaper(args ...interface{}) string {
+	s, ok := "", false
+	if len(args) == 1 {
+		s, ok = args[0].(string)
+	}
+	if !ok {
+		s = fmt.Sprint(args...)
+	}
+	return http.URLEscape(s)
 }

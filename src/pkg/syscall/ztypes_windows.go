@@ -1,22 +1,5 @@
 package syscall
 
-// TODO(brainman): autogenerate types in ztypes_windows_386.go
-
-//import "unsafe"
-
-// Constants
-const (
-	sizeofPtr      = 0x4
-	sizeofShort    = 0x2
-	sizeofInt      = 0x4
-	sizeofLong     = 0x4
-	sizeofLongLong = 0x8
-	PathMax        = 0x1000
-	SizeofLinger   = 0x8
-	SizeofMsghdr   = 0x1c
-	SizeofCmsghdr  = 0xc
-)
-
 const (
 	// Windows errors.
 	ERROR_FILE_NOT_FOUND      = 2
@@ -179,16 +162,6 @@ const (
 	CRYPT_DEFAULT_CONTAINER_OPTIONAL = 0x00000080
 )
 
-// Types
-
-type _C_short int16
-
-type _C_int int32
-
-type _C_long int32
-
-type _C_long_long int64
-
 // Invented values to support what package os expects.
 type Timeval struct {
 	Sec  int32
@@ -212,8 +185,8 @@ type SecurityAttributes struct {
 }
 
 type Overlapped struct {
-	Internal     uint32
-	InternalHigh uint32
+	Internal     uintptr
+	InternalHigh uintptr
 	Offset       uint32
 	OffsetHigh   uint32
 	HEvent       Handle
@@ -388,53 +361,28 @@ const (
 	WSASYS_STATUS_LEN  = 128
 )
 
-type WSAData struct {
-	Version      uint16
-	HighVersion  uint16
-	Description  [WSADESCRIPTION_LEN + 1]byte
-	SystemStatus [WSASYS_STATUS_LEN + 1]byte
-	MaxSockets   uint16
-	MaxUdpDg     uint16
-	VendorInfo   *byte
-}
-
 type WSABuf struct {
 	Len uint32
 	Buf *byte
 }
 
-// TODO(brainman): fix all needed for os
-
+// Invented values to support what package os expects.
 const (
-	PROT_READ  = 0x1
-	PROT_WRITE = 0x2
-	MAP_SHARED = 0x1
-	SYS_FORK   = 0
-	SYS_PTRACE = 0
-	SYS_CHDIR  = 0
-	SYS_DUP2   = 0
-	SYS_FCNTL  = 0
-	SYS_EXECVE = 0
-	F_GETFD    = 0x1
-	F_SETFD    = 0x2
-	F_GETFL    = 0x3
-	F_SETFL    = 0x4
-	FD_CLOEXEC = 0
-	S_IFMT     = 0x1f000
-	S_IFIFO    = 0x1000
-	S_IFCHR    = 0x2000
-	S_IFDIR    = 0x4000
-	S_IFBLK    = 0x6000
-	S_IFREG    = 0x8000
-	S_IFLNK    = 0xa000
-	S_IFSOCK   = 0xc000
-	S_ISUID    = 0x800
-	S_ISGID    = 0x400
-	S_ISVTX    = 0x200
-	S_IRUSR    = 0x100
-	S_IWRITE   = 0x80
-	S_IWUSR    = 0x80
-	S_IXUSR    = 0x40
+	S_IFMT   = 0x1f000
+	S_IFIFO  = 0x1000
+	S_IFCHR  = 0x2000
+	S_IFDIR  = 0x4000
+	S_IFBLK  = 0x6000
+	S_IFREG  = 0x8000
+	S_IFLNK  = 0xa000
+	S_IFSOCK = 0xc000
+	S_ISUID  = 0x800
+	S_ISGID  = 0x400
+	S_ISVTX  = 0x200
+	S_IRUSR  = 0x100
+	S_IWRITE = 0x80
+	S_IWUSR  = 0x80
+	S_IXUSR  = 0x40
 )
 
 const (
@@ -451,13 +399,6 @@ type Hostent struct {
 	AddrType uint16
 	Length   uint16
 	AddrList **byte
-}
-
-type Servent struct {
-	Name    *byte
-	Aliases **byte
-	Port    uint16
-	Proto   *byte
 }
 
 const (
@@ -535,6 +476,12 @@ type DNSSRVData struct {
 
 type DNSPTRData struct {
 	Host *uint16
+}
+
+type DNSMXData struct {
+	NameExchange *uint16
+	Preference   uint16
+	Pad          uint16
 }
 
 type DNSRecord struct {

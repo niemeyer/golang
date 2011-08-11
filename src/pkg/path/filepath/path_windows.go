@@ -4,25 +4,43 @@
 
 package filepath
 
-import "os"
+import "strings"
 
 // IsAbs returns true if the path is absolute.
-func IsAbs(path string) bool {
-	return path != "" && (volumeName(path) != "" || os.IsPathSeparator(path[0]))
+func IsAbs(path string) (b bool) {
+	v := VolumeName(path)
+	if v == "" {
+		return false
+	}
+	path = path[len(v):]
+	if path == "" {
+		return false
+	}
+	return path[0] == '/' || path[0] == '\\'
 }
 
-// volumeName return leading volume name.  
-// If given "C:\foo\bar", return "C:" on windows.
-func volumeName(path string) string {
-	if path == "" {
+// VolumeName returns leading volume name.  
+// Given "C:\foo\bar" it returns "C:" under windows.
+// On other platforms it returns "".
+func VolumeName(path string) (v string) {
+	if len(path) < 2 {
 		return ""
 	}
 	// with drive letter
 	c := path[0]
-	if len(path) > 2 && path[1] == ':' && os.IsPathSeparator(path[2]) &&
+	if path[1] == ':' &&
 		('0' <= c && c <= '9' || 'a' <= c && c <= 'z' ||
 			'A' <= c && c <= 'Z') {
-		return path[0:2]
+		return path[:2]
 	}
 	return ""
+}
+
+// HasPrefix tests whether the path p begins with prefix.
+// It ignores case while comparing.
+func HasPrefix(p, prefix string) bool {
+	if strings.HasPrefix(p, prefix) {
+		return true
+	}
+	return strings.HasPrefix(strings.ToLower(p), strings.ToLower(prefix))
 }
