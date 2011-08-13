@@ -6,6 +6,7 @@ package main
 
 import (
 	"bytes"
+	"exp/template"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -23,7 +24,6 @@ import (
 	"runtime"
 	"sort"
 	"strings"
-	"template"
 	"time"
 )
 
@@ -371,143 +371,24 @@ func writeNode(w io.Writer, fset *token.FileSet, x interface{}) {
 	(&printer.Config{mode, *tabwidth}).Fprint(&tconv{output: w}, fset, x)
 }
 
-// Write anything to w.
-func writeAny(w io.Writer, fset *token.FileSet, x interface{}) {
-	switch v := x.(type) {
-	case []byte:
-		w.Write(v)
-	case string:
-		w.Write([]byte(v))
-	case ast.Decl, ast.Expr, ast.Stmt, *ast.File:
-		writeNode(w, fset, x)
-	default:
-		fmt.Fprint(w, x)
+func filenameFunc(path string) string {
+	_, localname := filepath.Split(path)
+	return localname
+}
+
+func fileInfoNameFunc(fi FileInfo) string {
+	name := fi.Name()
+	if fi.IsDirectory() {
+		name += "/"
 	}
+	return name
 }
 
-// Write anything html-escaped to w.
-func writeAnyHTML(w io.Writer, fset *token.FileSet, x interface{}) {
-	switch v := x.(type) {
-	case []byte:
-		template.HTMLEscape(w, v)
-	case string:
-		template.HTMLEscape(w, []byte(v))
-	case ast.Decl, ast.Expr, ast.Stmt, *ast.File:
-		var buf bytes.Buffer
-		writeNode(&buf, fset, x)
-		FormatText(w, buf.Bytes(), -1, true, "", nil)
-	default:
-		var buf bytes.Buffer
-		fmt.Fprint(&buf, x)
-		template.HTMLEscape(w, buf.Bytes())
+func fileInfoTimeFunc(fi FileInfo) string {
+	if t := fi.Mtime_ns(); t != 0 {
+		return time.SecondsToLocalTime(t / 1e9).String()
 	}
-}
-
-func fileset(x []interface{}) *token.FileSet {
-	if len(x) > 1 {
-		if fset, ok := x[1].(*token.FileSet); ok {
-			return fset
-		}
-	}
-	return nil
-}
-
-// Template formatter for "html-esc" format.
-func htmlEscFmt(w io.Writer, format string, x ...interface{}) {
-	writeAnyHTML(w, fileset(x), x[0])
-}
-
-// Template formatter for "html-comment" format.
-func htmlCommentFmt(w io.Writer, format string, x ...interface{}) {
-	var buf bytes.Buffer
-	writeAny(&buf, fileset(x), x[0])
-	// TODO(gri) Provide list of words (e.g. function parameters)
-	//           to be emphasized by ToHTML.
-	doc.ToHTML(w, buf.Bytes(), nil) // does html-escaping
-}
-
-// Template formatter for "" (default) format.
-func textFmt(w io.Writer, format string, x ...interface{}) {
-	writeAny(w, fileset(x), x[0])
-}
-
-// Template formatter for "urlquery-esc" format.
-func urlQueryEscFmt(w io.Writer, format string, x ...interface{}) {
-	var buf bytes.Buffer
-	writeAny(&buf, fileset(x), x[0])
-	template.HTMLEscape(w, []byte(http.URLEscape(string(buf.Bytes()))))
-}
-
-// Template formatter for the various "url-xxx" formats excluding url-esc.
-func urlFmt(w io.Writer, format string, x ...interface{}) {
-	var path string
-	var line int
-	var low, high int // selection
-
-	// determine path and position info, if any
-	type positioner interface {
-		Pos() token.Pos
-		End() token.Pos
-	}
-	switch t := x[0].(type) {
-	case string:
-		path = t
-	case positioner:
-		fset := fileset(x)
-		if p := t.Pos(); p.IsValid() {
-			pos := fset.Position(p)
-			path = pos.Filename
-			line = pos.Line
-			low = pos.Offset
-		}
-		if p := t.End(); p.IsValid() {
-			high = fset.Position(p).Offset
-		}
-	default:
-		// we should never reach here, but be resilient
-		// and assume the position is invalid (empty path,
-		// and line 0)
-		log.Printf("INTERNAL ERROR: urlFmt(%s) without a string or positioner", format)
-	}
-
-	// map path
-	relpath := relativeURL(path)
-
-	// convert to relative URLs so that they can also
-	// be used as relative file names in .txt templates
-	switch format {
-	default:
-		// we should never reach here, but be resilient
-		// and assume the url-pkg format instead
-		log.Printf("INTERNAL ERROR: urlFmt(%s)", format)
-		fallthrough
-	case "url-pkg":
-		// because of the irregular mapping under goroot
-		// we need to correct certain relative paths
-		if strings.HasPrefix(relpath, "src/pkg/") {
-			relpath = relpath[len("src/pkg/"):]
-		}
-		template.HTMLEscape(w, []byte(pkgHandler.pattern[1:]+relpath)) // remove trailing '/' for relative URL
-	case "url-src":
-		template.HTMLEscape(w, []byte(relpath))
-	case "url-pos":
-		template.HTMLEscape(w, []byte(relpath))
-		// selection ranges are of form "s=low:high"
-		if low < high {
-			fmt.Fprintf(w, "?s=%d:%d", low, high)
-			// if we have a selection, position the page
-			// such that the selection is a bit below the top
-			line -= 10
-			if line < 1 {
-				line = 1
-			}
-		}
-		// line id's in html-printed source are of the
-		// form "L%d" where %d stands for the line number
-		if line > 0 {
-			fmt.Fprintf(w, "#L%d", line)
-		}
-	}
+	return "" // don't return epoch if time is obviously not set
 }
 
 // The strings in infoKinds must be properly html-escaped.
@@ -522,14 +403,11 @@ var infoKinds = [nKinds]string{
 	Use:           "use",
 }
 
-// Template formatter for "infoKind" format.
-func infoKindFmt(w io.Writer, format string, x ...interface{}) {
-	fmt.Fprintf(w, infoKinds[x[0].(SpotKind)]) // infoKind entries are html-escaped
+func infoKind_htmlFunc(kind SpotKind) string {
+	return infoKinds[kind] // infoKind entries are html-escaped
 }
 
-// Template formatter for "infoLine" format.
-func infoLineFmt(w io.Writer, format string, x ...interface{}) {
-	info := x[0].(SpotInfo)
+func infoLineFunc(info SpotInfo) int {
 	line := info.Lori()
 	if info.IsIndex() {
 		index, _ := searchIndex.get()
@@ -543,80 +421,113 @@ func infoLineFmt(w io.Writer, format string, x ...interface{}) {
 			line = 0
 		}
 	}
-	fmt.Fprintf(w, "%d", line)
+	return line
 }
 
-// Template formatter for "infoSnippet" format.
-func infoSnippetFmt(w io.Writer, format string, x ...interface{}) {
-	info := x[0].(SpotInfo)
-	text := []byte(`<span class="alert">no snippet text available</span>`)
+func infoSnippet_htmlFunc(info SpotInfo) string {
 	if info.IsIndex() {
 		index, _ := searchIndex.get()
-		// no escaping of snippet text needed;
-		// snippet text is escaped when generated
-		text = index.(*Index).Snippet(info.Lori()).Text
+		// Snippet.Text was HTML-escaped when it was generated
+		return index.(*Index).Snippet(info.Lori()).Text
 	}
-	w.Write(text)
+	return `<span class="alert">no snippet text available</span>`
 }
 
-// Template formatter for "padding" format.
-func paddingFmt(w io.Writer, format string, x ...interface{}) {
-	for i := x[0].(int); i > 0; i-- {
-		fmt.Fprint(w, `<td width="25"></td>`)
+func nodeFunc(node interface{}, fset *token.FileSet) string {
+	var buf bytes.Buffer
+	writeNode(&buf, fset, node)
+	return buf.String()
+}
+
+func node_htmlFunc(node interface{}, fset *token.FileSet) string {
+	var buf1 bytes.Buffer
+	writeNode(&buf1, fset, node)
+	var buf2 bytes.Buffer
+	FormatText(&buf2, buf1.Bytes(), -1, true, "", nil)
+	return buf2.String()
+}
+
+func comment_htmlFunc(comment string) string {
+	var buf bytes.Buffer
+	// TODO(gri) Provide list of words (e.g. function parameters)
+	//           to be emphasized by ToHTML.
+	doc.ToHTML(&buf, []byte(comment), nil) // does html-escaping
+	return buf.String()
+}
+
+func pkgLinkFunc(path string) string {
+	relpath := relativeURL(path)
+	// because of the irregular mapping under goroot
+	// we need to correct certain relative paths
+	if strings.HasPrefix(relpath, "src/pkg/") {
+		relpath = relpath[len("src/pkg/"):]
 	}
+	return pkgHandler.pattern[1:] + relpath // remove trailing '/' for relative URL
 }
 
-// Template formatter for "localname" format.
-func localnameFmt(w io.Writer, format string, x ...interface{}) {
-	_, localname := filepath.Split(x[0].(string))
-	template.HTMLEscape(w, []byte(localname))
-}
+func posLink_urlFunc(node ast.Node, fset *token.FileSet) string {
+	var relpath string
+	var line int
+	var low, high int // selection
 
-// Template formatter for "fileInfoName" format.
-func fileInfoNameFmt(w io.Writer, format string, x ...interface{}) {
-	fi := x[0].(FileInfo)
-	template.HTMLEscape(w, []byte(fi.Name()))
-	if fi.IsDirectory() {
-		w.Write([]byte{'/'})
+	if p := node.Pos(); p.IsValid() {
+		pos := fset.Position(p)
+		relpath = relativeURL(pos.Filename)
+		line = pos.Line
+		low = pos.Offset
 	}
-}
-
-// Template formatter for "fileInfoSize" format.
-func fileInfoSizeFmt(w io.Writer, format string, x ...interface{}) {
-	fmt.Fprintf(w, "%d", x[0].(FileInfo).Size())
-}
-
-// Template formatter for "fileInfoTime" format.
-func fileInfoTimeFmt(w io.Writer, format string, x ...interface{}) {
-	if t := x[0].(FileInfo).Mtime_ns(); t != 0 {
-		template.HTMLEscape(w, []byte(time.SecondsToLocalTime(t/1e9).String()))
+	if p := node.End(); p.IsValid() {
+		high = fset.Position(p).Offset
 	}
-	// don't print epoch if time is obviously not set
+
+	var buf bytes.Buffer
+	buf.WriteString(http.URLEscape(relpath))
+	// selection ranges are of form "s=low:high"
+	if low < high {
+		fmt.Fprintf(&buf, "?s=%d:%d", low, high) // no need for URL escaping
+		// if we have a selection, position the page
+		// such that the selection is a bit below the top
+		line -= 10
+		if line < 1 {
+			line = 1
+		}
+	}
+	// line id's in html-printed source are of the
+	// form "L%d" where %d stands for the line number
+	if line > 0 {
+		fmt.Fprintf(&buf, "#L%d", line) // no need for URL escaping
+	}
+
+	return buf.String()
 }
 
-// Template formatter for "numlines" format.
-func numlinesFmt(w io.Writer, format string, x ...interface{}) {
-	list := x[0].([]int)
-	fmt.Fprintf(w, "%d", len(list))
-}
+// fmap describes the template functions installed with all godoc templates.
+// Convention: template function names ending in "_html" or "_url" produce
+//             HTML- or URL-escaped strings; all other function results may
+//             require explicit escaping in the template.
+var fmap = template.FuncMap{
+	// various helpers
+	"filename": filenameFunc,
+	"repeat":   strings.Repeat,
 
-var fmap = template.FormatterMap{
-	"":             textFmt,
-	"html-esc":     htmlEscFmt,
-	"html-comment": htmlCommentFmt,
-	"urlquery-esc": urlQueryEscFmt,
-	"url-pkg":      urlFmt,
-	"url-src":      urlFmt,
-	"url-pos":      urlFmt,
-	"infoKind":     infoKindFmt,
-	"infoLine":     infoLineFmt,
-	"infoSnippet":  infoSnippetFmt,
-	"padding":      paddingFmt,
-	"fileInfoName": fileInfoNameFmt,
-	"fileInfoSize": fileInfoSizeFmt,
-	"fileInfoTime": fileInfoTimeFmt,
-	"localname":    localnameFmt,
-	"numlines":     numlinesFmt,
+	// accss to FileInfos (directory listings)
+	"fileInfoName": fileInfoNameFunc,
+	"fileInfoTime": fileInfoTimeFunc,
+
+	// access to search result information
+	"infoKind_html":    infoKind_htmlFunc,
+	"infoLine":         infoLineFunc,
+	"infoSnippet_html": infoSnippet_htmlFunc,
+
+	// formatting of AST nodes
+	"node":         nodeFunc,
+	"node_html":    node_htmlFunc,
+	"comment_html": comment_htmlFunc,
+
+	// support for URL attributes
+	"pkgLink":     pkgLinkFunc,
+	"srcLink":     relativeURL,
+	"posLink_url": posLink_urlFunc,
 }
 
 func readTemplate(name string) *template.Template {
@@ -629,15 +540,7 @@ func readTemplate(name string) *template.Template {
 			path = defaultpath
 		}
 	}
-	data, err := fs.ReadFile(path)
-	if err != nil {
-		log.Fatalf("ReadFile %s: %v", path, err)
-	}
-	t, err := template.Parse(string(data), fmap)
-	if err != nil {
-		log.Fatalf("%s: %v", name, err)
-	}
-	return t
+	return template.Must(template.New(name).Funcs(fmap).ParseFile(path))
 }
 
 var (

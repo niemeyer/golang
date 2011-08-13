@@ -28,6 +28,9 @@ type T struct {
 	ComplexZero float64
 	// Nested structs.
 	U *U
+	// Struct with String method.
+	V0     V
+	V1, V2 *V
 	// Slices
 	SI      []int
 	SIEmpty []int
@@ -45,6 +48,8 @@ type T struct {
 	Empty4 interface{}
 	// Non-empty interface.
 	NonEmptyInterface I
+	// Stringer.
+	Str fmt.Stringer
 	// Pointers
 	PI  *int
 	PSI *[]int
@@ -57,12 +62,25 @@ type U struct {
 	V string
 }
 
+type V struct {
+	j int
+}
+
+func (v *V) String() string {
+	if v == nil {
+		return "nilV"
+	}
+	return fmt.Sprintf("<%d>", v.j)
+}
+
 var tVal = &T{
 	True:   true,
 	I:      17,
 	U16:    16,
 	X:      "x",
 	U:      &U{"v"},
+	V0:     V{6666},
+	V1:     &V{7777}, // leave V2 as nil
 	SI:     []int{3, 4, 5},
 	SB:     []bool{true, false},
 	MSI:    map[string]int{"one": 1, "two": 2, "three": 3},
@@ -76,6 +94,7 @@ var tVal = &T{
 	Empty3:            []int{7, 8},
 	Empty4:            &U{"UinEmpty"},
 	NonEmptyInterface: new(T),
+	Str:               os.NewError("foozle"),
 	PI:                newInt(23),
 	PSI:               newIntSlice(21, 22, 23),
 	Tmpl:              Must(New("x").Parse("test template")), // "x" is the value of .X
@@ -212,6 +231,11 @@ var execTests = []execTest{
 	{"$.U.V", "{{$.U.V}}", "v", tVal, true},
 	{"declare in action", "{{$x := $.U.V}}{{$x}}", "v", tVal, true},
 
+	// Type with String method.
+	{"V{6666}.String()", "-{{.V0}}-", "-<6666>-", tVal, true},
+	{"&V{7777}.String()", "-{{.V1}}-", "-<7777>-", tVal, true},
+	{"(*V)(nil).String()", "-{{.V2}}-", "-nilV-", tVal, true},
+
 	// Pointers.
 	{"*int", "{{.PI}}", "23", tVal, true},
 	{"*[]int", "{{.PSI}}", "[21 22 23]", tVal, true},
@@ -289,8 +313,8 @@ var execTests = []execTest{
 	// JavaScript.
 	{"js", `{{js .}}`, `It\'d be nice.`, `It'd be nice.`, true},
 
-	// URL.
-	{"url", `{{"http://www.example.org/"|url}}`, "http%3A%2F%2Fwww.example.org%2F", nil, true},
+	// URL query.
+	{"urlquery", `{{"http://www.example.org/"|urlquery}}`, "http%3A%2F%2Fwww.example.org%2F", nil, true},
 
 	// Booleans
 	{"not", "{{not true}} {{not false}}", "false true", nil, true},
@@ -309,6 +333,12 @@ var execTests = []execTest{
 	{"map[NO]", "{{index .MSI `XXX`}}", "", tVal, true},
 	{"map[WRONG]", "{{index .MSI 10}}", "", tVal, false},
 	{"double index", "{{index .SMSI 1 `eleven`}}", "11", tVal, true},
+
+	// Len.
+	{"slice", "{{len .SI}}", "3", tVal, true},
+	{"map", "{{len .MSI }}", "3", tVal, true},
+	{"len of int", "{{len 3}}", "", tVal, false},
+	{"len of nothing", "{{len .Empty0}}", "", tVal, false},
 
 	// With.
 	{"with true", "{{with true}}{{.}}{{end}}", "true", tVal, true},
@@ -369,6 +399,8 @@ var execTests = []execTest{
 	{"bug3", "{{with $}}{{.Method0}}{{end}}", "M0", tVal, true},
 	// Nil interface values in if.
 	{"bug4", "{{if .Empty0}}non-nil{{else}}nil{{end}}", "nil", tVal, true},
+	// Stringer.
+	{"bug5", "{{.Str}}", "foozle", tVal, true},
 }
 
 func zeroArgs() string {

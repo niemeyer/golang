@@ -3,119 +3,120 @@
 	Use of this source code is governed by a BSD-style
 	license that can be found in the LICENSE file.
 -->
-
-{.section PAst}
-	<pre>{@ FSet|html-esc}</pre>
-{.end}
-{.section PDoc}
+{{with .PAst}}
+	<pre>{{node_html . $.FSet}}</pre>
+{{end}}
+{{with .PDoc}}
 	<!-- PackageName is printed as title by the top-level template -->
-	{.section IsPkg}
-		{# ImportPath is a string - no need for FSet}
-		<p><code>import "{ImportPath|html-esc}"</code></p>
-	{.end}
-	{Doc|html-comment}
-	{.section IsPkg}
-		{.section Filenames}
-			{# Filenames are strings - no need for FSet}
+	{{if $.IsPkg}}
+		<p><code>import "{{html .ImportPath}}"</code></p>
+	{{end}}
+	{{comment_html .Doc}}
+	{{if $.IsPkg}}
+		{{with .Filenames}}
 			<p>
 			<h4>Package files</h4>
 			<span style="font-size:90%">
-			{.repeated section @}
-				<a href="/{@|url-src}">{@|localname}</a>
-			{.end}
+			{{range .}}
+				<a href="/{{.|srcLink}}">{{.|filename|html}}</a>
+			{{end}}
 			</span>
 			</p>
-		{.end}
-	{.end}
-	{.section Consts}
+		{{end}}
+	{{end}}
+	{{with .Consts}}
 		<h2 id="Constants">Constants</h2>
-		{.repeated section @}
-			{Doc|html-comment}
-			<pre>{Decl FSet|html-esc}</pre>
-		{.end}
-	{.end}
-	{.section Vars}
+		{{range .}}
+			{{comment_html .Doc}}
+			<pre>{{node_html .Decl $.FSet}}</pre>
+		{{end}}
+	{{end}}
+	{{with .Vars}}
 		<h2 id="Variables">Variables</h2>
-		{.repeated section @}
-			{Doc|html-comment}
-			<pre>{Decl FSet|html-esc}</pre>
-		{.end}
-	{.end}
-	{.section Funcs}
-		{.repeated section @}
-			{# Name is a string - no need for FSet}
-			<h2 id="{Name|html-esc}">func <a href="/{Decl FSet|url-pos}">{Name|html-esc}</a></h2>
-			<p><code>{Decl FSet|html-esc}</code></p>
-			{Doc|html-comment}
-		{.end}
-	{.end}
-	{.section Types}
-		{.repeated section @}
-			<h2 id="{Type.Name FSet|html-esc}">type <a href="/{Decl FSet|url-pos}">{Type.Name FSet|html-esc}</a></h2>
-			{Doc|html-comment}
-			<p><pre>{Decl FSet|html-esc}</pre></p>
-			{.repeated section Consts}
-				{Doc|html-comment}
-				<pre>{Decl FSet|html-esc}</pre>
-			{.end}
-			{.repeated section Vars}
-				{Doc|html-comment}
-				<pre>{Decl FSet|html-esc}</pre>
-			{.end}
-			{.repeated section Factories}
-				<h3 id="{Type.Name FSet|html-esc}.{Name|html-esc}">func <a href="/{Decl FSet|url-pos}">{Name|html-esc}</a></h3>
-				<p><code>{Decl FSet|html-esc}</code></p>
-				{Doc|html-comment}
-			{.end}
-			{.repeated section Methods}
-				<h3 id="{Type.Name FSet|html-esc}.{Name|html-esc}">func ({Recv FSet|html-esc}) <a href="/{Decl FSet|url-pos}">{Name|html-esc}</a></h3>
-				<p><code>{Decl FSet|html-esc}</code></p>
-				{Doc|html-comment}
-			{.end}
-		{.end}
-	{.end}
-	{.section Bugs}
+		{{range .}}
+			{{comment_html .Doc}}
+			<pre>{{node_html .Decl $.FSet}}</pre>
+		{{end}}
+	{{end}}
+	{{with .Funcs}}
+		{{range .}}
+			{{/* Name is a string - no need for FSet */}}
+			{{$name := html .Name}}
+			<h2 id="{{$name}}">func <a href="/{{posLink_url .Decl $.FSet}}">{{$name}}</a></h2>
+			<p><code>{{node_html .Decl $.FSet}}</code></p>
+			{{comment_html .Doc}}
+		{{end}}
+	{{end}}
+	{{with .Types}}
+		{{range .}}
+			{{$tname := node_html .Type.Name $.FSet}}
+			<h2 id="{{$tname}}">type <a href="/{{posLink_url .Decl $.FSet}}">{{$tname}}</a></h2>
+			{{comment_html .Doc}}
+			<p><pre>{{node_html .Decl $.FSet}}</pre></p>
+			{{range .Consts}}
+				{{comment_html .Doc}}
+				<pre>{{node_html .Decl $.FSet}}</pre>
+			{{end}}
+			{{range .Vars}}
+				{{comment_html .Doc}}
+				<pre>{{node_html .Decl $.FSet}}</pre>
+			{{end}}
+			{{range .Factories}}
+				{{$name := html .Name}}
+				<h3 id="{{$tname}}.{{$name}}">func <a href="/{{posLink_url .Decl $.FSet}}">{{$name}}</a></h3>
+				<p><code>{{node_html .Decl $.FSet}}</code></p>
+				{{comment_html .Doc}}
+			{{end}}
+			{{range .Methods}}
+				{{$name := html .Name}}
+				<h3 id="{{$tname}}.{{$name}}">func ({{node_html .Recv $.FSet}}) <a href="/{{posLink_url .Decl $.FSet}}">{{$name}}</a></h3>
+				<p><code>{{node_html .Decl $.FSet}}</code></p>
+				{{comment_html .Doc}}
+			{{end}}
+		{{end}}
+	{{end}}
+	{{with .Bugs}}
 		<h2 id="Bugs">Bugs</h2>
-		{.repeated section @}
-		{@|html-comment}
-		{.end}
-	{.end}
-{.end}
-{.section PList}
+		{{range .}}
+		{{comment_html .}}
+		{{end}}
+	{{end}}
+{{end}}
+{{with .PList}}
 	<h2>Other packages</h2>
 	<p>
-	{# PLIst entries are strings - no need for FSet}
-	{.repeated section @}
-	<a href="?p={@|html-esc}">{@|html-esc}</a><br />
-	{.end}
+	{{/* PList entries are strings - no need for FSet */}}
+	{{range .}}
+	<a href="?p={{urlquery .}}">{{html .}}</a><br />
+	{{end}}
 	</p>
-{.end}
-{.section Dirs}
+{{end}}
+{{with .Dirs}}
 	<p class="detail">
 	Need more packages? The
 	<a href="http://godashboard.appspot.com/package">Package Dashboard</a>
 	provides a list of <a href="/cmd/goinstall/">goinstallable</a> packages.
 	</p>
-	{# DirList entries are numbers and strings - no need for FSet}
+	{{/* DirList entries are numbers and strings - no need for FSet */}}
 	<h2 id="Subdirectories">Subdirectories</h2>
 	<p>
 	<table class="layout">
 	<tr>
-	<th align="left" colspan="{MaxHeight|html-esc}">Name</th>
+	<th align="left" colspan="{{html .MaxHeight}}">Name</th>
 	<td width="25">&nbsp;</td>
 	<th align="left">Synopsis</th>
 	</tr>
 	<tr>
 	<th align="left"><a href="..">..</a></th>
 	</tr>
-	{.repeated section List}
+	{{range .List}}
 		<tr>
-		{Depth|padding}
-		<td align="left" colspan="{Height|html-esc}"><a href="{Path|html-esc}">{Name|html-esc}</a></td>
+		{{repeat `<td width="25"></td>` .Depth}}
+		<td align="left" colspan="{{html .Height}}"><a href="{{html .Path}}">{{html .Name}}</a></td>
 		<td></td>
-		<td align="left">{Synopsis|html-esc}</td>
+		<td align="left">{{html .Synopsis}}</td>
 		</tr>
-	{.end}
+	{{end}}
 	</table>
 	</p>
-{.end}
+{{end}}

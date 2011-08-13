@@ -4743,3 +4743,6 @@ data/src/pkg/exp/norm/maketesttables.go.i
 data/src/pkg/runtime/openbsd/amd64/sys.s.i
 data/src/pkg/exp/norm/trie.go.i
 data/src/pkg/net/interface_darwin.go.i
+data/src/pkg/exp/template/html/reverse.go.i
+data/src/pkg/exp/template/html/reverse_test.go.i
+data/src/pkg/exp/template/html/Makefile.i

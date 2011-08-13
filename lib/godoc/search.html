@@ -3,93 +3,95 @@
 	Use of this source code is governed by a BSD-style
 	license that can be found in the LICENSE file.
 -->
-
-{.section Alert}
+{{with .Alert}}
 	<p>
-	<span class="alert" style="font-size:120%">{@}</span>
+	<span class="alert" style="font-size:120%">{{html .}}</span>
 	</p>
-{.end}
-{.section Alt}
+{{end}}
+{{with .Alt}}
 	<p>
 	<span class="alert" style="font-size:120%">Did you mean: </span>
-	{.repeated section Alts}
-		<a href="search?q={@|html-esc}" style="font-size:120%">{@|html-esc}</a>
-	{.end}
+	{{range .Alts}}
+		<a href="search?q={{urlquery .}}" style="font-size:120%">{{html .}}</a>
+	{{end}}
 	</p>
-{.end}
-{.section Hit}
-	{.section Decls}
+{{end}}
+{{with .Hit}}
+	{{with .Decls}}
 		<h2 id="Global">Package-level declarations</h2>
-		{.repeated section @}
-			<h3 id="Global_{Pak.Path|url-pkg}">package <a href="/{Pak.Path|url-pkg}">{Pak.Name|html-esc}</a></h3>
-			{.repeated section Files}
-				{.repeated section Groups}
-					{.repeated section Infos}
-						<a href="/{File.Path|url-src}?h={Query|urlquery-esc}#L{@|infoLine}">{File.Path|url-src}:{@|infoLine}</a>
-						{@|infoSnippet}
-					{.end}
-				{.end}
-			{.end}
-		{.end}
-	{.end}
-	{.section Others}
+		{{range .}}
+			{{$pkg := pkgLink .Pak.Path}}
+			<h3 id="Global_{{html $pkg}}">package <a href="/{{$pkg}}">{{html .Pak.Name}}</a></h3>
+			{{range .Files}}
+				{{$src := srcLink .File.Path}}
+				{{range .Groups}}
+					{{range .Infos}}
+						<a href="/{{$src}}?h={{urlquery $.Query}}#L{{infoLine .}}">{{html $src}}:{{infoLine .}}</a>
+						{{infoSnippet_html .}}
+					{{end}}
+				{{end}}
+			{{end}}
+		{{end}}
+	{{end}}
+	{{with .Others}}
 		<h2 id="Local">Local declarations and uses</h2>
-		{.repeated section @}
-			<h3 id="Local_{Pak.Path|url-pkg}">package <a href="/{Pak.Path|url-pkg}">{Pak.Name|html-esc}</a></h3>
-			{.repeated section Files}
-				<a href="/{File.Path|url-src}?h={Query|urlquery-esc}">{File.Path|url-src}</a>
+		{{range .}}
+			{{$pkg := pkgLink .Pak.Path}}
+			<h3 id="Local_{{html $pkg}}">package <a href="/{{$pkg}}">{{html .Pak.Name}}</a></h3>
+			{{range .Files}}
+				{{$src := srcLink .File.Path}}
+				<a href="/{{$src}}?h={{urlquery $.Query}}">{{html $src}}</a>
 				<table class="layout">
-				{.repeated section Groups}
+				{{range .Groups}}
 					<tr>
 					<td width="25"></td>
-					<th align="left" valign="top">{Kind|infoKind}</th>
+					<th align="left" valign="top">{{infoKind_html .Kind}}</th>
 					<td align="left" width="4"></td>
 					<td>
-					{.repeated section Infos}
-						<a href="/{File.Path|url-src}?h={Query|urlquery-esc}#L{@|infoLine}">{@|infoLine}</a>
-					{.end}
+					{{range .Infos}}
+						<a href="/{{$src}}?h={{urlquery $.Query}}#L{{infoLine .}}">{{infoLine .}}</a>
+					{{end}}
 					</td>
 					</tr>
-				{.end}
+				{{end}}
 				</table>
-			{.end}
-		{.end}
-	{.end}
-{.end}
-{.section Textual}
-	{.section Complete}
-		<h2 id="Textual">{Found|html-esc} textual occurrences</h2>
-	{.or}
-		<h2 id="Textual">More than {Found|html-esc} textual occurrences</h2>
+			{{end}}
+		{{end}}
+	{{end}}
+{{end}}
+{{with .Textual}}
+	{{if $.Complete}}
+		<h2 id="Textual">{{html $.Found}} textual occurrences</h2>
+	{{else}}
+		<h2 id="Textual">More than {{html $.Found}} textual occurrences</h2>
 		<p>
-		<span class="alert" style="font-size:120%">Not all files or lines containing "{Query|html-esc}" are shown.</span>
+		<span class="alert" style="font-size:120%">Not all files or lines containing "{{html $.Query}}" are shown.</span>
 		</p>
-	{.end}
+	{{end}}
 	<p>
 	<table class="layout">
-	{.repeated section @}
+	{{range .}}
+		{{$src := srcLink .Filename}}
 		<tr>
 		<td align="left" valign="top">
-		<a href="/{Filename|url-src}?h={Query|urlquery-esc}">{Filename|url-src}</a>:
+		<a href="/{{$src}}?h={{urlquery $.Query}}">{{html $src}}</a>:
 		</td>
 		<td align="left" width="4"></td>
-		<th align="left" valign="top">{Lines|numlines}</th>
+		<th align="left" valign="top">{{len .Lines}}</th>
 		<td align="left" width="4"></td>
 		<td align="left">
-		{.repeated section Lines}
-			<a href="/{Filename|url-src}?h={Query|urlquery-esc}#L{@|html-esc}">{@|html-esc}</a>
-		{.end}
-		{.section Complete}
-		{.or}
+		{{range .Lines}}
+			<a href="/{{$src}}?h={{urlquery $.Query}}#L{{.}}">{{html .}}</a>
+		{{end}}
+		{{if not $.Complete}}
 			...
-		{.end}
+		{{end}}
 		</td>
 		</tr>
-	{.end}
-	{.section Complete}
-	{.or}
+	{{end}}
+	{{if not $.Complete}}
 		<tr><td align="left">...</td></tr>
-	{.end}
+	{{end}}
 	</table>
 	</p>
-{.end}
+{{end}}
