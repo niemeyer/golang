@@ -233,6 +233,8 @@ func (s *state) walkRange(dot reflect.Value, r *parse.RangeNode) {
 			s.pop(mark)
 		}
 		return
+	case reflect.Invalid:
+		s.errorf("range can't iterate over nil value")
 	default:
 		s.errorf("range can't iterate over value of type %T", val.Interface())
 	}
