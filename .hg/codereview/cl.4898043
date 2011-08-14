@@ -18,5 +18,6 @@ Description:
 	as it allows indexing maps in other scenarios where keys
 	wouldn't be valid field names.
 Files:
+	src/pkg/exp/template/doc.go
 	src/pkg/exp/template/exec.go
 	src/pkg/exp/template/exec_test.go
