@@ -7,7 +7,7 @@ Description:
 	was empty.
 	
 	The new behavior is equivalent to the outcome of iterating
-	on a nil map or array, and is useful because it allows
+	on a nil map or slice, and is useful because it allows
 	generic structures such as used in json (map[string]interface{})
 	to behave correctly if a key generally set to a list or map
 	isn't present.
