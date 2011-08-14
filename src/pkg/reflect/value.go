@@ -860,9 +860,6 @@ func (v Value) Interface() interface{} {
 }
 
 func (iv internalValue) Interface() interface{} {
-	if iv.kind == 0 {
-		panic(&ValueError{"reflect.Value.Interface", iv.kind})
-	}
 	if iv.method {
 		panic("reflect.Value.Interface: cannot create interface value for method with bound receiver")
 	}
