@@ -1,11 +1,12 @@
-Mailed: False
+Mailed: True
 Description:
 	exp/template: support field syntax on maps
 	
 	While using exp/template in practice, the syntax for
 	indexing values using the "index" action was found to be
-	inconvenient when handling dynamic data from maps such as
-	the ones used with json and yaml (map[string]interface{}).
+	very inconvenient for frequent use when handling dynamic
+	data from maps such as the ones used with json and yaml,
+	that use a type like map[string]interface{}.
 	
 	For these kinds of maps, the default handling of fields as
 	{{.Field}} makes the task of handling the several references
@@ -17,3 +18,5 @@ Description:
 	as it allows indexing maps in other scenarios where keys
 	wouldn't be valid field names.
 Files:
+	src/pkg/exp/template/exec.go
+	src/pkg/exp/template/exec_test.go

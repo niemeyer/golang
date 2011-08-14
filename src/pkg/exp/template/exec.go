@@ -394,18 +394,29 @@ func (s *state) evalField(dot reflect.Value, fieldName string, args []parse.Node
 	if method, ok := methodByName(ptr, fieldName); ok {
 		return s.evalCall(dot, method, fieldName, args, final)
 	}
+	checkArgs := func() {
+		if len(args) > 1 || final.IsValid() {
+			s.errorf("%s is not a method but has arguments", fieldName)
+		}
+	}
 	// It's not a method; is it a field of a struct?
 	receiver, isNil := indirect(receiver)
 	if receiver.Kind() == reflect.Struct {
 		tField, ok := receiver.Type().FieldByName(fieldName)
 		if ok {
 			field := receiver.FieldByIndex(tField.Index)
-			if len(args) > 1 || final.IsValid() {
-				s.errorf("%s is not a method but has arguments", fieldName)
-			}
+			checkArgs()
 			if tField.PkgPath == "" { // field is exported
 				return field
 			}
+		}
+	}
+	// If it's a map, attempt to use the field name as a key.
+	if receiver.Kind() == reflect.Map {
+		nameVal := reflect.ValueOf(fieldName)
+		if nameVal.Type().AssignableTo(receiver.Type().Key()) {
+			checkArgs()
+			return receiver.MapIndex(nameVal)
 		}
 	}
 	if isNil {
