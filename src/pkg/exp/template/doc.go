@@ -108,8 +108,10 @@ An argument is a simple value, denoted by one of the following.
 	  Key invocations may be chained and combined with fields to any
 	  depth:
 	    .Field1.Key1.Field2.Key2
+	  Although the key must be an alphanumeric identifier, unlike with
+	  field names they do not need to start with an upper case letter.
 	  Keys can also be evaluated on variables, including chaining:
-	    $x.Key1.Key2
+	    $x.key1.key2
 	- The name of a niladic method of the data, preceded by a period,
 	  such as
 		.Method
