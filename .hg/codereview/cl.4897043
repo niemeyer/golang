@@ -1,0 +1,4 @@
+Mailed: False
+Description:
+	src/version.bash: support versioning without hg
+Files:
