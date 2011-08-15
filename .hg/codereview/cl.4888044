@@ -1,6 +1,8 @@
-Mailed: False
+Mailed: True
 Description:
-	runtime: fix pseudo-randomness on certain channel sends
+	runtime: fix pseudo-randomness on some selects
 	
 	Fixes issue 2152.
 Files:
+	src/pkg/runtime/chan.c
+	src/pkg/runtime/chan_test.go
