@@ -4746,3 +4746,9 @@ data/src/pkg/net/interface_darwin.go.i
 data/src/pkg/exp/template/html/reverse.go.i
 data/src/pkg/exp/template/html/reverse_test.go.i
 data/src/pkg/exp/template/html/Makefile.i
+data/src/pkg/old/template/template_test.go.i
+data/src/pkg/old/template/parse.go.i
+data/src/pkg/old/template/doc.go.i
+data/src/pkg/old/template/Makefile.i
+data/src/pkg/old/template/execute.go.i
+data/src/pkg/old/template/format.go.i
