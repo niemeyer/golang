@@ -1,5 +1,0 @@
-Mailed: True
-Description:
-	build: don't print anything on version.bash -save
-Files:
-	src/version.bash
