@@ -11,16 +11,14 @@ Description:
 	remove the VCS data in distributions, I suggest we don't
 	take this approach to avoid its consequences.
 	
-	This CL fixes the same problem in a different way.  If hg
-	isn't usable, it falls back to using the content of a
-	VERSION file at the top of the tree.  This file can be
-	generated with "src/version.bash -save" while hg is still
-	around.
-	
-	If hg is usable, the current semantics are preserved and
-	the VERSION file is ignored.
-	
-	The error message when VERSION and hg are not available
+	This CL fixes the same problem in a different way: if a
+	VERSION file at the top of the tree exists, use it at
+	all times.  If it doesn't, fall back to using information
+	from hg necessarily, and fail if that's not possible.  The
+	error message when VERSION and hg are not available
 	instructs users to handle it properly.
+	
+	The VERSION file can be generated with
+	"src/version.bash -save" while hg is still around.
 Files:
 	src/version.bash
