@@ -11,12 +11,6 @@ Description:
 	generic structures such as used in json (map[string]interface{})
 	to behave correctly if a key generally set to a list or map
 	isn't present.
-	
-	Part of the problem in understanding the panic was due to
-	a misuse of an Invalid reflect Value.  The Interface() method
-	on Value will now behave according to docs, and panic if used
-	in an invalid value.
 Files:
 	src/pkg/exp/template/exec.go
 	src/pkg/exp/template/exec_test.go
-	src/pkg/reflect/value.go
