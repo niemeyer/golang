@@ -1,9 +1,0 @@
-Mailed: True
-Description:
-	reflect: panic on Invalid Interface call
-	
-	This was initially pushed as part of CL 4876046, found
-	when logic in exp/template was using the method on
-	an Invalid value.
-Files:
-	src/pkg/reflect/value.go
