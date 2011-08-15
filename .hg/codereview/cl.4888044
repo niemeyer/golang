@@ -1,0 +1,6 @@
+Mailed: False
+Description:
+	runtime: fix pseudo-randomness on certain channel sends
+	
+	Fixes issue 2152.
+Files:
