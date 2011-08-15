@@ -1,0 +1,4 @@
+Mailed: False
+Description:
+	build: don't print anything on version.bash -save
+Files:
