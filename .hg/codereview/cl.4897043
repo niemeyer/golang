@@ -1,4 +1,26 @@
-Mailed: False
+Mailed: True
 Description:
-	src/version.bash: support versioning without hg
+	build: support versioning without hg
+	
+	CL 4873048 introduced the ability to build without hg and
+	getting an "unknown" version.  While this approach works
+	to avoid the hg dependency, it also means that every
+	exported tree that is built without hg or .hg will have not
+	only missing information, but will also be compatible to
+	one another.  Considering that it is a common practice to
+	remove the VCS data in distributions, I suggest we don't
+	take this approach to avoid its consequences.
+	
+	This CL fixes the same problem in a different way.  If hg
+	isn't usable, it falls back to using the content of a
+	VERSION file at the top of the tree.  This file can be
+	generated with "src/version.bash -save" while hg is still
+	around.
+	
+	If hg is usable, the current semantics are preserved and
+	the VERSION file is ignored.
+	
+	The error message when VERSION and hg are not available
+	instructs users to handle it properly.
 Files:
+	src/version.bash
