@@ -5,16 +5,17 @@
 
 GOROOT=$(cd `dirname $0`/..; pwd)
 
-# If hg doesn't work, try VERSION file or fail otherwise
+# If a version file created by -save is available, use it
+if [ -f "$GOROOT/VERSION" ]; then
+	cat $GOROOT/VERSION
+	exit 0
+fi
+
+# Otherwise, if hg doesn't work for whatever reason, fail
 if [ ! -d "$GOROOT/.hg" ] || ! hg version > /dev/null 2>&1; then
-	if [ -f "$GOROOT/VERSION" ]; then
-		cat $GOROOT/VERSION
-		exit 0
-	else
-		echo 'Unable to report version: hg and VERSION file missing' 1>&2
-		echo 'Generate VERSION with `src/version.bash -save` while hg is usable' 1>&2
-		exit 2
-	fi
+	echo 'Unable to report version: hg and VERSION file missing' 1>&2
+	echo 'Generate VERSION with `src/version.bash -save` while hg is usable' 1>&2
+	exit 2
 fi
 
 # Get numerical revision
