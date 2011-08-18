@@ -267,8 +267,6 @@ if [ "$SUBMIT" = 1 ]; then
 
 	echo "Removing $CL_BRANCH..."
 	git branch -d $CL_BRANCH
-
-	exit 0
 fi
 
 checkout master
