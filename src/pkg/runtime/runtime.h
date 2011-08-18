@@ -62,6 +62,8 @@ typedef	struct	Iface		Iface;
 typedef	struct	Itab		Itab;
 typedef	struct	Eface		Eface;
 typedef	struct	Type		Type;
+typedef	struct	ChanType		ChanType;
+typedef	struct	MapType		MapType;
 typedef	struct	Defer		Defer;
 typedef	struct	Panic		Panic;
 typedef	struct	Hmap		Hmap;
@@ -383,6 +385,7 @@ extern	String	runtime·emptystring;
 G*	runtime·allg;
 M*	runtime·allm;
 extern	int32	runtime·gomaxprocs;
+extern	bool	runtime·singleproc;
 extern	uint32	runtime·panicking;
 extern	int32	runtime·gcwaiting;		// gc is waiting to run
 int8*	runtime·goos;
@@ -615,16 +618,16 @@ int32	runtime·gomaxprocsfunc(int32 n);
 void	runtime·procyield(uint32);
 void	runtime·osyield(void);
 
-void	runtime·mapassign(Hmap*, byte*, byte*);
-void	runtime·mapaccess(Hmap*, byte*, byte*, bool*);
+void	runtime·mapassign(MapType*, Hmap*, byte*, byte*);
+void	runtime·mapaccess(MapType*, Hmap*, byte*, byte*, bool*);
 void	runtime·mapiternext(struct hash_iter*);
 bool	runtime·mapiterkey(struct hash_iter*, void*);
 void	runtime·mapiterkeyvalue(struct hash_iter*, void*, void*);
-Hmap*	runtime·makemap_c(Type*, Type*, int64);
+Hmap*	runtime·makemap_c(MapType*, int64);
 
-Hchan*	runtime·makechan_c(Type*, int64);
-void	runtime·chansend(Hchan*, void*, bool*);
-void	runtime·chanrecv(Hchan*, void*, bool*, bool*);
+Hchan*	runtime·makechan_c(ChanType*, int64);
+void	runtime·chansend(ChanType*, Hchan*, void*, bool*);
+void	runtime·chanrecv(ChanType*, Hchan*, void*, bool*, bool*);
 int32	runtime·chanlen(Hchan*);
 int32	runtime·chancap(Hchan*);
 

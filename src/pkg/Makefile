@@ -82,9 +82,7 @@ DIRS=\
 	exp/gui/x11\
 	exp/norm\
 	exp/regexp/syntax\
-	exp/template\
 	exp/template/html\
-	exp/template/parse\
 	expvar\
 	flag\
 	fmt\
@@ -131,6 +129,7 @@ DIRS=\
 	net/dict\
 	net/textproto\
 	netchan\
+	old/template\
 	os\
 	os/signal\
 	os/user\
@@ -157,6 +156,7 @@ DIRS=\
 	syslog\
 	tabwriter\
 	template\
+	template/parse\
 	testing\
 	testing/iotest\
 	testing/quick\
@@ -164,6 +164,7 @@ DIRS=\
 	time\
 	try\
 	unicode\
+	url\
 	utf16\
 	utf8\
 	websocket\

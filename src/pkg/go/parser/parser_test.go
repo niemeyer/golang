@@ -21,6 +21,24 @@ var illegalInputs = []interface{}{
 	`package p; func f() { if ; /* should have condition */ {} };`,
 	`package p; func f() { if f(); /* should have condition */ {} };`,
 	`package p; const c; /* should have constant value */`,
+	`package p; func f() { if _ = range x; true {} };`,
+	`package p; func f() { switch _ = range x; true {} };`,
+	`package p; func f() { for _ = range x ; ; {} };`,
+	`package p; func f() { for ; ; _ = range x {} };`,
+	`package p; func f() { for ; _ = range x ; {} };`,
+	`package p; var a = [1]int; /* illegal expression */`,
+	`package p; var a = [...]int; /* illegal expression */`,
+	`package p; var a = struct{} /* illegal expression */`,
+	`package p; var a = func(); /* illegal expression */`,
+	`package p; var a = interface{} /* illegal expression */`,
+	`package p; var a = []int /* illegal expression */`,
+	`package p; var a = map[int]int /* illegal expression */`,
+	`package p; var a = chan int; /* illegal expression */`,
+	`package p; var a = []int{[]int}; /* illegal expression */`,
+	`package p; var a = ([]int); /* illegal expression */`,
+	`package p; var a = a[[]int:[]int]; /* illegal expression */`,
+	`package p; var a = <- chan int; /* illegal expression */`,
+	`package p; func f() { select { case _ <- chan int: } };`,
 }
 
 func TestParseIllegalInputs(t *testing.T) {
@@ -51,6 +69,7 @@ var validPrograms = []interface{}{
 	`package p; func f() { select { case x := (<-c): } };`,
 	`package p; func f() { if ; true {} };`,
 	`package p; func f() { switch ; {} };`,
+	`package p; func f() { for _ = range "foo" + "bar" {} };`,
 }
 
 func TestParseValidPrograms(t *testing.T) {

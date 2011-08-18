@@ -80,27 +80,26 @@ func ifacethash(i1 any) (ret uint32)
 func efacethash(i1 any) (ret uint32)
 
 // *byte is really *runtime.Type
-func makemap(key, val *byte, hint int64) (hmap map[any]any)
-func mapaccess1(hmap map[any]any, key any) (val any)
-func mapaccess2(hmap map[any]any, key any) (val any, pres bool)
-func mapassign1(hmap map[any]any, key any, val any)
-func mapassign2(hmap map[any]any, key any, val any, pres bool)
-func mapiterinit(hmap map[any]any, hiter *any)
+func makemap(mapType *byte, hint int64) (hmap map[any]any)
+func mapaccess1(mapType *byte, hmap map[any]any, key any) (val any)
+func mapaccess2(mapType *byte, hmap map[any]any, key any) (val any, pres bool)
+func mapassign1(mapType *byte, hmap map[any]any, key any, val any)
+func mapassign2(mapType *byte, hmap map[any]any, key any, val any, pres bool)
+func mapiterinit(mapType *byte, hmap map[any]any, hiter *any)
 func mapiternext(hiter *any)
 func mapiter1(hiter *any) (key any)
 func mapiter2(hiter *any) (key any, val any)
 
 // *byte is really *runtime.Type
-func makechan(elem *byte, hint int64) (hchan chan any)
-func chanrecv1(hchan <-chan any) (elem any)
-func chanrecv2(hchan <-chan any) (elem any, received bool)
-func chansend1(hchan chan<- any, elem any)
+func makechan(chanType *byte, hint int64) (hchan chan any)
+func chanrecv1(chanType *byte, hchan <-chan any) (elem any)
+func chanrecv2(chanType *byte, hchan <-chan any) (elem any, received bool)
+func chansend1(chanType *byte, hchan chan<- any, elem any)
 func closechan(hchan any)
-func closedchan(hchan any) bool
 
-func selectnbsend(hchan chan<- any, elem any) bool
-func selectnbrecv(elem *any, hchan <-chan any) bool
-func selectnbrecv2(elem *any, received *bool, hchan <-chan any) bool
+func selectnbsend(chanType *byte, hchan chan<- any, elem any) bool
+func selectnbrecv(chanType *byte, elem *any, hchan <-chan any) bool
+func selectnbrecv2(chanType *byte, elem *any, received *bool, hchan <-chan any) bool
 
 func newselect(size int) (sel *byte)
 func selectsend(sel *byte, hchan chan<- any, elem *any) (selected bool)

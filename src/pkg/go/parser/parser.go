@@ -420,10 +420,10 @@ func (p *parser) parseExprList(lhs bool) (list []ast.Expr) {
 		defer un(trace(p, "ExpressionList"))
 	}
 
-	list = append(list, p.parseExpr(lhs))
+	list = append(list, p.checkExpr(p.parseExpr(lhs)))
 	for p.tok == token.COMMA {
 		p.next()
-		list = append(list, p.parseExpr(lhs))
+		list = append(list, p.checkExpr(p.parseExpr(lhs)))
 	}
 
 	return
@@ -973,7 +973,7 @@ func (p *parser) parseOperand(lhs bool) ast.Expr {
 		lparen := p.pos
 		p.next()
 		p.exprLev++
-		x := p.parseRhs()
+		x := p.parseRhsOrType() // types may be parenthesized: (some type)
 		p.exprLev--
 		rparen := p.expect(token.RPAREN)
 		return &ast.ParenExpr{lparen, x, rparen}
@@ -1062,7 +1062,7 @@ func (p *parser) parseCallOrConversion(fun ast.Expr) *ast.CallExpr {
 	var list []ast.Expr
 	var ellipsis token.Pos
 	for p.tok != token.RPAREN && p.tok != token.EOF && !ellipsis.IsValid() {
-		list = append(list, p.parseRhs())
+		list = append(list, p.parseRhsOrType()) // builtins may expect a type: make(some type, ...)
 		if p.tok == token.ELLIPSIS {
 			ellipsis = p.pos
 			p.next()
@@ -1087,7 +1087,7 @@ func (p *parser) parseElement(keyOk bool) ast.Expr {
 		return p.parseLiteralValue(nil)
 	}
 
-	x := p.parseExpr(keyOk) // don't resolve if map key
+	x := p.checkExpr(p.parseExpr(keyOk)) // don't resolve if map key
 	if keyOk {
 		if p.tok == token.COLON {
 			colon := p.pos
@@ -1146,19 +1146,14 @@ func (p *parser) checkExpr(x ast.Expr) ast.Expr {
 	case *ast.IndexExpr:
 	case *ast.SliceExpr:
 	case *ast.TypeAssertExpr:
-		if t.Type == nil {
-			// the form X.(type) is only allowed in type switch expressions
-			p.errorExpected(x.Pos(), "expression")
-			x = &ast.BadExpr{x.Pos(), x.End()}
-		}
+		// If t.Type == nil we have a type assertion of the form
+		// y.(type), which is only allowed in type switch expressions.
+		// It's hard to exclude those but for the case where we are in
+		// a type switch. Instead be lenient and test this in the type
+		// checker.
 	case *ast.CallExpr:
 	case *ast.StarExpr:
 	case *ast.UnaryExpr:
-		if t.Op == token.RANGE {
-			// the range operator is only allowed at the top of a for statement
-			p.errorExpected(x.Pos(), "expression")
-			x = &ast.BadExpr{x.Pos(), x.End()}
-		}
 	case *ast.BinaryExpr:
 	default:
 		// all other nodes are not proper expressions
@@ -1223,11 +1218,6 @@ func (p *parser) checkExprOrType(x ast.Expr) ast.Expr {
 	case *ast.ParenExpr:
 		panic("unreachable")
 	case *ast.UnaryExpr:
-		if t.Op == token.RANGE {
-			// the range operator is only allowed at the top of a for statement
-			p.errorExpected(x.Pos(), "expression")
-			x = &ast.BadExpr{x.Pos(), x.End()}
-		}
 	case *ast.ArrayType:
 		if len, isEllipsis := t.Len.(*ast.Ellipsis); isEllipsis {
 			p.error(len.Pos(), "expected array length, found '...'")
@@ -1300,7 +1290,7 @@ func (p *parser) parseUnaryExpr(lhs bool) ast.Expr {
 	}
 
 	switch p.tok {
-	case token.ADD, token.SUB, token.NOT, token.XOR, token.AND, token.RANGE:
+	case token.ADD, token.SUB, token.NOT, token.XOR, token.AND:
 		pos, op := p.pos, p.tok
 		p.next()
 		x := p.parseUnaryExpr(false)
@@ -1354,8 +1344,9 @@ func (p *parser) parseBinaryExpr(lhs bool, prec1 int) ast.Expr {
 }
 
 // If lhs is set and the result is an identifier, it is not resolved.
-// TODO(gri): parseExpr may return a type or even a raw type ([..]int) -
-//            should reject when a type/raw type is obviously not allowed
+// The result may be a type or even a raw type ([...]int). Callers must
+// check the result (using checkExpr or checkExprOrType), depending on
+// context.
 func (p *parser) parseExpr(lhs bool) ast.Expr {
 	if p.trace {
 		defer un(trace(p, "Expression"))
@@ -1365,13 +1356,28 @@ func (p *parser) parseExpr(lhs bool) ast.Expr {
 }
 
 func (p *parser) parseRhs() ast.Expr {
-	return p.parseExpr(false)
+	return p.checkExpr(p.parseExpr(false))
+}
+
+func (p *parser) parseRhsOrType() ast.Expr {
+	return p.checkExprOrType(p.parseExpr(false))
 }
 
 // ----------------------------------------------------------------------------
 // Statements
 
-func (p *parser) parseSimpleStmt(labelOk bool) ast.Stmt {
+// Parsing modes for parseSimpleStmt.
+const (
+	basic = iota
+	labelOk
+	rangeOk
+)
+
+// parseSimpleStmt returns true as 2nd result if it parsed the assignment
+// of a range clause (with mode == rangeOk). The returned statement is an
+// assignment with a right-hand side that is a single unary expression of
+// the form "range x". No guarantees are given for the left-hand side.
+func (p *parser) parseSimpleStmt(mode int) (ast.Stmt, bool) {
 	if p.trace {
 		defer un(trace(p, "SimpleStmt"))
 	}
@@ -1384,11 +1390,20 @@ func (p *parser) parseSimpleStmt(labelOk bool) ast.Stmt {
 		token.SUB_ASSIGN, token.MUL_ASSIGN, token.QUO_ASSIGN,
 		token.REM_ASSIGN, token.AND_ASSIGN, token.OR_ASSIGN,
 		token.XOR_ASSIGN, token.SHL_ASSIGN, token.SHR_ASSIGN, token.AND_NOT_ASSIGN:
-		// assignment statement
+		// assignment statement, possibly part of a range clause
 		pos, tok := p.pos, p.tok
 		p.next()
-		y := p.parseRhsList()
-		return &ast.AssignStmt{x, pos, tok, y}
+		var y []ast.Expr
+		isRange := false
+		if mode == rangeOk && p.tok == token.RANGE && (tok == token.DEFINE || tok == token.ASSIGN) {
+			pos := p.pos
+			p.next()
+			y = []ast.Expr{&ast.UnaryExpr{pos, token.RANGE, p.parseRhs()}}
+			isRange = true
+		} else {
+			y = p.parseRhsList()
+		}
+		return &ast.AssignStmt{x, pos, tok, y}, isRange
 	}
 
 	if len(x) > 1 {
@@ -1401,13 +1416,13 @@ func (p *parser) parseSimpleStmt(labelOk bool) ast.Stmt {
 		// labeled statement
 		colon := p.pos
 		p.next()
-		if label, isIdent := x[0].(*ast.Ident); labelOk && isIdent {
+		if label, isIdent := x[0].(*ast.Ident); mode == labelOk && isIdent {
 			// Go spec: The scope of a label is the body of the function
 			// in which it is declared and excludes the body of any nested
 			// function.
 			stmt := &ast.LabeledStmt{label, colon, p.parseStmt()}
 			p.declare(stmt, nil, p.labelScope, ast.Lbl, label)
-			return stmt
+			return stmt, false
 		}
 		// The label declaration typically starts at x[0].Pos(), but the label
 		// declaration may be erroneous due to a token after that position (and
@@ -1416,28 +1431,28 @@ func (p *parser) parseSimpleStmt(labelOk bool) ast.Stmt {
 		// before the ':' that caused the problem. Thus, use the (latest) colon
 		// position for error reporting.
 		p.error(colon, "illegal label declaration")
-		return &ast.BadStmt{x[0].Pos(), colon + 1}
+		return &ast.BadStmt{x[0].Pos(), colon + 1}, false
 
 	case token.ARROW:
 		// send statement
 		arrow := p.pos
 		p.next() // consume "<-"
 		y := p.parseRhs()
-		return &ast.SendStmt{x[0], arrow, y}
+		return &ast.SendStmt{x[0], arrow, y}, false
 
 	case token.INC, token.DEC:
 		// increment or decrement
 		s := &ast.IncDecStmt{x[0], p.pos, p.tok}
 		p.next() // consume "++" or "--"
-		return s
+		return s, false
 	}
 
 	// expression
-	return &ast.ExprStmt{x[0]}
+	return &ast.ExprStmt{x[0]}, false
 }
 
 func (p *parser) parseCallExpr() *ast.CallExpr {
-	x := p.parseRhs()
+	x := p.parseRhsOrType() // could be a conversion: (some type)(x)
 	if call, isCall := x.(*ast.CallExpr); isCall {
 		return call
 	}
@@ -1538,7 +1553,7 @@ func (p *parser) parseIfStmt() *ast.IfStmt {
 			p.next()
 			x = p.parseRhs()
 		} else {
-			s = p.parseSimpleStmt(false)
+			s, _ = p.parseSimpleStmt(basic)
 			if p.tok == token.SEMICOLON {
 				p.next()
 				x = p.parseRhs()
@@ -1629,14 +1644,14 @@ func (p *parser) parseSwitchStmt() ast.Stmt {
 		prevLev := p.exprLev
 		p.exprLev = -1
 		if p.tok != token.SEMICOLON {
-			s2 = p.parseSimpleStmt(false)
+			s2, _ = p.parseSimpleStmt(basic)
 		}
 		if p.tok == token.SEMICOLON {
 			p.next()
 			s1 = s2
 			s2 = nil
 			if p.tok != token.LBRACE {
-				s2 = p.parseSimpleStmt(false)
+				s2, _ = p.parseSimpleStmt(basic)
 			}
 		}
 		p.exprLev = prevLev
@@ -1749,22 +1764,23 @@ func (p *parser) parseForStmt() ast.Stmt {
 	defer p.closeScope()
 
 	var s1, s2, s3 ast.Stmt
+	var isRange bool
 	if p.tok != token.LBRACE {
 		prevLev := p.exprLev
 		p.exprLev = -1
 		if p.tok != token.SEMICOLON {
-			s2 = p.parseSimpleStmt(false)
+			s2, isRange = p.parseSimpleStmt(rangeOk)
 		}
-		if p.tok == token.SEMICOLON {
+		if !isRange && p.tok == token.SEMICOLON {
 			p.next()
 			s1 = s2
 			s2 = nil
 			if p.tok != token.SEMICOLON {
-				s2 = p.parseSimpleStmt(false)
+				s2, _ = p.parseSimpleStmt(basic)
 			}
 			p.expectSemi()
 			if p.tok != token.LBRACE {
-				s3 = p.parseSimpleStmt(false)
+				s3, _ = p.parseSimpleStmt(basic)
 			}
 		}
 		p.exprLev = prevLev
@@ -1773,12 +1789,8 @@ func (p *parser) parseForStmt() ast.Stmt {
 	body := p.parseBlockStmt()
 	p.expectSemi()
 
-	if as, isAssign := s2.(*ast.AssignStmt); isAssign {
-		// possibly a for statement with a range clause; check assignment operator
-		if as.Tok != token.ASSIGN && as.Tok != token.DEFINE {
-			p.errorExpected(as.TokPos, "'=' or ':='")
-			return &ast.BadStmt{pos, body.End()}
-		}
+	if isRange {
+		as := s2.(*ast.AssignStmt)
 		// check lhs
 		var key, value ast.Expr
 		switch len(as.Lhs) {
@@ -1790,18 +1802,10 @@ func (p *parser) parseForStmt() ast.Stmt {
 			p.errorExpected(as.Lhs[0].Pos(), "1 or 2 expressions")
 			return &ast.BadStmt{pos, body.End()}
 		}
-		// check rhs
-		if len(as.Rhs) != 1 {
-			p.errorExpected(as.Rhs[0].Pos(), "1 expression")
-			return &ast.BadStmt{pos, body.End()}
-		}
-		if rhs, isUnary := as.Rhs[0].(*ast.UnaryExpr); isUnary && rhs.Op == token.RANGE {
-			// rhs is range expression
-			// (any short variable declaration was handled by parseSimpleStat above)
-			return &ast.RangeStmt{pos, key, value, as.TokPos, as.Tok, rhs.X, body}
-		}
-		p.errorExpected(s2.Pos(), "range clause")
-		return &ast.BadStmt{pos, body.End()}
+		// parseSimpleStmt returned a right-hand side that
+		// is a single unary expression of the form "range x"
+		x := as.Rhs[0].(*ast.UnaryExpr).X
+		return &ast.RangeStmt{pos, key, value, as.TokPos, as.Tok, x, body}
 	}
 
 	// regular for statement
@@ -1821,7 +1825,7 @@ func (p *parser) parseStmt() (s ast.Stmt) {
 		token.IDENT, token.INT, token.FLOAT, token.CHAR, token.STRING, token.FUNC, token.LPAREN, // operand
 		token.LBRACK, token.STRUCT, // composite type
 		token.MUL, token.AND, token.ARROW, token.ADD, token.SUB, token.XOR: // unary operators
-		s = p.parseSimpleStmt(true)
+		s, _ = p.parseSimpleStmt(labelOk)
 		// because of the required look-ahead, labeled statements are
 		// parsed by parseSimpleStmt - don't expect a semicolon after
 		// them
@@ -2153,6 +2157,5 @@ func (p *parser) parseFile() *ast.File {
 		}
 	}
 
-	// TODO(gri): store p.imports in AST
 	return &ast.File{doc, pos, ident, decls, p.pkgScope, p.imports, p.unresolved[0:i], p.comments}
 }

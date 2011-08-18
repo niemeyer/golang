@@ -6,7 +6,6 @@ package main
 
 import (
 	"bytes"
-	"exp/template"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -24,6 +23,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"template"
 	"time"
 )
 
@@ -481,7 +481,7 @@ func posLink_urlFunc(node ast.Node, fset *token.FileSet) string {
 	}
 
 	var buf bytes.Buffer
-	buf.WriteString(http.URLEscape(relpath))
+	template.HTMLEscape(&buf, []byte(relpath))
 	// selection ranges are of form "s=low:high"
 	if low < high {
 		fmt.Fprintf(&buf, "?s=%d:%d", low, high) // no need for URL escaping
@@ -767,6 +767,10 @@ func serveFile(w http.ResponseWriter, r *http.Request) {
 const fakePkgFile = "doc.go"
 const fakePkgName = "documentation"
 
+// Fake relative package path for built-ins. Documentation for all globals
+// (not just exported ones) will be shown for packages in this directory.
+const builtinPkgPath = "builtin/"
+
 type PageInfoMode uint
 
 const (
@@ -941,7 +945,10 @@ func (h *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	relpath := r.URL.Path[len(h.pattern):]
 	abspath := absolutePath(relpath, h.fsRoot)
-	mode := exportsOnly
+	var mode PageInfoMode
+	if relpath != builtinPkgPath {
+		mode = exportsOnly
+	}
 	if r.FormValue("m") != "src" {
 		mode |= genDoc
 	}
@@ -964,7 +971,7 @@ func (h *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		title = "Package " + info.PAst.Name.Name
 	case info.PDoc != nil:
 		switch {
-		case h.isPkg:
+		case info.IsPkg:
 			title = "Package " + info.PDoc.PackageName
 		case info.PDoc.PackageName == fakePkgName:
 			// assume that the directory name is the command name

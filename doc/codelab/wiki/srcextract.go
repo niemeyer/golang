@@ -8,8 +8,8 @@ import (
 	"go/ast"
 	"go/token"
 	"log"
-	"os"
 	"template"
+	"os"
 )
 
 var (
