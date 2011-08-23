@@ -793,7 +793,7 @@ func ReadFull(r Reader, buf []byte) (n int, err os.Error) {
         var nr int
         nr, err = r.Read(buf)
         n += nr
-        buf = buf[nr:len(buf)]
+        buf = buf[nr:]
     }
     return
 }
@@ -954,8 +954,9 @@ In Go terminology, it returns a pointer to a newly allocated zero value of type
 </p>
 
 <p>
-Since the memory returned by <code>new</code> is zeroed, it's helpful to arrange that the
-zeroed object can be used without further initialization.  This means a user of
+Since the memory returned by <code>new</code> is zeroed, it's helpful to arrange
+when designing your data structures that the
+zero value of each type can be used without further initialization.  This means a user of
 the data structure can create one with <code>new</code> and get right to
 work.
 For example, the documentation for <code>bytes.Buffer</code> states that
@@ -1075,8 +1076,9 @@ m := map[int]string{Enone: "no error", Eio: "Eio", Einval: "invalid argument"}
 Back to allocation.
 The built-in function <code>make(T, </code><i>args</i><code>)</code> serves
 a purpose different from <code>new(T)</code>.
-It creates slices, maps, and channels only, and it returns an initialized (not zero)
-value of type <code>T</code>, not <code>*T</code>.
+It creates slices, maps, and channels only, and it returns an <em>initialized</em>
+(not <em>zeroed</em>)
+value of type <code>T</code> (not <code>*T</code>).
 The reason for the distinction
 is that these three types are, under the covers, references to data structures that
 must be initialized before use.
@@ -1620,11 +1622,12 @@ enumerator.  Since <code>iota</code> can be part of an expression and
 expressions can be implicitly repeated, it is easy to build intricate
 sets of values.
 </p>
-<pre>
-type ByteSize float64
+<pre><!--{{code "progs/eff_bytesize.go" `/^type ByteSize/` `/^\)/`}}
+-->type ByteSize float64
+
 const (
-    _ = iota  // ignore first value by assigning to blank identifier
-    KB ByteSize = 1&lt;&lt;(10*iota)
+    _           = iota // ignore first value by assigning to blank identifier
+    KB ByteSize = 1 &lt;&lt; (10 * iota)
     MB
     GB
     TB
@@ -1639,27 +1642,27 @@ The ability to attach a method such as <code>String</code> to a
 type makes it possible for such values to format themselves
 automatically for printing, even as part of a general type.
 </p>
-<pre>
-func (b ByteSize) String() string {
+<pre><!--{{code "progs/eff_bytesize.go" `/^func.*ByteSize.*String/` `/^}/`}}
+-->func (b ByteSize) String() string {
     switch {
     case b &gt;= YB:
-        return fmt.Sprintf("%.2fYB", float64(b/YB))
+        return fmt.Sprintf(&#34;%.2fYB&#34;, float64(b/YB))
     case b &gt;= ZB:
-        return fmt.Sprintf("%.2fZB", float64(b/ZB))
+        return fmt.Sprintf(&#34;%.2fZB&#34;, float64(b/ZB))
     case b &gt;= EB:
-        return fmt.Sprintf("%.2fEB", float64(b/EB))
+        return fmt.Sprintf(&#34;%.2fEB&#34;, float64(b/EB))
     case b &gt;= PB:
-        return fmt.Sprintf("%.2fPB", float64(b/PB))
+        return fmt.Sprintf(&#34;%.2fPB&#34;, float64(b/PB))
     case b &gt;= TB:
-        return fmt.Sprintf("%.2fTB", float64(b/TB))
+        return fmt.Sprintf(&#34;%.2fTB&#34;, float64(b/TB))
     case b &gt;= GB:
-        return fmt.Sprintf("%.2fGB", float64(b/GB))
+        return fmt.Sprintf(&#34;%.2fGB&#34;, float64(b/GB))
     case b &gt;= MB:
-        return fmt.Sprintf("%.2fMB", float64(b/MB))
+        return fmt.Sprintf(&#34;%.2fMB&#34;, float64(b/MB))
     case b &gt;= KB:
-        return fmt.Sprintf("%.2fKB", float64(b/KB))
+        return fmt.Sprintf(&#34;%.2fKB&#34;, float64(b/KB))
     }
-    return fmt.Sprintf("%.2fB", float64(b))
+    return fmt.Sprintf(&#34;%.2fB&#34;, float64(b))
 }
 </pre>
 <p>
@@ -1810,8 +1813,8 @@ by the routines in package <code>sort</code> if it implements
 and it could also have a custom formatter.
 In this contrived example <code>Sequence</code> satisfies both.
 </p>
-<pre>
-type Sequence []int
+<pre><!--{{code "progs/eff_sequence.go" `/^type/` "$"}}
+-->type Sequence []int
 
 // Methods required by sort.Interface.
 func (s Sequence) Len() int {
@@ -1827,14 +1830,14 @@ func (s Sequence) Swap(i, j int) {
 // Method for printing - sorts the elements before printing.
 func (s Sequence) String() string {
     sort.Sort(s)
-    str := "["
+    str := &#34;[&#34;
     for i, elem := range s {
         if i &gt; 0 {
-            str += " "
+            str += &#34; &#34;
         }
         str += fmt.Sprint(elem)
     }
-    return str + "]"
+    return str + &#34;]&#34;
 }
 </pre>
 
@@ -2917,42 +2920,32 @@ for instance, a URL, saving you typing the URL into the phone's tiny keyboard.
 Here's the complete program.
 An explanation follows.
 </p>
-
-<pre>
-package main
+<pre><!--{{code "progs/eff_qr.go"}}
+-->package main
 
 import (
-    "flag"
-    "http"
-    "io"
-    "log"
-    "old/template" // New template package coming soon...
+    &#34;flag&#34;
+    &#34;http&#34;
+    &#34;log&#34;
+    &#34;template&#34;
 )
 
-var addr = flag.String("addr", ":1718", "http service address") // Q=17, R=18
-var fmap = template.FormatterMap{
-    "html": template.HTMLFormatter,
-    "url+html": UrlHtmlFormatter,
-}
-var templ = template.MustParse(templateStr, fmap)
+var addr = flag.String(&#34;addr&#34;, &#34;:1718&#34;, &#34;http service address&#34;) // Q=17, R=18
+
+var templ = template.Must(template.New(&#34;qr&#34;).Parse(templateStr))
 
 func main() {
     flag.Parse()
-    http.Handle("/", http.HandlerFunc(QR))
+    http.Handle(&#34;/&#34;, http.HandlerFunc(QR))
     err := http.ListenAndServe(*addr, nil)
     if err != nil {
-        log.Fatal("ListenAndServe:", err)
+        log.Fatal(&#34;ListenAndServe:&#34;, err)
     }
 }
 
 func QR(w http.ResponseWriter, req *http.Request) {
-    templ.Execute(w, req.FormValue("s"))
+    templ.Execute(w, req.FormValue(&#34;s&#34;))
 }
-
-func UrlHtmlFormatter(w io.Writer, fmt string, v ...interface{}) {
-    template.HTMLEscape(w, []byte(http.URLEscape(v[0].(string))))
-}
-
 
 const templateStr = `
 &lt;html&gt;
@@ -2960,23 +2953,21 @@ const templateStr = `
 &lt;title&gt;QR Link Generator&lt;/title&gt;
 &lt;/head&gt;
 &lt;body&gt;
-{.section @}
-&lt;img src="http://chart.apis.google.com/chart?chs=300x300&amp;cht=qr&amp;choe=UTF-8&amp;chl={@|url+html}"
-/&gt;
+{{if .}}
+&lt;img src=&#34;http://chart.apis.google.com/chart?chs=300x300&amp;cht=qr&amp;choe=UTF-8&amp;chl={{urlquery .}}&#34; /&gt;
 &lt;br&gt;
-{@|html}
+{{html .}}
 &lt;br&gt;
 &lt;br&gt;
-{.end}
-&lt;form action="/" name=f method="GET"&gt;&lt;input maxLength=1024 size=70
-name=s value="" title="Text to QR Encode"&gt;&lt;input type=submit
-value="Show QR" name=qr&gt;
+{{end}}
+&lt;form action=&#34;/&#34; name=f method=&#34;GET&#34;&gt;&lt;input maxLength=1024 size=70
+name=s value=&#34;&#34; title=&#34;Text to QR Encode&#34;&gt;&lt;input type=submit
+value=&#34;Show QR&#34; name=qr&gt;
 &lt;/form&gt;
 &lt;/body&gt;
 &lt;/html&gt;
 `
 </pre>
-
 <p>
 The pieces up to <code>main</code> should be easy to follow.
 The one flag sets a default HTTP port for our server.  The template
@@ -2995,25 +2986,21 @@ server; it blocks while the server runs.
 executes the template on the data in the form value named <code>s</code>.
 </p>
 <p>
-The template package, inspired by <a
-href="http://code.google.com/p/json-template">json-template</a>, is
-powerful;
+The template package is powerful;
 this program just touches on its capabilities.
 In essence, it rewrites a piece of text on the fly by substituting elements derived
 from data items passed to <code>templ.Execute</code>, in this case the
 form value.  
 Within the template text (<code>templateStr</code>),
-brace-delimited pieces denote template actions.
-The piece from the <code>{.section @}</code>
-to <code>{.end}</code> executes with the value of the data item <code>@</code>,
-which is a shorthand for &ldquo;the current item&rdquo;, which is the form value.
-(When the string is empty, this piece of the template is suppressed.)
+double-brace-delimited pieces denote template actions.
+The piece from <code>{{if .}}</code>
+to <code>{{end}}</code> executes only if the value of the current data item, called <code>.</code> (dot),
+is non-empty.
+That is, when the string is empty, this piece of the template is suppressed.
 </p>
 <p>
-The snippet <code>{@|url+html}</code> says to run the data through the formatter
-installed in the formatter map (<code>fmap</code>)
-under the name <code>"url+html"</code>.
-That is the function <code>UrlHtmlFormatter</code>, which sanitizes the string
+The snippet <code>{{urlquery .}}</code> says to process the data with the function
+<code>urlquery</code>, which sanitizes the query string
 for safe display on the web page.
 </p>
 <p>

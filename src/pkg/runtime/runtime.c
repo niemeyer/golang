@@ -51,12 +51,15 @@ runtime·dopanic(int32 unused)
 	static bool didothers;
 
 	if(g->sig != 0)
-		runtime·printf("\n[signal %x code=%p addr=%p pc=%p]\n",
+		runtime·printf("[signal %x code=%p addr=%p pc=%p]\n",
 			g->sig, g->sigcode0, g->sigcode1, g->sigpc);
 
-	runtime·printf("\n");
 	if(runtime·gotraceback()){
-		runtime·traceback(runtime·getcallerpc(&unused), runtime·getcallersp(&unused), 0, g);
+		if(g != m->g0) {
+			runtime·printf("\n");
+			runtime·goroutineheader(g);
+			runtime·traceback(runtime·getcallerpc(&unused), runtime·getcallersp(&unused), 0, g);
+		}
 		if(!didothers) {
 			didothers = true;
 			runtime·tracebackothers(g);
@@ -635,20 +638,20 @@ runtime·algarray[] =
 {
 [AMEM]	{ memhash, memequal, memprint, memcopy },
 [ANOEQ]	{ runtime·nohash, runtime·noequal, memprint, memcopy },
-[ASTRING]	{ strhash, strequal, strprint, strcopy },
-[AINTER]		{ interhash, interequal, interprint, intercopy },
-[ANILINTER]	{ nilinterhash, nilinterequal, nilinterprint, nilintercopy },
-[ASLICE]	{ runtime·nohash, runtime·noequal, memprint, slicecopy },
-[AMEM8]		{ memhash, memequal8, memprint, memcopy8 },
-[AMEM16]	{ memhash, memequal16, memprint, memcopy16 },
-[AMEM32]	{ memhash, memequal32, memprint, memcopy32 },
-[AMEM64]	{ memhash, memequal64, memprint, memcopy64 },
-[AMEM128]	{ memhash, memequal128, memprint, memcopy128 },
-[ANOEQ8]	{ runtime·nohash, runtime·noequal, memprint, memcopy8 },
-[ANOEQ16]	{ runtime·nohash, runtime·noequal, memprint, memcopy16 },
-[ANOEQ32]	{ runtime·nohash, runtime·noequal, memprint, memcopy32 },
-[ANOEQ64]	{ runtime·nohash, runtime·noequal, memprint, memcopy64 },
-[ANOEQ128]	{ runtime·nohash, runtime·noequal, memprint, memcopy128 },
+[ASTRING]	{ (void*)strhash, (void*)strequal, (void*)strprint, (void*)strcopy },
+[AINTER]		{ (void*)interhash, (void*)interequal, (void*)interprint, (void*)intercopy },
+[ANILINTER]	{ (void*)nilinterhash, (void*)nilinterequal, (void*)nilinterprint, (void*)nilintercopy },
+[ASLICE]	{ (void*)runtime·nohash, (void*)runtime·noequal, (void*)memprint, (void*)slicecopy },
+[AMEM8]		{ memhash, (void*)memequal8, memprint, (void*)memcopy8 },
+[AMEM16]	{ memhash, (void*)memequal16, memprint, (void*)memcopy16 },
+[AMEM32]	{ memhash, (void*)memequal32, memprint, (void*)memcopy32 },
+[AMEM64]	{ memhash, (void*)memequal64, memprint, (void*)memcopy64 },
+[AMEM128]	{ memhash, (void*)memequal128, memprint, (void*)memcopy128 },
+[ANOEQ8]	{ runtime·nohash, runtime·noequal, memprint, (void*)memcopy8 },
+[ANOEQ16]	{ runtime·nohash, runtime·noequal, memprint, (void*)memcopy16 },
+[ANOEQ32]	{ runtime·nohash, runtime·noequal, memprint, (void*)memcopy32 },
+[ANOEQ64]	{ runtime·nohash, runtime·noequal, memprint, (void*)memcopy64 },
+[ANOEQ128]	{ runtime·nohash, runtime·noequal, memprint, (void*)memcopy128 },
 };
 
 int64
@@ -703,7 +706,13 @@ runtime·Caller(int32 skip, uintptr retpc, String retfile, int32 retline, bool r
 void
 runtime·Callers(int32 skip, Slice pc, int32 retn)
 {
-	retn = runtime·callers(skip, (uintptr*)pc.array, pc.len);
+	// runtime.callers uses pc.array==nil as a signal
+	// to print a stack trace.  Pick off 0-length pc here
+	// so that we don't let a nil pc slice get to it.
+	if(pc.len == 0)
+		retn = 0;
+	else
+		retn = runtime·callers(skip, (uintptr*)pc.array, pc.len);
 	FLUSH(&retn);
 }
 

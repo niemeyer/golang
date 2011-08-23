@@ -35,8 +35,8 @@ const (
 	NodeBool                       // A boolean constant.
 	NodeCommand                    // An element of a pipeline.
 	NodeDot                        // The cursor, dot.
-	NodeElse                       // An else action.
-	NodeEnd                        // An end action.
+	nodeElse                       // An else action. Not added to tree.
+	nodeEnd                        // An end action. Not added to tree.
 	NodeField                      // A field or method name.
 	NodeIdentifier                 // An identifier; always a function name.
 	NodeIf                         // An if action.
@@ -356,77 +356,92 @@ func (s *StringNode) String() string {
 	return fmt.Sprintf("S=%#q", s.Text)
 }
 
-// EndNode represents an {{end}} action. It is represented by a nil pointer.
-type EndNode bool
+// endNode represents an {{end}} action. It is represented by a nil pointer.
+// It does not appear in the final parse tree.
+type endNode bool
 
-func newEnd() *EndNode {
+func newEnd() *endNode {
 	return nil
 }
 
-func (e *EndNode) Type() NodeType {
-	return NodeEnd
+func (e *endNode) Type() NodeType {
+	return nodeEnd
 }
 
-func (e *EndNode) String() string {
+func (e *endNode) String() string {
 	return "{{end}}"
 }
 
-// ElseNode represents an {{else}} action.
-type ElseNode struct {
+// elseNode represents an {{else}} action. Does not appear in the final tree.
+type elseNode struct {
 	NodeType
 	Line int // The line number in the input.
 }
 
-func newElse(line int) *ElseNode {
-	return &ElseNode{NodeType: NodeElse, Line: line}
+func newElse(line int) *elseNode {
+	return &elseNode{NodeType: nodeElse, Line: line}
 }
 
-func (e *ElseNode) Type() NodeType {
-	return NodeElse
+func (e *elseNode) Type() NodeType {
+	return nodeElse
 }
 
-func (e *ElseNode) String() string {
+func (e *elseNode) String() string {
 	return "{{else}}"
+}
+
+// BranchNode is the common representation of if, range, and with.
+type BranchNode struct {
+	NodeType
+	Line     int       // The line number in the input.
+	Pipe     *PipeNode // The pipeline to be evaluated.
+	List     *ListNode // What to execute if the value is non-empty.
+	ElseList *ListNode // What to execute if the value is empty (nil if absent).
+}
+
+func (b *BranchNode) String() string {
+	name := ""
+	switch b.NodeType {
+	case NodeIf:
+		name = "if"
+	case NodeRange:
+		name = "range"
+	case NodeWith:
+		name = "with"
+	default:
+		panic("unknown branch type")
+	}
+	if b.ElseList != nil {
+		return fmt.Sprintf("({{%s %s}} %s {{else}} %s)", name, b.Pipe, b.List, b.ElseList)
+	}
+	return fmt.Sprintf("({{%s %s}} %s)", name, b.Pipe, b.List)
 }
 
 // IfNode represents an {{if}} action and its commands.
 type IfNode struct {
-	NodeType
-	Line     int       // The line number in the input.
-	Pipe     *PipeNode // The pipeline to be evaluated.
-	List     *ListNode // What to execute if the value is non-empty.
-	ElseList *ListNode // What to execute if the value is empty (nil if absent).
+	BranchNode
 }
 
 func newIf(line int, pipe *PipeNode, list, elseList *ListNode) *IfNode {
-	return &IfNode{NodeType: NodeIf, Line: line, Pipe: pipe, List: list, ElseList: elseList}
-}
-
-func (i *IfNode) String() string {
-	if i.ElseList != nil {
-		return fmt.Sprintf("({{if %s}} %s {{else}} %s)", i.Pipe, i.List, i.ElseList)
-	}
-	return fmt.Sprintf("({{if %s}} %s)", i.Pipe, i.List)
+	return &IfNode{BranchNode{NodeType: NodeIf, Line: line, Pipe: pipe, List: list, ElseList: elseList}}
 }
 
 // RangeNode represents a {{range}} action and its commands.
 type RangeNode struct {
-	NodeType
-	Line     int       // The line number in the input.
-	Pipe     *PipeNode // The pipeline to be evaluated.
-	List     *ListNode // What to execute if the value is non-empty.
-	ElseList *ListNode // What to execute if the value is empty (nil if absent).
+	BranchNode
 }
 
 func newRange(line int, pipe *PipeNode, list, elseList *ListNode) *RangeNode {
-	return &RangeNode{NodeType: NodeRange, Line: line, Pipe: pipe, List: list, ElseList: elseList}
+	return &RangeNode{BranchNode{NodeType: NodeRange, Line: line, Pipe: pipe, List: list, ElseList: elseList}}
 }
 
-func (r *RangeNode) String() string {
-	if r.ElseList != nil {
-		return fmt.Sprintf("({{range %s}} %s {{else}} %s)", r.Pipe, r.List, r.ElseList)
-	}
-	return fmt.Sprintf("({{range %s}} %s)", r.Pipe, r.List)
+// WithNode represents a {{with}} action and its commands.
+type WithNode struct {
+	BranchNode
+}
+
+func newWith(line int, pipe *PipeNode, list, elseList *ListNode) *WithNode {
+	return &WithNode{BranchNode{NodeType: NodeWith, Line: line, Pipe: pipe, List: list, ElseList: elseList}}
 }
 
 // TemplateNode represents a {{template}} action.
@@ -446,24 +461,4 @@ func (t *TemplateNode) String() string {
 		return fmt.Sprintf("{{template %q}}", t.Name)
 	}
 	return fmt.Sprintf("{{template %q %s}}", t.Name, t.Pipe)
-}
-
-// WithNode represents a {{with}} action and its commands.
-type WithNode struct {
-	NodeType
-	Line     int       // The line number in the input.
-	Pipe     *PipeNode // The pipeline to be evaluated.
-	List     *ListNode // What to execute if the value is non-empty.
-	ElseList *ListNode // What to execute if the value is empty (nil if absent).
-}
-
-func newWith(line int, pipe *PipeNode, list, elseList *ListNode) *WithNode {
-	return &WithNode{NodeType: NodeWith, Line: line, Pipe: pipe, List: list, ElseList: elseList}
-}
-
-func (w *WithNode) String() string {
-	if w.ElseList != nil {
-		return fmt.Sprintf("({{with %s}} %s {{else}} %s)", w.Pipe, w.List, w.ElseList)
-	}
-	return fmt.Sprintf("({{with %s}} %s)", w.Pipe, w.List)
 }

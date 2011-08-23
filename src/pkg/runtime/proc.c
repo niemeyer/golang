@@ -128,7 +128,7 @@ Sched runtime·sched;
 int32 runtime·gomaxprocs;
 bool runtime·singleproc;
 
-// An m that is waiting for notewakeup(&m->havenextg).  This may be
+// An m that is waiting for notewakeup(&m->havenextg).  This may
 // only be accessed while the scheduler lock is held.  This is used to
 // minimize the number of times we call notewakeup while the scheduler
 // lock is held, since the m will normally move quickly to lock the
@@ -250,6 +250,40 @@ runtime·goexit(void)
 }
 
 void
+runtime·goroutineheader(G *g)
+{
+	int8 *status;
+
+	switch(g->status) {
+	case Gidle:
+		status = "idle";
+		break;
+	case Grunnable:
+		status = "runnable";
+		break;
+	case Grunning:
+		status = "running";
+		break;
+	case Gsyscall:
+		status = "syscall";
+		break;
+	case Gwaiting:
+		if(g->waitreason)
+			status = g->waitreason;
+		else
+			status = "waiting";
+		break;
+	case Gmoribund:
+		status = "moribund";
+		break;
+	default:
+		status = "???";
+		break;
+	}
+	runtime·printf("goroutine %d [%s]:\n", g->goid, status);
+}
+
+void
 runtime·tracebackothers(G *me)
 {
 	G *g;
@@ -257,7 +291,8 @@ runtime·tracebackothers(G *me)
 	for(g = runtime·allg; g != nil; g = g->alllink) {
 		if(g == me || g->status == Gdead)
 			continue;
-		runtime·printf("\ngoroutine %d [%d]:\n", g->goid, g->status);
+		runtime·printf("\n");
+		runtime·goroutineheader(g);
 		runtime·traceback(g->sched.pc, g->sched.sp, 0, g);
 	}
 }
@@ -1073,15 +1108,18 @@ runtime·newproc1(byte *fn, byte *argp, int32 narg, int32 nret, void *callerpc)
 	schedlock();
 
 	if((newg = gfget()) != nil){
-		newg->status = Gwaiting;
 		if(newg->stackguard - StackGuard != newg->stack0)
 			runtime·throw("invalid stack in newg");
 	} else {
 		newg = runtime·malg(StackMin);
-		newg->status = Gwaiting;
-		newg->alllink = runtime·allg;
-		runtime·allg = newg;
+		if(runtime·lastg == nil)
+			runtime·allg = newg;
+		else
+			runtime·lastg->alllink = newg;
+		runtime·lastg = newg;
 	}
+	newg->status = Gwaiting;
+	newg->waitreason = "new goroutine";
 
 	sp = newg->stackbase;
 	sp -= siz;
@@ -1153,7 +1191,8 @@ runtime·deferreturn(uintptr arg0)
 	runtime·memmove(argp, d->args, d->siz);
 	g->defer = d->link;
 	fn = d->fn;
-	runtime·free(d);
+	if(!d->nofree)
+		runtime·free(d);
 	runtime·jmpdefer(fn, argp);
 }
 
@@ -1165,7 +1204,8 @@ rundefer(void)
 	while((d = g->defer) != nil) {
 		g->defer = d->link;
 		reflect·call(d->fn, d->args, d->siz);
-		runtime·free(d);
+		if(!d->nofree)
+			runtime·free(d);
 	}
 }
 
@@ -1245,7 +1285,8 @@ runtime·panic(Eface e)
 			runtime·mcall(recovery);
 			runtime·throw("recovery failed"); // mcall should not return
 		}
-		runtime·free(d);
+		if(!d->nofree)
+			runtime·free(d);
 	}
 
 	// ran out of deferred calls - old-school panic now
@@ -1280,7 +1321,8 @@ recovery(G *gp)
 	else
 		gp->sched.sp = (byte*)d->argp - 2*sizeof(uintptr);
 	gp->sched.pc = d->pc;
-	runtime·free(d);
+	if(!d->nofree)
+		runtime·free(d);
 	runtime·gogo(&gp->sched, 1);
 }
 
@@ -1562,7 +1604,7 @@ os·setenv_c(String k, String v)
 	runtime·memmove(arg[1], v.str, v.len);
 	arg[1][v.len] = 0;
 
-	runtime·asmcgocall(libcgo_setenv, arg);
+	runtime·asmcgocall((void*)libcgo_setenv, arg);
 	runtime·free(arg[0]);
 	runtime·free(arg[1]);
 }
