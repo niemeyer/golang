@@ -2,3 +2,4 @@ Mailed: False
 Description:
 	version.bash: update VERSION on -save if already present
 Files:
+	src/version.bash
