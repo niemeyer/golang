@@ -133,7 +133,7 @@ if [ $# -eq 0 ]; then
 fi
 
 CL_NUMBER=
-CL_CREATE=0
+NEW=0
 PUSH=0
 SYNC=0
 NO_SYNC=0
@@ -167,8 +167,8 @@ while [ $# -gt 0 ]; do
 			fatal "$OPTION takes no arguments"
 		fi
 		;;
-	--new-cl)
-		CL_CREATE=1
+	--new)
+		NEW=1
 		if [ -z "$1" ]; then
 			fatal "--new-cl requires a branch suffix argument"
 		else
@@ -324,8 +324,8 @@ if [ "$NO_SYNC" = 0 ]; then
 	fi
 fi
 
-if [ "$CL_NUMBER" != "" -o "$CL_CREATE" = 1 ]; then
-	if [ "$CL_CREATE" = 1 ]; then
+if [ "$CL_NUMBER" != "" -o "$NEW" = 1 ]; then
+	if [ "$NEW" = 1 ]; then
 		hg change
 		if [ $? != 0 ]; then
 			fatal "'hg change' failed"
@@ -350,7 +350,7 @@ if [ "$CL_NUMBER" != "" -o "$CL_CREATE" = 1 ]; then
 		hg revert @$CL_NUMBER > /dev/null 2> /dev/null || true
 	fi
 
-	if [ "$CL_CREATE" = 0 ]; then
+	if [ "$NEW" = 0 ]; then
 		echo "Fetching CL $CL_NUMBER and applying in branch '$CL_BRANCH'..."
 		hg clpatch $CL_NUMBER
 	fi
