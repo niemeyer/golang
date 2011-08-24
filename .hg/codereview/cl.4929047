@@ -1,0 +1,6 @@
+Mailed: False
+Description:
+	goinstall: report lack of $GOPATH if $GOROOT isn't writable
+	
+	Fixes issue 2175.
+Files:
