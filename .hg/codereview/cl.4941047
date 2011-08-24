@@ -1,4 +1,4 @@
-Mailed: False
+Mailed: True
 Description:
 	version.bash: update VERSION on -save if already present
 Files:
