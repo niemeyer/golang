@@ -6,6 +6,8 @@
  * function literals aka closures
  */
 
+#include <u.h>
+#include <libc.h>
 #include "go.h"
 
 void
@@ -128,6 +130,8 @@ makeclosure(Node *func, NodeList **init, int nowrap)
 	NodeList *l;
 	static int closgen;
 	char *p;
+
+	USED(init);
 
 	/*
 	 * wrap body in external function

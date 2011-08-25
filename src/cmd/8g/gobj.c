@@ -28,6 +28,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#include <u.h>
+#include <libc.h>
 #include "gg.h"
 
 void
@@ -546,6 +548,8 @@ genembedtramp(Type *rcvr, Type *method, Sym *newnam, int iface)
 	int c, d, o, mov, add, loaded;
 	Prog *p;
 	Type *f;
+
+	USED(iface);
 
 	e = method->sym;
 	for(d=0; d<nelem(dotlist); d++) {

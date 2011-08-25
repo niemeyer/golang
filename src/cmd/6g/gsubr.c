@@ -28,6 +28,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#include <u.h>
+#include <libc.h>
 #include "gg.h"
 
 // TODO(rsc): Can make this bigger if we move
@@ -79,6 +81,8 @@ Prog*
 gbranch(int as, Type *t)
 {
 	Prog *p;
+	
+	USED(t);
 
 	p = prog(as);
 	p->to.type = D_BRANCH;

@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+#include	<u.h>
+#include	<libc.h>
 #include	"go.h"
 
 static	Node*	walkprint(Node*, NodeList**, int);
@@ -1201,6 +1203,8 @@ makenewvar(Type *t, NodeList **init, Node **nstar)
 static Node*
 ascompatee1(int op, Node *l, Node *r, NodeList **init)
 {
+	USED(op);
+
 	return convas(nod(OAS, l, r), init);
 }
 
@@ -1256,6 +1260,8 @@ ascompatet(int op, NodeList *nl, Type **nr, int fp, NodeList **init)
 	Iter saver;
 	int ucount;
 	NodeList *nn, *mm;
+
+	USED(op);
 
 	/*
 	 * check assign type list to

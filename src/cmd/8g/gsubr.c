@@ -28,6 +28,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+#include <u.h>
+#include <libc.h>
 #include "gg.h"
 
 // TODO(rsc): Can make this bigger if we move
@@ -82,6 +84,7 @@ gbranch(int as, Type *t)
 {
 	Prog *p;
 
+	USED(t);
 	p = prog(as);
 	p->to.type = D_BRANCH;
 	p->to.branch = P;
@@ -1955,5 +1958,9 @@ sudoclean(void)
 int
 sudoaddable(int as, Node *n, Addr *a)
 {
+	USED(as);
+	USED(n);
+	USED(a);
+
 	return 0;
 }

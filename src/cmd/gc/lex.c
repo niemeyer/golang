@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+#include	<u.h>
+#include	<libc.h>
 #include	"go.h"
 #include	"y.tab.h"
 #include	<ar.h>
@@ -92,6 +94,8 @@ usage(void)
 void
 fault(int s)
 {
+	USED(s);
+
 	// If we've already complained about things
 	// in the program, don't bother complaining
 	// about the seg fault too; let the user clean up
@@ -445,6 +449,8 @@ importfile(Val *f, int line)
 	int len;
 	Strlit *path;
 	char *cleanbuf;
+
+	USED(line);
 
 	// TODO(rsc): don't bother reloading imports more than once?
 
