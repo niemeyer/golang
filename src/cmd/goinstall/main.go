@@ -74,8 +74,13 @@ func errorf(format string, args ...interface{}) {
 func main() {
 	flag.Usage = usage
 	flag.Parse()
-	if runtime.GOROOT() == "" {
+	goroot := runtime.GOROOT()
+	if goroot == "" {
 		fmt.Fprintf(os.Stderr, "%s: no $GOROOT\n", argv0)
+		os.Exit(1)
+	}
+	if os.Getenv("GOPATH") == "" && !canWrite(goroot) {
+		fmt.Fprintf(os.Stderr, "%s: no $GOPATH and $GOROOT not writable\n", argv0)
 		os.Exit(1)
 	}
 	readPackageList()
@@ -115,6 +120,18 @@ func main() {
 	if errors {
 		os.Exit(1)
 	}
+}
+
+// canWrite returns true if path is writable.
+func canWrite(path string) bool {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	uid := os.Getuid()
+	gid := os.Getgid()
+	m := fi.Mode
+	return fi.Uid == uid && m&0200 != 0 || fi.Gid == gid && m&020 != 0 || m&2 != 0
 }
 
 // printDeps prints the dependency path that leads to pkg.
