@@ -13,4 +13,4 @@ ignore.local = .hgignore-local
 [hooks]
 prechangegroup.enable-pull = false
 preoutgoing.enable-push = false
-preupdate.enable-update = false
+#preupdate.enable-update = false
