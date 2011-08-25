@@ -9,9 +9,9 @@ the changes made to master into the current branch.
 
 Options:
 
-  --cl #[-<info>]     Sync the provided CL to a local branch with the
+  --get #[-<info>]    Sync the provided CL to a local branch with the
                       provided name, creating the branch if necessary.
-  --new [<info>]   Create a new CL and an empty branch named #-<info>
+  --new [<info>]      Create a new CL and an empty branch named #-<info>
                       to hold it
   --push              Push all branches to the origin remote
   --submit            Submit the current CL branch to hg
@@ -134,6 +134,7 @@ fi
 
 CL_NUMBER=
 NEW=0
+GET=0
 PUSH=0
 SYNC=0
 NO_SYNC=0
@@ -176,7 +177,8 @@ while [ $# -gt 0 ]; do
 		fi
 		shift
 		;;
-	--cl)
+	--get)
+		GET=1
 		if [ "$1" = "" ]; then
 			fatal "$OPTION needs a # or #-info argument"
 		fi
@@ -324,7 +326,7 @@ if [ "$NO_SYNC" = 0 ]; then
 	fi
 fi
 
-if [ "$CL_NUMBER" != "" -o "$NEW" = 1 ]; then
+if [ "$GET" = 1 -o "$NEW" = 1 ]; then
 	if [ "$NEW" = 1 ]; then
 		hg change
 		if [ $? != 0 ]; then
