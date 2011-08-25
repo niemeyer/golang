@@ -4818,3 +4818,10 @@ data/src/pkg/syscall/syscall_openbsd_amd64.go.i
 data/src/pkg/syscall/mksysnum_openbsd.pl.i
 data/src/cmd/gofix/netudpgroup.go.i
 data/doc/progs/eff_bytesize.go.i
+data/src/pkg/go/build/pkgtest/xsqrt_test.go.i
+data/src/pkg/go/build/pkgtest/sqrt_386_test.go.i
+data/src/pkg/go/build/pkgtest/sqrt_amd64_test.go.i
+data/src/pkg/go/build/pkgtest/sqrt_test.go.i
+data/test/escape2.go.i
+data/src/cmd/gc/esc.c.i
+data/src/pkg/go/build/pkgtest/sqrt_arm_test.go.i
