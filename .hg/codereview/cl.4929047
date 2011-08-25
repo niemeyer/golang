@@ -1,7 +1,0 @@
-Mailed: True
-Description:
-	goinstall: report lack of $GOPATH on errors
-	
-	Fixes issue 2175.
-Files:
-	src/cmd/goinstall/main.go
