@@ -11,7 +11,7 @@ Options:
 
   --cl #[-<info>]     Sync the provided CL to a local branch with the
                       provided name, creating the branch if necessary.
-  --new-cl [<info>]   Create a new CL and an empty branch named #-<info>
+  --new [<info>]   Create a new CL and an empty branch named #-<info>
                       to hold it
   --push              Push all branches to the origin remote
   --submit            Submit the current CL branch to hg
@@ -170,7 +170,7 @@ while [ $# -gt 0 ]; do
 	--new)
 		NEW=1
 		if [ -z "$1" ]; then
-			fatal "--new-cl requires a branch suffix argument"
+			fatal "--new requires a branch suffix argument"
 		else
 			CL_BRANCH_SUFFIX="-$1"
 		fi
