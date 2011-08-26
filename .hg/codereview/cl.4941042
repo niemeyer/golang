@@ -1,0 +1,10 @@
+Author: rlight2@gmail.com
+
+Mailed: False
+Description:
+	xml: Marshal "parent>child" tags correctly
+	
+	Fixes issue 2119
+Files:
+	src/pkg/xml/marshal.go
+	src/pkg/xml/marshal_test.go
