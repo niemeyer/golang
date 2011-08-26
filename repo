@@ -360,13 +360,13 @@ if [ "$GET" = 1 -o "$NEW" = 1 ]; then
 	add_all
 	STATUS=`current_status`
 	if [ "`current_status`" != "" ]; then
-		echo "Committing changes to branch '$CL_BRANCH'..."
+		echo "Committing changes to '$CL_BRANCH' branch..."
 		commit -m "$MESSAGE" > /dev/null
 	else
 		echo "CL has no changes."
 	fi
 
-else
+elif [ "$SUBMIT" = 0 ]; then
 	checkout $INITIAL_BRANCH
 
 	#if [ "$INITIAL_BRANCH" != master -a "$NEW_ID" != "$OLD_ID" ]; then
