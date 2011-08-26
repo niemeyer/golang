@@ -2,7 +2,7 @@ Author: rlight2@gmail.com
 
 Mailed: False
 Description:
-	xml: Marshal "parent>child" tags correctly
+	xml: marshal "parent>child" tags correctly
 	
 	Fixes issue 2119
 Files:
