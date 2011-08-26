@@ -4825,3 +4825,9 @@ data/src/pkg/go/build/pkgtest/sqrt_test.go.i
 data/test/escape2.go.i
 data/src/cmd/gc/esc.c.i
 data/src/pkg/go/build/pkgtest/sqrt_arm_test.go.i
+data/src/pkg/websocket/hybi_test.go.i
+data/src/pkg/websocket/hixie_test.go.i
+data/src/pkg/image/tiff/testdata/video-001-uncompressed.tiff.i
+data/src/pkg/websocket/hybi.go.i
+data/src/cmd/godoc/throttle.go.i
+data/src/pkg/websocket/hixie.go.i
